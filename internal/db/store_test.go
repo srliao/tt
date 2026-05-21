@@ -60,13 +60,15 @@ func TestOpenFile(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = store.Close() })
 
-	// Migrations applied on the production (file-backed) path.
-	count, err := store.Queries().SelectTasksHealth(ctx)
+	// Migrations applied on the production (file-backed) path. Use a
+	// remaining health query (tasks.sql now hosts the full task service
+	// queries instead of the SelectTasksHealth stub).
+	count, err := store.Queries().SelectTagsHealth(ctx)
 	if err != nil {
-		t.Fatalf("SelectTasksHealth: %v", err)
+		t.Fatalf("SelectTagsHealth: %v", err)
 	}
 	if count != 0 {
-		t.Errorf("fresh database tasks count = %d, want 0", count)
+		t.Errorf("fresh database tags count = %d, want 0", count)
 	}
 
 	if err := store.Close(); err != nil {
