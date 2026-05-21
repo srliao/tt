@@ -1,10 +1,10 @@
 package httpapi
 
 import (
+	"database/sql"
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -198,12 +198,9 @@ func parseRFC3339Optional(raw string) (*time.Time, error) {
 	return &t, nil
 }
 
-// isNotFound mirrors the sql.ErrNoRows detection used by writeServiceError,
-// without writing an HTTP response. Used internally by the run-detail handler
-// to drop deleted-but-referenced tasks silently.
+// isNotFound recognises a sql.ErrNoRows propagated up through the service
+// layer (which wraps with %w). Used by the run-detail handler to drop
+// references to deleted tasks silently rather than failing the whole page.
 func isNotFound(err error) bool {
-	if errors.Is(err, errors.New("no rows in result set")) {
-		return true
-	}
-	return strings.Contains(err.Error(), "no rows in result set")
+	return errors.Is(err, sql.ErrNoRows)
 }

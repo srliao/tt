@@ -121,18 +121,20 @@ func TestHealth_DBDown(t *testing.T) {
 		t.Fatalf("GET /health: %v", err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
 	}
-	var body struct {
-		Status string `json:"status"`
-		DB     string `json:"db"`
+	var env struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body.Status != "degraded" || body.DB != "error" {
-		t.Fatalf("body = %+v, want degraded/error", body)
+	if env.Error.Code == "" || env.Error.Message == "" {
+		t.Fatalf("expected error envelope, got %+v", env)
 	}
 }
 

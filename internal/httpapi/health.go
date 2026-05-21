@@ -15,22 +15,20 @@ type healthResponse struct {
 }
 
 // handleHealth pings the DB through the injected Pinger and reports overall
-// status. A DB failure produces "status":"degraded" with "db":"error" but
-// still returns 200 so a load balancer can keep routing the request (the
-// caller will see the error in the body and decide how to react). If the
-// Pinger itself is nil we treat that as the test/dev wiring and emit a
-// generic ok response.
+// status. A DB failure returns 503 with the standard error envelope (per
+// plan §4 and spec §8) so monitoring can distinguish a live-but-broken
+// instance from a fully-healthy one. If the Pinger itself is nil we treat
+// that as the test/dev wiring and emit a generic ok response.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	resp := healthResponse{Status: "ok", DB: "ok"}
 	if s.pinger != nil {
 		ctx, cancel := context.WithTimeout(r.Context(), pingTimeout)
 		defer cancel()
 		if err := s.pinger.Ping(ctx); err != nil {
-			resp.Status = "degraded"
-			resp.DB = "error"
+			writeError(w, http.StatusServiceUnavailable, CodeInternal, "database ping failed", nil)
+			return
 		}
 	}
-	writeJSON(w, http.StatusOK, resp)
+	writeJSON(w, http.StatusOK, healthResponse{Status: "ok", DB: "ok"})
 }
 
 // versionResponse is the JSON shape returned by GET /version. built_at is
