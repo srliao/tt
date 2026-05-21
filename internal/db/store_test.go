@@ -58,6 +58,17 @@ func TestOpenFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("db.Open(%q): %v", path, err)
 	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	// Migrations applied on the production (file-backed) path.
+	count, err := store.Queries().SelectTasksHealth(ctx)
+	if err != nil {
+		t.Fatalf("SelectTasksHealth: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("fresh database tasks count = %d, want 0", count)
+	}
+
 	if err := store.Close(); err != nil {
 		t.Fatalf("store.Close: %v", err)
 	}

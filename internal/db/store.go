@@ -21,16 +21,15 @@ type Store struct {
 }
 
 // Open opens (or creates) the SQLite database at path and runs all pending
-// goose migrations. Pass ":memory:" to use an in-memory shared-cache database
-// (useful for tests).
+// goose migrations. Pass ":memory:" to use an in-memory database (useful for
+// tests); SetMaxOpenConns(1) pins the in-memory pool to a single connection
+// so every caller sees the same database.
 //
 // The returned Store must be closed with Close when no longer needed.
 func Open(ctx context.Context, path string) (*Store, error) {
 	var dsn string
 	if path == ":memory:" {
-		// Shared cache so multiple connections see the same data;
-		// foreign_keys must be enabled per-connection.
-		dsn = "file::memory:?cache=shared&_pragma=foreign_keys(1)"
+		dsn = "file::memory:?_pragma=foreign_keys(1)"
 	} else {
 		dsn = fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)", path)
 	}
@@ -40,8 +39,6 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 
-	// In-memory databases live inside a single connection; using more than
-	// one connection would expose separate empty databases.
 	if path == ":memory:" {
 		sqlDB.SetMaxOpenConns(1)
 	}
@@ -86,12 +83,15 @@ func (s *Store) Close() error {
 	return nil
 }
 
+// runMigrations uses goose.NewProvider (instance-scoped) instead of the
+// global SetBaseFS/SetDialect pair, so concurrent Open calls from parallel
+// test packages don't race on goose's package-level state.
 func runMigrations(ctx context.Context, sqlDB *sql.DB) error {
-	goose.SetBaseFS(migrations.FS)
-	if err := goose.SetDialect("sqlite3"); err != nil {
-		return fmt.Errorf("set goose dialect: %w", err)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, migrations.FS)
+	if err != nil {
+		return fmt.Errorf("new goose provider: %w", err)
 	}
-	if err := goose.UpContext(ctx, sqlDB, "."); err != nil {
+	if _, err := provider.Up(ctx); err != nil {
 		return fmt.Errorf("goose up: %w", err)
 	}
 	return nil
