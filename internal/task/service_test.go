@@ -3,6 +3,7 @@ package task_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/srliao/tt/internal/db/dbtest"
 	"github.com/srliao/tt/internal/task"
@@ -291,6 +292,112 @@ func TestClearFinishedFromStage_OnlyDoneOrCancelled(t *testing.T) {
 		if got.StagedOrder != nil {
 			t.Fatalf("task %d StagedOrder = %v, want nil", id, *got.StagedOrder)
 		}
+	}
+}
+
+func TestList_DefaultSortByPriority(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, _ := svc.Create(ctx, task.CreateInput{Title: "a"})
+	b, _ := svc.Create(ctx, task.CreateInput{Title: "b"})
+	c, _ := svc.Create(ctx, task.CreateInput{Title: "c"})
+
+	got, err := svc.List(ctx, task.FilterSort{})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3", len(got))
+	}
+	wantIDs := []int64{a.ID, b.ID, c.ID}
+	for i, tk := range got {
+		if tk.ID != wantIDs[i] {
+			t.Fatalf("got[%d].ID = %d, want %d", i, tk.ID, wantIDs[i])
+		}
+	}
+}
+
+func TestList_FilterByState(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	keep, _ := svc.Create(ctx, task.CreateInput{Title: "keep"})
+	skip, _ := svc.Create(ctx, task.CreateInput{Title: "skip"})
+	if _, err := svc.SetState(ctx, skip.ID, task.StateDone); err != nil {
+		t.Fatalf("SetState(done): %v", err)
+	}
+
+	got, err := svc.List(ctx, task.FilterSort{States: []task.State{task.StateNotDone}})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != keep.ID {
+		t.Fatalf("got = %+v, want one task with id %d", got, keep.ID)
+	}
+}
+
+func TestList_SearchIsCaseInsensitive(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	hit, _ := svc.Create(ctx, task.CreateInput{Title: "grocery", Notes: "buy milk"})
+	if _, err := svc.Create(ctx, task.CreateInput{Title: "other"}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := svc.List(ctx, task.FilterSort{Search: "MILK"})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != hit.ID {
+		t.Fatalf("got = %+v, want one match for id %d", got, hit.ID)
+	}
+}
+
+func TestList_SortByTitle(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	c, _ := svc.Create(ctx, task.CreateInput{Title: "charlie"})
+	a, _ := svc.Create(ctx, task.CreateInput{Title: "alpha"})
+	b, _ := svc.Create(ctx, task.CreateInput{Title: "bravo"})
+
+	got, err := svc.List(ctx, task.FilterSort{Sort: task.SortTitle, Ascending: true})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	wantIDs := []int64{a.ID, b.ID, c.ID}
+	if len(got) != 3 {
+		t.Fatalf("len = %d, want 3", len(got))
+	}
+	for i, tk := range got {
+		if tk.ID != wantIDs[i] {
+			t.Fatalf("got[%d].ID = %d, want %d", i, tk.ID, wantIDs[i])
+		}
+	}
+}
+
+func TestList_FilterDueToday(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	today := time.Now().Format("2006-01-02")
+	due, _ := svc.Create(ctx, task.CreateInput{Title: "today", DueDate: &today})
+	other := "2099-01-01"
+	if _, err := svc.Create(ctx, task.CreateInput{Title: "later", DueDate: &other}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := svc.Create(ctx, task.CreateInput{Title: "nodate"}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := svc.List(ctx, task.FilterSort{Due: task.DueToday})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != due.ID {
+		t.Fatalf("got = %+v, want one match for id %d", got, due.ID)
 	}
 }
 
