@@ -14,7 +14,6 @@ var Version = "dev"
 func main() {
 	cfg, err := config.Parse(os.Args[1:])
 	if err != nil {
-		// Flag parsing already prints its own diagnostic; just exit.
 		os.Stderr.WriteString("config error: " + err.Error() + "\n")
 		os.Exit(2)
 	}

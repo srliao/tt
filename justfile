@@ -40,7 +40,10 @@ build: fe-build
     go build -trimpath -ldflags='-s -w -X main.Version=dev' -o ./bin/tt ./cmd/tt
 
 build-release: fe-build
-    CGO_ENABLED=0 go build -trimpath -ldflags='-s -w -X main.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)' -o ./bin/tt ./cmd/tt
+    #!/usr/bin/env bash
+    set -euo pipefail
+    VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o ./bin/tt ./cmd/tt
 
 test: be-test fe-test
 

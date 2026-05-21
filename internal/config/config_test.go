@@ -33,6 +33,9 @@ func TestParseFlags(t *testing.T) {
 	if cfg.DataDir != "/tmp/tt" {
 		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "/tmp/tt")
 	}
+	if cfg.DBPath != "/tmp/tt/db.sqlite" {
+		t.Errorf("DBPath = %q, want %q", cfg.DBPath, "/tmp/tt/db.sqlite")
+	}
 }
 
 func TestParseDBOverride(t *testing.T) {
