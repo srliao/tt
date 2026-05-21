@@ -294,6 +294,82 @@ func TestClearFinishedFromStage_OnlyDoneOrCancelled(t *testing.T) {
 	}
 }
 
+func TestGet_ReturnsPersistedTask(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	created, err := svc.Create(ctx, task.CreateInput{Title: "hi", Notes: "n"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := svc.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Title != "hi" || got.Notes != "n" {
+		t.Fatalf("Get returned %+v, want title=hi notes=n", got)
+	}
+}
+
+func TestUpdate_ReplacesFields(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	created, err := svc.Create(ctx, task.CreateInput{Title: "old"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	due := "2026-12-31"
+	updated, err := svc.Update(ctx, created.ID, task.UpdateInput{
+		Title:   "new",
+		Notes:   "n2",
+		DueDate: &due,
+	})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Title != "new" || updated.Notes != "n2" {
+		t.Fatalf("Update returned %+v, want title=new notes=n2", updated)
+	}
+	if updated.DueDate == nil || *updated.DueDate != due {
+		t.Fatalf("DueDate = %v, want %v", updated.DueDate, due)
+	}
+}
+
+func TestUpdate_EmptyTitleErrors(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	created, _ := svc.Create(ctx, task.CreateInput{Title: "ok"})
+	if _, err := svc.Update(ctx, created.ID, task.UpdateInput{Title: ""}); err == nil {
+		t.Fatalf("Update(empty title): expected error")
+	}
+}
+
+func TestUpdate_InvalidDueDateErrors(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	created, _ := svc.Create(ctx, task.CreateInput{Title: "ok"})
+	bad := "yesterday"
+	if _, err := svc.Update(ctx, created.ID, task.UpdateInput{Title: "ok", DueDate: &bad}); err == nil {
+		t.Fatalf("Update(bad due_date): expected error")
+	}
+}
+
+func TestDelete_RemovesRow(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	created, _ := svc.Create(ctx, task.CreateInput{Title: "doomed"})
+	if err := svc.Delete(ctx, created.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := svc.Get(ctx, created.ID); err == nil {
+		t.Fatalf("Get after Delete: expected error, got nil")
+	}
+}
+
 func TestSetState_InvalidStateErrors(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)

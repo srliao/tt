@@ -187,6 +187,43 @@ func (s *Impl) ClearFinishedFromStage(ctx context.Context) error {
 	return nil
 }
 
+// Update replaces the mutable user-facing fields (title, notes, due_date)
+// of a task. Title is required; due_date must be YYYY-MM-DD when present.
+// Tag attachment is handled separately via SetTagsByID.
+func (s *Impl) Update(ctx context.Context, id int64, in UpdateInput) (Task, error) {
+	title := strings.TrimSpace(in.Title)
+	if title == "" {
+		return Task{}, errors.New("task: title is required")
+	}
+	due, err := normalizeDueDate(in.DueDate)
+	if err != nil {
+		return Task{}, err
+	}
+
+	row, err := s.q.UpdateTaskFields(ctx, sqlcgen.UpdateTaskFieldsParams{
+		Title:   title,
+		Notes:   in.Notes,
+		DueDate: due,
+		ID:      id,
+	})
+	if err != nil {
+		return Task{}, fmt.Errorf("task: update: %w", err)
+	}
+	tags, err := s.loadTags(ctx, id)
+	if err != nil {
+		return Task{}, err
+	}
+	return rowToTask(row, tags), nil
+}
+
+// Delete removes a task. CASCADE drops associated task_tags rows.
+func (s *Impl) Delete(ctx context.Context, id int64) error {
+	if err := s.q.DeleteTask(ctx, id); err != nil {
+		return fmt.Errorf("task: delete %d: %w", id, err)
+	}
+	return nil
+}
+
 // Get loads a task by id along with its tag names.
 func (s *Impl) Get(ctx context.Context, id int64) (Task, error) {
 	row, err := s.q.GetTask(ctx, id)
