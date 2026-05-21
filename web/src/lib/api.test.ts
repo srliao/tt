@@ -71,7 +71,7 @@ describe('api()', () => {
         .mockResolvedValueOnce(new Response('plain text', { status: 500 })),
     );
 
-    const err = await api('/tasks').catch((e) => e);
+    const err = (await api('/tasks').catch((e: unknown) => e)) as ApiError;
 
     expect(err).toBeInstanceOf(ApiError);
     expect(err.code).toBe('http_error');
