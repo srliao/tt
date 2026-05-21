@@ -295,13 +295,71 @@ func neighborKey(row sqlcgen.Task, useStage bool) (*float64, error) {
 	return &v, nil
 }
 
-// RebalancePriority is implemented in a later task; the stub keeps reorder
-// callable until then. It is overwritten with the real implementation.
-func (s *Impl) RebalancePriority(ctx context.Context) error { return nil }
+// RebalancePriority reassigns every task's priority to evenly spaced
+// integer keys (0..n-1) in their current ascending order. Runs inside a
+// single transaction so callers always observe a coherent snapshot.
+func (s *Impl) RebalancePriority(ctx context.Context) error {
+	rows, err := s.q.ListAllPrioritiesAsc(ctx)
+	if err != nil {
+		return fmt.Errorf("task: rebalance list priorities: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil
+	}
 
-// RebalanceStage is implemented in a later task; the stub keeps reorder
-// callable until then.
-func (s *Impl) RebalanceStage(ctx context.Context) error { return nil }
+	tx, err := s.store.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("task: rebalance begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	qtx := s.q.WithTx(tx)
+
+	for i, r := range rows {
+		if _, err := qtx.SetTaskPriority(ctx, sqlcgen.SetTaskPriorityParams{
+			Priority: float64(i),
+			ID:       r.ID,
+		}); err != nil {
+			return fmt.Errorf("task: rebalance set priority %d: %w", r.ID, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("task: rebalance commit: %w", err)
+	}
+	return nil
+}
+
+// RebalanceStage reassigns every staged task's staged_order to integer keys
+// (0..n-1) in their current ascending order.
+func (s *Impl) RebalanceStage(ctx context.Context) error {
+	rows, err := s.q.ListAllStagedAsc(ctx)
+	if err != nil {
+		return fmt.Errorf("task: rebalance list staged: %w", err)
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	tx, err := s.store.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("task: rebalance stage begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	qtx := s.q.WithTx(tx)
+
+	for i, r := range rows {
+		key := float64(i)
+		if _, err := qtx.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
+			StagedOrder: &key,
+			ID:          r.ID,
+		}); err != nil {
+			return fmt.Errorf("task: rebalance set staged %d: %w", r.ID, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("task: rebalance stage commit: %w", err)
+	}
+	return nil
+}
 
 // Update replaces the mutable user-facing fields (title, notes, due_date)
 // of a task. Title is required; due_date must be YYYY-MM-DD when present.
