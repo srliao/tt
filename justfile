@@ -49,5 +49,9 @@ test: be-test fe-test
 
 lint: be-lint fe-lint
 
+# ── db codegen ───────────────────────────────────────────
+db-gen:
+    cd internal/db && sqlc generate
+
 clean:
     rm -rf web/dist web/node_modules ./bin ./.dev-data
