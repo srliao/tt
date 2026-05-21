@@ -1,13 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
-
-function ScriptsIndexPage() {
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold">Scripts list (todo: phase 08d)</h1>
-    </div>
-  );
-}
+import { ScriptsListPage } from '@/features/scripts/list-page';
 
 export const Route = createFileRoute('/scripts/')({
-  component: ScriptsIndexPage,
+  component: ScriptsListPage,
 });
