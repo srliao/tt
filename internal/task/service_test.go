@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/srliao/tt/internal/db"
 	"github.com/srliao/tt/internal/db/dbtest"
 	"github.com/srliao/tt/internal/task"
 )
@@ -13,6 +14,44 @@ func newService(t *testing.T) (*task.Impl, context.Context) {
 	t.Helper()
 	store := dbtest.New(t)
 	return task.New(store), context.Background()
+}
+
+func newServiceWithStore(t *testing.T) (*task.Impl, *db.Store, context.Context) {
+	t.Helper()
+	store := dbtest.New(t)
+	return task.New(store), store, context.Background()
+}
+
+// insertScript inserts a script directly via raw SQL so task tests can use a
+// spawned_by_script_id that satisfies the FK before the scripts service
+// exists.
+func insertScript(t *testing.T, store *db.Store, ctx context.Context, name string) int64 {
+	t.Helper()
+	res, err := store.DB().ExecContext(ctx,
+		`INSERT INTO scripts (name, code, schedule_kind) VALUES (?, ?, 'every_tick')`, name, "")
+	if err != nil {
+		t.Fatalf("insertScript: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("insertScript LastInsertId: %v", err)
+	}
+	return id
+}
+
+// insertTag inserts a tag directly via raw SQL for tag-attachment tests.
+func insertTag(t *testing.T, store *db.Store, ctx context.Context, name string) int64 {
+	t.Helper()
+	res, err := store.DB().ExecContext(ctx,
+		`INSERT INTO tags (name) VALUES (?)`, name)
+	if err != nil {
+		t.Fatalf("insertTag: %v", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("insertTag LastInsertId: %v", err)
+	}
+	return id
 }
 
 func TestCreate_AssignsAscendingPriority(t *testing.T) {
@@ -293,6 +332,120 @@ func TestClearFinishedFromStage_OnlyDoneOrCancelled(t *testing.T) {
 			t.Fatalf("task %d StagedOrder = %v, want nil", id, *got.StagedOrder)
 		}
 	}
+}
+
+func TestByScript_OnlyReturnsSpawned(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	sid := insertScript(t, store, ctx, "s1")
+	spawned, err := svc.Create(ctx, task.CreateInput{Title: "spawned", SpawnedByScriptID: &sid})
+	if err != nil {
+		t.Fatalf("Create(spawned): %v", err)
+	}
+	if _, err := svc.Create(ctx, task.CreateInput{Title: "manual"}); err != nil {
+		t.Fatalf("Create(manual): %v", err)
+	}
+
+	got, err := svc.ByScript(ctx, sid, 10, 0)
+	if err != nil {
+		t.Fatalf("ByScript: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != spawned.ID {
+		t.Fatalf("got = %+v, want one task with id %d", got, spawned.ID)
+	}
+}
+
+func TestLatestBySpawningScript_ReturnsNewest(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	sid := insertScript(t, store, ctx, "s1")
+	older, err := svc.Create(ctx, task.CreateInput{Title: "older", SpawnedByScriptID: &sid})
+	if err != nil {
+		t.Fatalf("Create(older): %v", err)
+	}
+	// SQLite datetime('now') is second-precision; sleep across a second
+	// boundary so created_at differs.
+	time.Sleep(1100 * time.Millisecond)
+	newer, err := svc.Create(ctx, task.CreateInput{Title: "newer", SpawnedByScriptID: &sid})
+	if err != nil {
+		t.Fatalf("Create(newer): %v", err)
+	}
+	_ = older
+
+	got, err := svc.LatestBySpawningScript(ctx, sid)
+	if err != nil {
+		t.Fatalf("LatestBySpawningScript: %v", err)
+	}
+	if got == nil || got.ID != newer.ID {
+		t.Fatalf("got = %+v, want id %d", got, newer.ID)
+	}
+}
+
+func TestLatestBySpawningScript_NoMatchReturnsNilNil(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+	sid := insertScript(t, store, ctx, "empty")
+
+	got, err := svc.LatestBySpawningScript(ctx, sid)
+	if err != nil {
+		t.Fatalf("LatestBySpawningScript: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("got = %+v, want nil", got)
+	}
+}
+
+func TestSetTagsByID_ReplacesPreviousSet(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	created, err := svc.Create(ctx, task.CreateInput{Title: "t"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	tagA := insertTag(t, store, ctx, "alpha")
+	tagB := insertTag(t, store, ctx, "bravo")
+	tagC := insertTag(t, store, ctx, "charlie")
+
+	if err := svc.SetTagsByID(ctx, created.ID, []int64{tagA, tagB}); err != nil {
+		t.Fatalf("SetTagsByID(A,B): %v", err)
+	}
+	got, err := svc.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !equalStringSets(got.Tags, []string{"alpha", "bravo"}) {
+		t.Fatalf("Tags = %v, want [alpha bravo]", got.Tags)
+	}
+
+	if err := svc.SetTagsByID(ctx, created.ID, []int64{tagC}); err != nil {
+		t.Fatalf("SetTagsByID(C): %v", err)
+	}
+	got, err = svc.Get(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("Get(2): %v", err)
+	}
+	if !equalStringSets(got.Tags, []string{"charlie"}) {
+		t.Fatalf("Tags = %v, want [charlie]", got.Tags)
+	}
+}
+
+func equalStringSets(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	have := make(map[string]struct{}, len(got))
+	for _, v := range got {
+		have[v] = struct{}{}
+	}
+	for _, v := range want {
+		if _, ok := have[v]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func TestList_DefaultSortByPriority(t *testing.T) {
