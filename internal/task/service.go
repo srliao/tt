@@ -187,6 +187,122 @@ func (s *Impl) ClearFinishedFromStage(ctx context.Context) error {
 	return nil
 }
 
+// ReorderMain moves task id between two visible neighbors in the main list.
+// Pass beforeID=nil to drop at the top, afterID=nil to drop at the bottom.
+// When the neighbors are too close together, the main list is rebalanced
+// first and the neighbor keys re-read before computing the midpoint.
+func (s *Impl) ReorderMain(ctx context.Context, id int64, beforeID, afterID *int64) (Task, error) {
+	bp, ap, err := s.neighborPriorities(ctx, beforeID, afterID, false)
+	if err != nil {
+		return Task{}, err
+	}
+	if bp != nil && ap != nil && NeedsRebalance(*bp, *ap) {
+		if err := s.RebalancePriority(ctx); err != nil {
+			return Task{}, err
+		}
+		bp, ap, err = s.neighborPriorities(ctx, beforeID, afterID, false)
+		if err != nil {
+			return Task{}, err
+		}
+	}
+	newKey := Midpoint(bp, ap)
+	row, err := s.q.SetTaskPriority(ctx, sqlcgen.SetTaskPriorityParams{
+		Priority: newKey,
+		ID:       id,
+	})
+	if err != nil {
+		return Task{}, fmt.Errorf("task: reorder main: %w", err)
+	}
+	tags, err := s.loadTags(ctx, id)
+	if err != nil {
+		return Task{}, err
+	}
+	return rowToTask(row, tags), nil
+}
+
+// ReorderStage moves task id between two visible neighbors in the focused
+// batch (staged_order). Mirrors ReorderMain semantics for the stage axis.
+func (s *Impl) ReorderStage(ctx context.Context, id int64, beforeID, afterID *int64) (Task, error) {
+	bp, ap, err := s.neighborPriorities(ctx, beforeID, afterID, true)
+	if err != nil {
+		return Task{}, err
+	}
+	if bp != nil && ap != nil && NeedsRebalance(*bp, *ap) {
+		if err := s.RebalanceStage(ctx); err != nil {
+			return Task{}, err
+		}
+		bp, ap, err = s.neighborPriorities(ctx, beforeID, afterID, true)
+		if err != nil {
+			return Task{}, err
+		}
+	}
+	newKey := Midpoint(bp, ap)
+	row, err := s.q.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
+		StagedOrder: &newKey,
+		ID:          id,
+	})
+	if err != nil {
+		return Task{}, fmt.Errorf("task: reorder stage: %w", err)
+	}
+	tags, err := s.loadTags(ctx, id)
+	if err != nil {
+		return Task{}, err
+	}
+	return rowToTask(row, tags), nil
+}
+
+// neighborPriorities looks up the priority (useStage=false) or staged_order
+// (useStage=true) of each non-nil neighbor id. Returns an error if a
+// referenced neighbor is unstaged but a stage neighbor was requested.
+func (s *Impl) neighborPriorities(ctx context.Context, beforeID, afterID *int64, useStage bool) (*float64, *float64, error) {
+	var bp, ap *float64
+	if beforeID != nil {
+		row, err := s.q.GetTask(ctx, *beforeID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("task: reorder neighbor %d: %w", *beforeID, err)
+		}
+		k, err := neighborKey(row, useStage)
+		if err != nil {
+			return nil, nil, fmt.Errorf("task: before neighbor %d: %w", *beforeID, err)
+		}
+		bp = k
+	}
+	if afterID != nil {
+		row, err := s.q.GetTask(ctx, *afterID)
+		if err != nil {
+			return nil, nil, fmt.Errorf("task: reorder neighbor %d: %w", *afterID, err)
+		}
+		k, err := neighborKey(row, useStage)
+		if err != nil {
+			return nil, nil, fmt.Errorf("task: after neighbor %d: %w", *afterID, err)
+		}
+		ap = k
+	}
+	return bp, ap, nil
+}
+
+// neighborKey returns the priority (useStage=false) or staged_order
+// (useStage=true) of a row, erroring if the requested key is missing.
+func neighborKey(row sqlcgen.Task, useStage bool) (*float64, error) {
+	if useStage {
+		if row.StagedOrder == nil {
+			return nil, errors.New("neighbor is not staged")
+		}
+		v := *row.StagedOrder
+		return &v, nil
+	}
+	v := row.Priority
+	return &v, nil
+}
+
+// RebalancePriority is implemented in a later task; the stub keeps reorder
+// callable until then. It is overwritten with the real implementation.
+func (s *Impl) RebalancePriority(ctx context.Context) error { return nil }
+
+// RebalanceStage is implemented in a later task; the stub keeps reorder
+// callable until then.
+func (s *Impl) RebalanceStage(ctx context.Context) error { return nil }
+
 // Update replaces the mutable user-facing fields (title, notes, due_date)
 // of a task. Title is required; due_date must be YYYY-MM-DD when present.
 // Tag attachment is handled separately via SetTagsByID.

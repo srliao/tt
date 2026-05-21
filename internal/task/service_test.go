@@ -294,6 +294,127 @@ func TestClearFinishedFromStage_OnlyDoneOrCancelled(t *testing.T) {
 	}
 }
 
+func TestReorderMain_BetweenNeighbors(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, _ := svc.Create(ctx, task.CreateInput{Title: "a"})
+	b, _ := svc.Create(ctx, task.CreateInput{Title: "b"})
+	c, _ := svc.Create(ctx, task.CreateInput{Title: "c"})
+
+	// Move c between a and b.
+	got, err := svc.ReorderMain(ctx, c.ID, &a.ID, &b.ID)
+	if err != nil {
+		t.Fatalf("ReorderMain: %v", err)
+	}
+	if !(got.Priority > a.Priority && got.Priority < b.Priority) {
+		t.Fatalf("Priority %v not strictly between %v and %v", got.Priority, a.Priority, b.Priority)
+	}
+}
+
+func TestReorderMain_ToTop(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, _ := svc.Create(ctx, task.CreateInput{Title: "a"})
+	b, _ := svc.Create(ctx, task.CreateInput{Title: "b"})
+
+	got, err := svc.ReorderMain(ctx, b.ID, nil, &a.ID)
+	if err != nil {
+		t.Fatalf("ReorderMain to top: %v", err)
+	}
+	if !(got.Priority < a.Priority) {
+		t.Fatalf("Priority %v not less than %v", got.Priority, a.Priority)
+	}
+}
+
+func TestReorderMain_ToBottom(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, _ := svc.Create(ctx, task.CreateInput{Title: "a"})
+	b, _ := svc.Create(ctx, task.CreateInput{Title: "b"})
+
+	got, err := svc.ReorderMain(ctx, a.ID, &b.ID, nil)
+	if err != nil {
+		t.Fatalf("ReorderMain to bottom: %v", err)
+	}
+	if !(got.Priority > b.Priority) {
+		t.Fatalf("Priority %v not greater than %v", got.Priority, b.Priority)
+	}
+}
+
+func TestReorderStage_BetweenNeighbors(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, _ := svc.Create(ctx, task.CreateInput{Title: "a"})
+	b, _ := svc.Create(ctx, task.CreateInput{Title: "b"})
+	c, _ := svc.Create(ctx, task.CreateInput{Title: "c"})
+	sa, err := svc.Stage(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("Stage(a): %v", err)
+	}
+	sb, err := svc.Stage(ctx, b.ID)
+	if err != nil {
+		t.Fatalf("Stage(b): %v", err)
+	}
+	if _, err := svc.Stage(ctx, c.ID); err != nil {
+		t.Fatalf("Stage(c): %v", err)
+	}
+
+	got, err := svc.ReorderStage(ctx, c.ID, &a.ID, &b.ID)
+	if err != nil {
+		t.Fatalf("ReorderStage: %v", err)
+	}
+	if got.StagedOrder == nil {
+		t.Fatalf("StagedOrder = nil")
+	}
+	if !(*got.StagedOrder > *sa.StagedOrder && *got.StagedOrder < *sb.StagedOrder) {
+		t.Fatalf("StagedOrder %v not strictly between %v and %v", *got.StagedOrder, *sa.StagedOrder, *sb.StagedOrder)
+	}
+}
+
+func TestReorderStage_ToTop(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, _ := svc.Create(ctx, task.CreateInput{Title: "a"})
+	b, _ := svc.Create(ctx, task.CreateInput{Title: "b"})
+	sa, _ := svc.Stage(ctx, a.ID)
+	if _, err := svc.Stage(ctx, b.ID); err != nil {
+		t.Fatalf("Stage(b): %v", err)
+	}
+
+	got, err := svc.ReorderStage(ctx, b.ID, nil, &a.ID)
+	if err != nil {
+		t.Fatalf("ReorderStage to top: %v", err)
+	}
+	if got.StagedOrder == nil || !(*got.StagedOrder < *sa.StagedOrder) {
+		t.Fatalf("StagedOrder %v not less than %v", got.StagedOrder, *sa.StagedOrder)
+	}
+}
+
+func TestReorderStage_ToBottom(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, _ := svc.Create(ctx, task.CreateInput{Title: "a"})
+	b, _ := svc.Create(ctx, task.CreateInput{Title: "b"})
+	if _, err := svc.Stage(ctx, a.ID); err != nil {
+		t.Fatalf("Stage(a): %v", err)
+	}
+	sb, _ := svc.Stage(ctx, b.ID)
+
+	got, err := svc.ReorderStage(ctx, a.ID, &b.ID, nil)
+	if err != nil {
+		t.Fatalf("ReorderStage to bottom: %v", err)
+	}
+	if got.StagedOrder == nil || !(*got.StagedOrder > *sb.StagedOrder) {
+		t.Fatalf("StagedOrder %v not greater than %v", got.StagedOrder, *sb.StagedOrder)
+	}
+}
+
 func TestGet_ReturnsPersistedTask(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)
