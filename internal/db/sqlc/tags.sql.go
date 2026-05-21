@@ -9,13 +9,87 @@ import (
 	"context"
 )
 
-const selectTagsHealth = `-- name: SelectTagsHealth :one
-SELECT COUNT(*) FROM tags
+const createTag = `-- name: CreateTag :one
+INSERT INTO tags (name) VALUES (?) RETURNING id, name, created_at
 `
 
-func (q *Queries) SelectTagsHealth(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, selectTagsHealth)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+func (q *Queries) CreateTag(ctx context.Context, name string) (Tag, error) {
+	row := q.db.QueryRowContext(ctx, createTag, name)
+	var i Tag
+	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	return i, err
+}
+
+const deleteTag = `-- name: DeleteTag :exec
+DELETE FROM tags WHERE id = ?
+`
+
+func (q *Queries) DeleteTag(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteTag, id)
+	return err
+}
+
+const getTagByID = `-- name: GetTagByID :one
+SELECT id, name, created_at FROM tags WHERE id = ?
+`
+
+func (q *Queries) GetTagByID(ctx context.Context, id int64) (Tag, error) {
+	row := q.db.QueryRowContext(ctx, getTagByID, id)
+	var i Tag
+	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	return i, err
+}
+
+const getTagByName = `-- name: GetTagByName :one
+SELECT id, name, created_at FROM tags WHERE name = ?
+`
+
+func (q *Queries) GetTagByName(ctx context.Context, name string) (Tag, error) {
+	row := q.db.QueryRowContext(ctx, getTagByName, name)
+	var i Tag
+	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	return i, err
+}
+
+const listTags = `-- name: ListTags :many
+SELECT id, name, created_at FROM tags ORDER BY name ASC
+`
+
+func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
+	rows, err := q.db.QueryContext(ctx, listTags)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Tag
+	for rows.Next() {
+		var i Tag
+		if err := rows.Scan(&i.ID, &i.Name, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const renameTag = `-- name: RenameTag :one
+UPDATE tags SET name = ? WHERE id = ? RETURNING id, name, created_at
+`
+
+type RenameTagParams struct {
+	Name string `json:"name"`
+	ID   int64  `json:"id"`
+}
+
+func (q *Queries) RenameTag(ctx context.Context, arg RenameTagParams) (Tag, error) {
+	row := q.db.QueryRowContext(ctx, renameTag, arg.Name, arg.ID)
+	var i Tag
+	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	return i, err
 }
