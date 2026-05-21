@@ -216,12 +216,11 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.tasks.Update(r.Context(), id, task.UpdateInput{
+	if _, err := s.tasks.Update(r.Context(), id, task.UpdateInput{
 		Title:   body.Title,
 		Notes:   body.Notes,
 		DueDate: body.DueDate,
-	})
-	if err != nil {
+	}); err != nil {
 		writeServiceError(w, err)
 		return
 	}
@@ -244,7 +243,6 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(w, err)
 		return
 	}
-	_ = updated // ensure compiler keeps the variable for readability above
 	writeJSON(w, http.StatusOK, reloaded)
 }
 
