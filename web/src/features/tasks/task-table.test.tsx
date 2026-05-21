@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Task } from '@/types/task';
-import { computeReorderPayload, TaskTable } from './task-table';
+import { computeDragEnd, computeReorderPayload, moveTask, TaskTable } from './task-table';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -35,6 +35,51 @@ function wrap(children: ReactNode) {
   });
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
+
+describe('computeDragEnd', () => {
+  it('returns null when overId is missing or same as activeId', () => {
+    const t1 = task({ id: 1, title: 'a' });
+    expect(computeDragEnd([t1], 1, null)).toBeNull();
+    expect(computeDragEnd([t1], 1, 1)).toBeNull();
+  });
+
+  it('simulates a drop and produces the reorder payload', () => {
+    const t1 = task({ id: 1, title: 'a' });
+    const t2 = task({ id: 2, title: 'b' });
+    const t3 = task({ id: 3, title: 'c' });
+    const result = computeDragEnd([t1, t2, t3], 1, 3);
+    expect(result?.next.map((t) => t.id)).toEqual([2, 3, 1]);
+    expect(result?.payload).toEqual({ task_id: 1, before_id: 3, after_id: null });
+  });
+});
+
+describe('moveTask + computeReorderPayload (Alt-C semantics)', () => {
+  it('moving t1 to the end of [t1,t2,t3] yields payload {before: t2, after: null}', () => {
+    const t1 = task({ id: 1, title: 'a' });
+    const t2 = task({ id: 2, title: 'b' });
+    const t3 = task({ id: 3, title: 'c' });
+    const moved = moveTask([t1, t2, t3], 1, 3);
+    expect(moved.map((t) => t.id)).toEqual([2, 3, 1]);
+    expect(computeReorderPayload(moved, 1)).toEqual({
+      task_id: 1,
+      before_id: 3,
+      after_id: null,
+    });
+  });
+
+  it('moving t3 to the top yields {before: null, after: t1}', () => {
+    const t1 = task({ id: 1, title: 'a' });
+    const t2 = task({ id: 2, title: 'b' });
+    const t3 = task({ id: 3, title: 'c' });
+    const moved = moveTask([t1, t2, t3], 3, 1);
+    expect(moved.map((t) => t.id)).toEqual([3, 1, 2]);
+    expect(computeReorderPayload(moved, 3)).toEqual({
+      task_id: 3,
+      before_id: null,
+      after_id: 1,
+    });
+  });
+});
 
 describe('computeReorderPayload', () => {
   it('returns null neighbours for first row', () => {

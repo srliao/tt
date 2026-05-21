@@ -34,9 +34,19 @@ export interface TaskTableProps {
   selectedIds: Set<number>;
   onSelectedChange: (next: Set<number>) => void;
   onEdit: (task: Task) => void;
+  /**
+   * Whether any filter is active. When true and DnD is on, show a hint that
+   * the reorder operates only on the visible subset.
+   */
+  hasFilters?: boolean;
 }
 
-function moveTask(tasks: Task[], fromId: number, toId: number): Task[] {
+/**
+ * Exported for tests — moves the task with `fromId` to the position currently
+ * occupied by `toId`. Returns the same array reference when the move would
+ * have no effect.
+ */
+export function moveTask(tasks: Task[], fromId: number, toId: number): Task[] {
   const fromIdx = tasks.findIndex((t) => t.id === fromId);
   const toIdx = tasks.findIndex((t) => t.id === toId);
   if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return tasks;
@@ -60,7 +70,32 @@ export function computeReorderPayload(
   return { task_id: movedId, before_id: before, after_id: after };
 }
 
-export function TaskTable({ tasks, sort, selectedIds, onSelectedChange, onEdit }: TaskTableProps) {
+/**
+ * Combined post-drop list + reorder payload — extracted so the dnd `onDragEnd`
+ * handler stays trivial and tests can exercise the math without dnd-kit.
+ */
+export function computeDragEnd(
+  visible: Task[],
+  activeId: number,
+  overId: number | null,
+): {
+  next: Task[];
+  payload: { task_id: number; before_id: number | null; after_id: number | null };
+} | null {
+  if (!overId || activeId === overId) return null;
+  const next = moveTask(visible, activeId, overId);
+  if (next === visible) return null;
+  return { next, payload: computeReorderPayload(next, activeId) };
+}
+
+export function TaskTable({
+  tasks,
+  sort,
+  selectedIds,
+  onSelectedChange,
+  onEdit,
+  hasFilters,
+}: TaskTableProps) {
   const showDragHandle = sort === 'priority';
   const setState = useSetTaskState();
   const stage = useStageTask();
@@ -108,11 +143,10 @@ export function TaskTable({ tasks, sort, selectedIds, onSelectedChange, onEdit }
   const onDragEnd = (event: DragEndEvent) => {
     const activeId = Number(event.active.id);
     const overId = event.over ? Number(event.over.id) : null;
-    if (!overId || activeId === overId) return;
-    const next = moveTask(visible, activeId, overId);
-    setOptimistic(next);
-    const payload = computeReorderPayload(next, activeId);
-    reorder.mutate(payload);
+    const result = computeDragEnd(visible, activeId, overId);
+    if (!result) return;
+    setOptimistic(result.next);
+    reorder.mutate(result.payload);
   };
 
   const tableBody = (
@@ -137,34 +171,39 @@ export function TaskTable({ tasks, sort, selectedIds, onSelectedChange, onEdit }
   );
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <SortableContext
-        items={ids}
-        strategy={verticalListSortingStrategy}
-        disabled={!showDragHandle}
-      >
-        <table
-          ref={containerRef}
-          aria-label="Tasks"
-          className="w-full table-fixed text-sm focus-visible:outline-none"
-          data-task-table
+    <div className="flex flex-col gap-2">
+      {showDragHandle && hasFilters && (
+        <p className="text-xs text-muted-foreground">Filtered view — hidden tasks unchanged.</p>
+      )}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext
+          items={ids}
+          strategy={verticalListSortingStrategy}
+          disabled={!showDragHandle}
         >
-          <thead className="text-xs text-muted-foreground">
-            <tr className="border-b">
-              <th className="w-8 px-2 py-2 text-left font-medium" />
-              {showDragHandle && <th className="w-6 px-1 py-2" />}
-              <th className="px-2 py-2 text-left font-medium">Title</th>
-              <th className="w-20 px-2 py-2 text-left font-medium">State</th>
-              <th className="w-40 px-2 py-2 text-left font-medium">Tags</th>
-              <th className="w-20 px-2 py-2 text-left font-medium">Due</th>
-              <th className="w-16 px-2 py-2 text-left font-medium">Stage</th>
-              <th className="w-8 px-1 py-2" />
-            </tr>
-          </thead>
-          {tableBody}
-        </table>
-      </SortableContext>
-    </DndContext>
+          <table
+            ref={containerRef}
+            aria-label="Tasks"
+            className="w-full table-fixed text-sm focus-visible:outline-none"
+            data-task-table
+          >
+            <thead className="text-xs text-muted-foreground">
+              <tr className="border-b">
+                <th className="w-8 px-2 py-2 text-left font-medium" />
+                {showDragHandle && <th className="w-6 px-1 py-2" />}
+                <th className="px-2 py-2 text-left font-medium">Title</th>
+                <th className="w-20 px-2 py-2 text-left font-medium">State</th>
+                <th className="w-40 px-2 py-2 text-left font-medium">Tags</th>
+                <th className="w-20 px-2 py-2 text-left font-medium">Due</th>
+                <th className="w-16 px-2 py-2 text-left font-medium">Stage</th>
+                <th className="w-8 px-1 py-2" />
+              </tr>
+            </thead>
+            {tableBody}
+          </table>
+        </SortableContext>
+      </DndContext>
+    </div>
   );
 }
 
