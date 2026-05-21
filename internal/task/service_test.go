@@ -294,6 +294,68 @@ func TestClearFinishedFromStage_OnlyDoneOrCancelled(t *testing.T) {
 	}
 }
 
+func TestRebalancePriority_AssignsIntegerKeys(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	ids := make([]int64, 0, 5)
+	for i := 0; i < 5; i++ {
+		c, err := svc.Create(ctx, task.CreateInput{Title: "t"})
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		ids = append(ids, c.ID)
+	}
+	if err := svc.RebalancePriority(ctx); err != nil {
+		t.Fatalf("RebalancePriority: %v", err)
+	}
+	// Re-fetch each task in creation order; priorities should now be 0..4.
+	for i, id := range ids {
+		got, err := svc.Get(ctx, id)
+		if err != nil {
+			t.Fatalf("Get(%d): %v", id, err)
+		}
+		if got.Priority != float64(i) {
+			t.Fatalf("task %d Priority = %v, want %v", id, got.Priority, float64(i))
+		}
+	}
+}
+
+func TestRebalanceStage_AssignsIntegerKeys(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	ids := make([]int64, 0, 5)
+	for i := 0; i < 5; i++ {
+		c, err := svc.Create(ctx, task.CreateInput{Title: "t"})
+		if err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		if _, err := svc.Stage(ctx, c.ID); err != nil {
+			t.Fatalf("Stage: %v", err)
+		}
+		ids = append(ids, c.ID)
+	}
+	if err := svc.RebalanceStage(ctx); err != nil {
+		t.Fatalf("RebalanceStage: %v", err)
+	}
+	// Re-fetch each task to verify the staged_order keys are 0..4 in the
+	// original stage order (creation order).
+	staged := make([]task.Task, 0, len(ids))
+	for _, id := range ids {
+		got, err := svc.Get(ctx, id)
+		if err != nil {
+			t.Fatalf("Get(%d): %v", id, err)
+		}
+		staged = append(staged, got)
+	}
+	for i, tk := range staged {
+		if tk.StagedOrder == nil || *tk.StagedOrder != float64(i) {
+			t.Fatalf("staged[%d].StagedOrder = %v, want %v", i, tk.StagedOrder, float64(i))
+		}
+	}
+}
+
 func TestReorderMain_BetweenNeighbors(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)
