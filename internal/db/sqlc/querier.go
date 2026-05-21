@@ -9,10 +9,27 @@ import (
 )
 
 type Querier interface {
+	AddTaskTag(ctx context.Context, arg AddTaskTagParams) error
+	ClearFinishedFromStage(ctx context.Context) error
+	ClearStage(ctx context.Context) error
+	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
+	DeleteTask(ctx context.Context, id int64) error
+	GetTask(ctx context.Context, id int64) (Task, error)
+	GetTaskTags(ctx context.Context, taskID int64) ([]GetTaskTagsRow, error)
+	LatestTaskBySpawningScript(ctx context.Context, spawnedByScriptID *int64) (Task, error)
+	ListAllPrioritiesAsc(ctx context.Context) ([]ListAllPrioritiesAscRow, error)
+	ListAllStagedAsc(ctx context.Context) ([]ListAllStagedAscRow, error)
+	ListTasksByScript(ctx context.Context, spawnedByScriptID *int64) ([]Task, error)
+	MaxPriority(ctx context.Context) (interface{}, error)
+	MaxStagedOrder(ctx context.Context) (interface{}, error)
+	ReplaceTaskTags(ctx context.Context, taskID int64) error
 	SelectRunsHealth(ctx context.Context) (int64, error)
 	SelectScriptsHealth(ctx context.Context) (int64, error)
 	SelectTagsHealth(ctx context.Context) (int64, error)
-	SelectTasksHealth(ctx context.Context) (int64, error)
+	SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams) (Task, error)
+	SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (Task, error)
+	SetTaskState(ctx context.Context, arg SetTaskStateParams) (Task, error)
+	UpdateTaskFields(ctx context.Context, arg UpdateTaskFieldsParams) (Task, error)
 }
 
 var _ Querier = (*Queries)(nil)
