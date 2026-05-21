@@ -121,6 +121,16 @@ func New(
 // returned error is non-nil only when the run could not start at all (e.g.
 // the script row was deleted between StartRun and Run).
 func (r *Runner) Run(ctx context.Context, scriptID, runID int64, trigger script.Trigger) error {
+	// Defense-in-depth: a panic outside execute() (e.g. inside installCtx or
+	// finishRun) must not crash the host process. Translate it into a best-effort
+	// RunStatusError finish so the row never gets stuck in 'running'.
+	defer func() {
+		if rec := recover(); rec != nil {
+			r.logger.Error("runtime panic outside execute", "run_id", runID, "err", rec)
+			r.failRun(ctx, runID, fmt.Sprintf("runtime panic: %v", rec))
+		}
+	}()
+
 	sc, err := r.scripts.Get(ctx, scriptID)
 	if err != nil {
 		return fmt.Errorf("runtime: load script %d: %w", scriptID, err)
@@ -229,9 +239,7 @@ func (r *Runner) execute(rt *goja.Runtime, code string) (status script.RunStatus
 		return script.RunStatusOK, ""
 	}
 	var interrupted *goja.InterruptedError
-	if errors.As(err, &interrupted) {
-		// Interrupt value carries the marker we passed to rt.Interrupt;
-		// the only marker we use today is "timeout".
+	if errors.As(err, &interrupted) && interrupted.Value() == "timeout" {
 		return script.RunStatusTimeout, fmt.Sprintf("timeout after %s", timeout)
 	}
 	return script.RunStatusError, err.Error()
@@ -278,7 +286,6 @@ func (r *Runner) flushQueue(ctx context.Context, scriptID int64, q *taskQueue) [
 			Title:             it.Title,
 			Notes:             it.Notes,
 			DueDate:           it.DueDate,
-			Tags:              it.Tags,
 			SpawnedByScriptID: &sid,
 		})
 		if err != nil {
