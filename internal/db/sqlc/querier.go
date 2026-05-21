@@ -10,30 +10,47 @@ import (
 
 type Querier interface {
 	AddTaskTag(ctx context.Context, arg AddTaskTagParams) error
+	AppendScriptLog(ctx context.Context, arg AppendScriptLogParams) error
 	ClearFinishedFromStage(ctx context.Context) error
 	ClearStage(ctx context.Context) error
+	CountScriptRuns(ctx context.Context) (int64, error)
+	CreateScript(ctx context.Context, arg CreateScriptParams) (Script, error)
+	CreateScriptRun(ctx context.Context, arg CreateScriptRunParams) (ScriptRun, error)
 	CreateTag(ctx context.Context, name string) (Tag, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
+	DeleteOldestScriptRuns(ctx context.Context, limit int64) error
+	DeleteScript(ctx context.Context, id int64) error
 	DeleteTag(ctx context.Context, id int64) error
 	DeleteTask(ctx context.Context, id int64) error
+	FinishScriptRun(ctx context.Context, arg FinishScriptRunParams) error
+	GetScript(ctx context.Context, id int64) (Script, error)
+	GetScriptRun(ctx context.Context, id int64) (ScriptRun, error)
+	GetScriptUserState(ctx context.Context, id int64) (string, error)
 	GetTagByID(ctx context.Context, id int64) (Tag, error)
 	GetTagByName(ctx context.Context, name string) (Tag, error)
 	GetTask(ctx context.Context, id int64) (Task, error)
 	GetTaskTags(ctx context.Context, taskID int64) ([]GetTaskTagsRow, error)
 	LatestTaskBySpawningScript(ctx context.Context, spawnedByScriptID *int64) (Task, error)
 	ListAllPrioritiesAsc(ctx context.Context) ([]ListAllPrioritiesAscRow, error)
+	ListAllScriptRuns(ctx context.Context, arg ListAllScriptRunsParams) ([]ScriptRun, error)
 	ListAllStagedAsc(ctx context.Context) ([]ListAllStagedAscRow, error)
+	ListEnabledScripts(ctx context.Context) ([]Script, error)
+	ListScriptLogsByRun(ctx context.Context, scriptRunID int64) ([]ScriptLog, error)
+	ListScriptRunsByScript(ctx context.Context, arg ListScriptRunsByScriptParams) ([]ScriptRun, error)
+	ListScripts(ctx context.Context) ([]Script, error)
 	ListTags(ctx context.Context) ([]Tag, error)
 	ListTasksByScript(ctx context.Context, spawnedByScriptID *int64) ([]Task, error)
+	MarkOrphanedRunsAsError(ctx context.Context) error
 	MaxPriority(ctx context.Context) (interface{}, error)
 	MaxStagedOrder(ctx context.Context) (interface{}, error)
 	RenameTag(ctx context.Context, arg RenameTagParams) (Tag, error)
 	ReplaceTaskTags(ctx context.Context, taskID int64) error
-	SelectRunsHealth(ctx context.Context) (int64, error)
-	SelectScriptsHealth(ctx context.Context) (int64, error)
+	SetScriptLastRunAt(ctx context.Context, arg SetScriptLastRunAtParams) error
+	SetScriptUserState(ctx context.Context, arg SetScriptUserStateParams) error
 	SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams) (Task, error)
 	SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (Task, error)
 	SetTaskState(ctx context.Context, arg SetTaskStateParams) (Task, error)
+	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
 	UpdateTaskFields(ctx context.Context, arg UpdateTaskFieldsParams) (Task, error)
 }
 

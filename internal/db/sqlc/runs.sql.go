@@ -9,13 +9,239 @@ import (
 	"context"
 )
 
-const selectRunsHealth = `-- name: SelectRunsHealth :one
+const appendScriptLog = `-- name: AppendScriptLog :exec
+INSERT INTO script_logs (script_run_id, level, message) VALUES (?, ?, ?)
+`
+
+type AppendScriptLogParams struct {
+	ScriptRunID int64  `json:"script_run_id"`
+	Level       string `json:"level"`
+	Message     string `json:"message"`
+}
+
+func (q *Queries) AppendScriptLog(ctx context.Context, arg AppendScriptLogParams) error {
+	_, err := q.db.ExecContext(ctx, appendScriptLog, arg.ScriptRunID, arg.Level, arg.Message)
+	return err
+}
+
+const countScriptRuns = `-- name: CountScriptRuns :one
 SELECT COUNT(*) FROM script_runs
 `
 
-func (q *Queries) SelectRunsHealth(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, selectRunsHealth)
+func (q *Queries) CountScriptRuns(ctx context.Context) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countScriptRuns)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
+}
+
+const createScriptRun = `-- name: CreateScriptRun :one
+INSERT INTO script_runs (script_id, trigger, status)
+VALUES (?, ?, 'running') RETURNING id, script_id, started_at, finished_at, status, error_message, spawned_task_ids, "trigger"
+`
+
+type CreateScriptRunParams struct {
+	ScriptID int64  `json:"script_id"`
+	Trigger  string `json:"trigger"`
+}
+
+func (q *Queries) CreateScriptRun(ctx context.Context, arg CreateScriptRunParams) (ScriptRun, error) {
+	row := q.db.QueryRowContext(ctx, createScriptRun, arg.ScriptID, arg.Trigger)
+	var i ScriptRun
+	err := row.Scan(
+		&i.ID,
+		&i.ScriptID,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.Status,
+		&i.ErrorMessage,
+		&i.SpawnedTaskIds,
+		&i.Trigger,
+	)
+	return i, err
+}
+
+const deleteOldestScriptRuns = `-- name: DeleteOldestScriptRuns :exec
+DELETE FROM script_runs WHERE id IN (
+  SELECT id FROM script_runs ORDER BY started_at ASC, id ASC LIMIT ?
+)
+`
+
+func (q *Queries) DeleteOldestScriptRuns(ctx context.Context, limit int64) error {
+	_, err := q.db.ExecContext(ctx, deleteOldestScriptRuns, limit)
+	return err
+}
+
+const finishScriptRun = `-- name: FinishScriptRun :exec
+UPDATE script_runs
+SET finished_at = datetime('now'), status = ?, error_message = ?,
+    spawned_task_ids = ?
+WHERE id = ?
+`
+
+type FinishScriptRunParams struct {
+	Status         string  `json:"status"`
+	ErrorMessage   *string `json:"error_message"`
+	SpawnedTaskIds string  `json:"spawned_task_ids"`
+	ID             int64   `json:"id"`
+}
+
+func (q *Queries) FinishScriptRun(ctx context.Context, arg FinishScriptRunParams) error {
+	_, err := q.db.ExecContext(ctx, finishScriptRun,
+		arg.Status,
+		arg.ErrorMessage,
+		arg.SpawnedTaskIds,
+		arg.ID,
+	)
+	return err
+}
+
+const getScriptRun = `-- name: GetScriptRun :one
+SELECT id, script_id, started_at, finished_at, status, error_message, spawned_task_ids, "trigger" FROM script_runs WHERE id = ?
+`
+
+func (q *Queries) GetScriptRun(ctx context.Context, id int64) (ScriptRun, error) {
+	row := q.db.QueryRowContext(ctx, getScriptRun, id)
+	var i ScriptRun
+	err := row.Scan(
+		&i.ID,
+		&i.ScriptID,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.Status,
+		&i.ErrorMessage,
+		&i.SpawnedTaskIds,
+		&i.Trigger,
+	)
+	return i, err
+}
+
+const listAllScriptRuns = `-- name: ListAllScriptRuns :many
+SELECT id, script_id, started_at, finished_at, status, error_message, spawned_task_ids, "trigger" FROM script_runs ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?
+`
+
+type ListAllScriptRunsParams struct {
+	Limit  int64 `json:"limit"`
+	Offset int64 `json:"offset"`
+}
+
+func (q *Queries) ListAllScriptRuns(ctx context.Context, arg ListAllScriptRunsParams) ([]ScriptRun, error) {
+	rows, err := q.db.QueryContext(ctx, listAllScriptRuns, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ScriptRun
+	for rows.Next() {
+		var i ScriptRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScriptID,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.Status,
+			&i.ErrorMessage,
+			&i.SpawnedTaskIds,
+			&i.Trigger,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScriptLogsByRun = `-- name: ListScriptLogsByRun :many
+SELECT id, script_run_id, level, message, logged_at FROM script_logs WHERE script_run_id = ?
+ORDER BY logged_at ASC, id ASC
+`
+
+func (q *Queries) ListScriptLogsByRun(ctx context.Context, scriptRunID int64) ([]ScriptLog, error) {
+	rows, err := q.db.QueryContext(ctx, listScriptLogsByRun, scriptRunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ScriptLog
+	for rows.Next() {
+		var i ScriptLog
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScriptRunID,
+			&i.Level,
+			&i.Message,
+			&i.LoggedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScriptRunsByScript = `-- name: ListScriptRunsByScript :many
+SELECT id, script_id, started_at, finished_at, status, error_message, spawned_task_ids, "trigger" FROM script_runs WHERE script_id = ?
+ORDER BY started_at DESC, id DESC LIMIT ? OFFSET ?
+`
+
+type ListScriptRunsByScriptParams struct {
+	ScriptID int64 `json:"script_id"`
+	Limit    int64 `json:"limit"`
+	Offset   int64 `json:"offset"`
+}
+
+func (q *Queries) ListScriptRunsByScript(ctx context.Context, arg ListScriptRunsByScriptParams) ([]ScriptRun, error) {
+	rows, err := q.db.QueryContext(ctx, listScriptRunsByScript, arg.ScriptID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ScriptRun
+	for rows.Next() {
+		var i ScriptRun
+		if err := rows.Scan(
+			&i.ID,
+			&i.ScriptID,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.Status,
+			&i.ErrorMessage,
+			&i.SpawnedTaskIds,
+			&i.Trigger,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markOrphanedRunsAsError = `-- name: MarkOrphanedRunsAsError :exec
+UPDATE script_runs
+SET status = 'error', error_message = 'interrupted (binary restart)',
+    finished_at = datetime('now')
+WHERE status = 'running'
+`
+
+func (q *Queries) MarkOrphanedRunsAsError(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, markOrphanedRunsAsError)
+	return err
 }
