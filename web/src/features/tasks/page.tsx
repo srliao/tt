@@ -70,16 +70,13 @@ export function TasksPage() {
 
       <AddTaskModal open={modalOpen} onOpenChange={setModalOpen} />
 
-      {/*
-       * Edit modal is wired through the same Add modal for v1 — phase 08e
-       * will introduce a dedicated edit dialog. Until then, surface the
-       * edited task via a no-op until then.
-       */}
-      {editing && (
-        <p className="sr-only" aria-live="polite">
-          Editing task {editing.title}
-        </p>
-      )}
+      <AddTaskModal
+        open={!!editing}
+        onOpenChange={(next) => {
+          if (!next) setEditing(null);
+        }}
+        task={editing}
+      />
     </div>
   );
 }
