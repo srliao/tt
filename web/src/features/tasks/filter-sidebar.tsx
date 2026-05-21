@@ -132,7 +132,7 @@ export function FilterSidebar() {
 
       <Section title="Due">
         <Select
-          value={search.due && search.due !== '' ? search.due : ANY_SENTINEL}
+          value={search.due ? search.due : ANY_SENTINEL}
           onValueChange={(v) =>
             setSearch({ due: v === ANY_SENTINEL ? undefined : (v as TaskDueRange) })
           }
