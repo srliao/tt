@@ -1,6 +1,7 @@
-import { createRootRoute, Outlet } from '@tanstack/react-router';
+import { createRootRoute, Outlet, useRouter } from '@tanstack/react-router';
 import { lazy, Suspense } from 'react';
 import { AppLayout } from '@/components/layout';
+import { useGlobalShortcuts } from '@/lib/shortcuts';
 
 const TanStackRouterDevtools = import.meta.env.DEV
   ? lazy(() =>
@@ -19,6 +20,9 @@ const ReactQueryDevtools = import.meta.env.DEV
   : () => null;
 
 function RootComponent() {
+  const router = useRouter();
+  // The router has typed access via the Register declaration in src/router.tsx.
+  useGlobalShortcuts(router as unknown as typeof import('@/router').router);
   return (
     <AppLayout>
       <Outlet />
