@@ -96,6 +96,86 @@ func (s *Impl) Create(ctx context.Context, in CreateInput) (Task, error) {
 	return rowToTask(row, nil), nil
 }
 
+// SetState transitions a task to st, managing completed_at / cancelled_at
+// timestamps. Per spec §3, staged_order is intentionally untouched so a
+// staged task remains visible in the focused batch after completion.
+func (s *Impl) SetState(ctx context.Context, id int64, st State) (Task, error) {
+	if !st.IsValid() {
+		return Task{}, fmt.Errorf("task: invalid state %q", st)
+	}
+
+	now := time.Now().UTC().Format(sqliteTimeLayout)
+	var completedAt, cancelledAt *string
+	switch st {
+	case StateDone:
+		completedAt = &now
+	case StateCancelled:
+		cancelledAt = &now
+	case StateNotDone:
+		// both stay nil → clears any previous completed/cancelled timestamps
+	}
+
+	row, err := s.q.SetTaskState(ctx, sqlcgen.SetTaskStateParams{
+		State:       string(st),
+		CompletedAt: completedAt,
+		CancelledAt: cancelledAt,
+		ID:          id,
+	})
+	if err != nil {
+		return Task{}, fmt.Errorf("task: set state: %w", err)
+	}
+
+	tags, err := s.loadTags(ctx, id)
+	if err != nil {
+		return Task{}, err
+	}
+	return rowToTask(row, tags), nil
+}
+
+// Stage assigns the next ascending staged_order key to the task.
+func (s *Impl) Stage(ctx context.Context, id int64) (Task, error) {
+	maxS, err := s.maxStagedOrder(ctx)
+	if err != nil {
+		return Task{}, fmt.Errorf("task: read max staged_order: %w", err)
+	}
+	newStaged := maxS + 1.0
+	row, err := s.q.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
+		StagedOrder: &newStaged,
+		ID:          id,
+	})
+	if err != nil {
+		return Task{}, fmt.Errorf("task: stage: %w", err)
+	}
+	tags, err := s.loadTags(ctx, id)
+	if err != nil {
+		return Task{}, err
+	}
+	return rowToTask(row, tags), nil
+}
+
+// loadTags returns the tag names associated with a task, sorted by name.
+func (s *Impl) loadTags(ctx context.Context, taskID int64) ([]string, error) {
+	rows, err := s.q.GetTaskTags(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("task: load tags: %w", err)
+	}
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r.Name)
+	}
+	return out, nil
+}
+
+// maxStagedOrder reads the current MAX(staged_order); -1.0 when no task is
+// staged.
+func (s *Impl) maxStagedOrder(ctx context.Context) (float64, error) {
+	v, err := s.q.MaxStagedOrder(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return coerceFloat(v), nil
+}
+
 // maxPriority reads the current max(priority); -1.0 when the table is empty.
 func (s *Impl) maxPriority(ctx context.Context) (float64, error) {
 	v, err := s.q.MaxPriority(ctx)

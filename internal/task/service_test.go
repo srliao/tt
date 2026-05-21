@@ -75,3 +75,112 @@ func TestCreate_InvalidDueDateErrors(t *testing.T) {
 		t.Fatalf("Create(bad due_date): expected error, got nil")
 	}
 }
+
+func TestSetState_DoneSetsCompletedAt(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	created, err := svc.Create(ctx, task.CreateInput{Title: "t"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := svc.SetState(ctx, created.ID, task.StateDone)
+	if err != nil {
+		t.Fatalf("SetState(done): %v", err)
+	}
+	if got.CompletedAt == nil {
+		t.Fatalf("CompletedAt = nil, want non-nil")
+	}
+	if got.State != task.StateDone {
+		t.Fatalf("State = %q, want %q", got.State, task.StateDone)
+	}
+}
+
+func TestSetState_LeavingDoneClearsCompletedAt(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	created, err := svc.Create(ctx, task.CreateInput{Title: "t"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := svc.SetState(ctx, created.ID, task.StateDone); err != nil {
+		t.Fatalf("SetState(done): %v", err)
+	}
+	got, err := svc.SetState(ctx, created.ID, task.StateNotDone)
+	if err != nil {
+		t.Fatalf("SetState(not_done): %v", err)
+	}
+	if got.CompletedAt != nil {
+		t.Fatalf("CompletedAt = %v, want nil", got.CompletedAt)
+	}
+}
+
+func TestSetState_CancelledSetsCancelledAt(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	created, err := svc.Create(ctx, task.CreateInput{Title: "t"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, err := svc.SetState(ctx, created.ID, task.StateCancelled)
+	if err != nil {
+		t.Fatalf("SetState(cancelled): %v", err)
+	}
+	if got.CancelledAt == nil {
+		t.Fatalf("CancelledAt = nil, want non-nil")
+	}
+	got, err = svc.SetState(ctx, created.ID, task.StateNotDone)
+	if err != nil {
+		t.Fatalf("SetState(not_done): %v", err)
+	}
+	if got.CancelledAt != nil {
+		t.Fatalf("CancelledAt = %v, want nil after revert", got.CancelledAt)
+	}
+}
+
+// State transitions must never touch staged_order: a focused task that the
+// user has staged remains in the stage when it transitions to done so they
+// can see their progress through the batch.
+func TestSetState_DoesNotTouchStagedOrder(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	created, err := svc.Create(ctx, task.CreateInput{Title: "t"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	staged, err := svc.Stage(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("Stage: %v", err)
+	}
+	if staged.StagedOrder == nil {
+		t.Fatalf("staged.StagedOrder = nil, want non-nil")
+	}
+	want := *staged.StagedOrder
+
+	done, err := svc.SetState(ctx, created.ID, task.StateDone)
+	if err != nil {
+		t.Fatalf("SetState(done): %v", err)
+	}
+	if done.StagedOrder == nil {
+		t.Fatalf("StagedOrder = nil after SetState(done), want %v", want)
+	}
+	if *done.StagedOrder != want {
+		t.Fatalf("StagedOrder = %v after SetState(done), want %v", *done.StagedOrder, want)
+	}
+}
+
+func TestSetState_InvalidStateErrors(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	created, err := svc.Create(ctx, task.CreateInput{Title: "t"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := svc.SetState(ctx, created.ID, task.State("bogus")); err == nil {
+		t.Fatalf("SetState(bogus): expected error, got nil")
+	}
+}
