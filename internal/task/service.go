@@ -376,13 +376,17 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 		sb.WriteString(" ORDER BY priority ASC, id ASC")
 	}
 
+	// SQLite requires LIMIT before OFFSET; use LIMIT -1 to express
+	// "no cap" when the caller only wants to skip rows.
 	if f.Limit > 0 {
 		sb.WriteString(" LIMIT ?")
 		args = append(args, f.Limit)
-		if f.Offset > 0 {
-			sb.WriteString(" OFFSET ?")
-			args = append(args, f.Offset)
-		}
+	} else if f.Offset > 0 {
+		sb.WriteString(" LIMIT -1")
+	}
+	if f.Offset > 0 {
+		sb.WriteString(" OFFSET ?")
+		args = append(args, f.Offset)
 	}
 
 	rows, err := s.store.DB().QueryContext(ctx, sb.String(), args...)
@@ -693,18 +697,30 @@ func (s *Impl) LatestBySpawningScript(ctx context.Context, scriptID int64) (*Tas
 
 // SetTagsByID replaces the full tag set associated with a task. The caller
 // is responsible for resolving tag names to ids via the tag service before
-// invoking this.
+// invoking this. The delete+inserts run in a single transaction so a mid-loop
+// failure (e.g. a tag id that no longer exists) doesn't leave the task with
+// zero tags.
 func (s *Impl) SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error {
-	if err := s.q.ReplaceTaskTags(ctx, taskID); err != nil {
+	tx, err := s.store.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("task: set tags begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	qtx := s.q.WithTx(tx)
+	if err := qtx.ReplaceTaskTags(ctx, taskID); err != nil {
 		return fmt.Errorf("task: replace tags: %w", err)
 	}
 	for _, tid := range tagIDs {
-		if err := s.q.AddTaskTag(ctx, sqlcgen.AddTaskTagParams{
+		if err := qtx.AddTaskTag(ctx, sqlcgen.AddTaskTagParams{
 			TaskID: taskID,
 			TagID:  tid,
 		}); err != nil {
 			return fmt.Errorf("task: add tag %d: %w", tid, err)
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("task: set tags commit: %w", err)
 	}
 	return nil
 }
