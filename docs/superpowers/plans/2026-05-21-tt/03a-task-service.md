@@ -140,7 +140,7 @@ DELETE FROM task_tags WHERE task_id = ?;
 **Files:** `internal/task/reorder_test.go`
 
 - [ ] Add a test for `Midpoint(before, after *float64) float64`. Table-driven, covering: both nil → `0.0`; before nil, `after=1.0` → `0.0`; `before=5.0`, after nil → `6.0`; `before=1.0, after=3.0` → `2.0`; `before=1.0, after=1.5` → `1.25`.
-- [ ] Add a test for `NeedsRebalance(a, b float64) bool`: gap of `1e-10` is healthy (false); gap of `1e-12` triggers rebalance (true); gap of `1.0` is healthy.
+- [ ] Add a test for `NeedsRebalance(a, b float64) bool`: gap of `1e-10` triggers rebalance (true); gap of `1e-12` triggers rebalance (true); gap of `1.0` is healthy (false). (Threshold is `< 1e-9` per spec §3.)
 - [ ] Run `go test ./internal/task/...` → `undefined: Midpoint`.
 
 ## Task 4: Reorder helpers — implementation

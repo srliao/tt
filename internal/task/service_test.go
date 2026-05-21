@@ -554,6 +554,24 @@ func TestList_FilterDueToday(t *testing.T) {
 	}
 }
 
+func TestList_OffsetWithoutLimit(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	for i := 0; i < 3; i++ {
+		if _, err := svc.Create(ctx, task.CreateInput{Title: "t"}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+	}
+	got, err := svc.List(ctx, task.FilterSort{Offset: 1})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d rows, want 2 (offset=1, no limit)", len(got))
+	}
+}
+
 func TestRebalancePriority_AssignsIntegerKeys(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)
