@@ -30,7 +30,9 @@ describe('buildTaskListQuery', () => {
       sort: 'priority',
       asc: true,
     });
-    expect(qs).toBe('?state=not_done&state=done&tag=work&tag=urgent&due=today&q=milk&sort=priority&asc=true');
+    expect(qs).toBe(
+      '?state=not_done&state=done&tag=work&tag=urgent&due=today&q=milk&sort=priority&asc=true',
+    );
   });
 
   it('returns empty string when no params', () => {
@@ -42,19 +44,14 @@ describe('useTasks', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('fetches tasks and exposes the array', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse([{ id: 1, title: 'A' }]));
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse([{ id: 1, title: 'A' }]));
     vi.stubGlobal('fetch', fetchMock);
 
     const { result } = renderHook(() => useTasks({ states: ['not_done'] }), { wrapper: wrapper() });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([{ id: 1, title: 'A' }]);
-    expect(fetchMock).toHaveBeenCalledWith(
-      '/api/v1/tasks?state=not_done',
-      expect.any(Object),
-    );
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/tasks?state=not_done', expect.any(Object));
   });
 });
 

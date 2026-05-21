@@ -21,9 +21,7 @@ describe('taskSearchSchema', () => {
   });
 
   it('rejects unknown enum values', () => {
-    expect(() =>
-      taskSearchSchema.parse({ sort: 'completed_at' as unknown as never }),
-    ).toThrow();
+    expect(() => taskSearchSchema.parse({ sort: 'completed_at' as unknown as never })).toThrow();
   });
 });
 
