@@ -1,0 +1,4 @@
+@import "tailwindcss";
+
+/* shadcn 4.x ships a Tailwind v4 template — when shadcn init runs in Task 3,
+   it appends the @theme block + light/dark CSS variable layers here. */
