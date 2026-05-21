@@ -9,13 +9,445 @@ import (
 	"context"
 )
 
-const selectTasksHealth = `-- name: SelectTasksHealth :one
-SELECT COUNT(*) FROM tasks
+const addTaskTag = `-- name: AddTaskTag :exec
+INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?)
 `
 
-func (q *Queries) SelectTasksHealth(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, selectTasksHealth)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type AddTaskTagParams struct {
+	TaskID int64 `json:"task_id"`
+	TagID  int64 `json:"tag_id"`
+}
+
+func (q *Queries) AddTaskTag(ctx context.Context, arg AddTaskTagParams) error {
+	_, err := q.db.ExecContext(ctx, addTaskTag, arg.TaskID, arg.TagID)
+	return err
+}
+
+const clearFinishedFromStage = `-- name: ClearFinishedFromStage :exec
+UPDATE tasks SET staged_order = NULL, updated_at = datetime('now')
+WHERE staged_order IS NOT NULL AND state IN ('done','cancelled')
+`
+
+func (q *Queries) ClearFinishedFromStage(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, clearFinishedFromStage)
+	return err
+}
+
+const clearStage = `-- name: ClearStage :exec
+UPDATE tasks SET staged_order = NULL, updated_at = datetime('now')
+WHERE staged_order IS NOT NULL
+`
+
+func (q *Queries) ClearStage(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, clearStage)
+	return err
+}
+
+const createTask = `-- name: CreateTask :one
+INSERT INTO tasks (title, notes, due_date, priority, staged_order, spawned_by_script_id)
+VALUES (?, ?, ?, ?, ?, ?)
+RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
+`
+
+type CreateTaskParams struct {
+	Title             string   `json:"title"`
+	Notes             string   `json:"notes"`
+	DueDate           *string  `json:"due_date"`
+	Priority          float64  `json:"priority"`
+	StagedOrder       *float64 `json:"staged_order"`
+	SpawnedByScriptID *int64   `json:"spawned_by_script_id"`
+}
+
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, createTask,
+		arg.Title,
+		arg.Notes,
+		arg.DueDate,
+		arg.Priority,
+		arg.StagedOrder,
+		arg.SpawnedByScriptID,
+	)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Notes,
+		&i.State,
+		&i.DueDate,
+		&i.Priority,
+		&i.StagedOrder,
+		&i.SpawnedByScriptID,
+		&i.CreatedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteTask = `-- name: DeleteTask :exec
+DELETE FROM tasks WHERE id = ?
+`
+
+func (q *Queries) DeleteTask(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteTask, id)
+	return err
+}
+
+const getTask = `-- name: GetTask :one
+SELECT id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at FROM tasks WHERE id = ?
+`
+
+func (q *Queries) GetTask(ctx context.Context, id int64) (Task, error) {
+	row := q.db.QueryRowContext(ctx, getTask, id)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Notes,
+		&i.State,
+		&i.DueDate,
+		&i.Priority,
+		&i.StagedOrder,
+		&i.SpawnedByScriptID,
+		&i.CreatedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getTaskTags = `-- name: GetTaskTags :many
+SELECT t.id, t.name
+FROM tags t JOIN task_tags tt ON tt.tag_id = t.id
+WHERE tt.task_id = ?
+ORDER BY t.name
+`
+
+type GetTaskTagsRow struct {
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+func (q *Queries) GetTaskTags(ctx context.Context, taskID int64) ([]GetTaskTagsRow, error) {
+	rows, err := q.db.QueryContext(ctx, getTaskTags, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetTaskTagsRow
+	for rows.Next() {
+		var i GetTaskTagsRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const latestTaskBySpawningScript = `-- name: LatestTaskBySpawningScript :one
+SELECT id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at FROM tasks WHERE spawned_by_script_id = ?
+ORDER BY created_at DESC, id DESC LIMIT 1
+`
+
+func (q *Queries) LatestTaskBySpawningScript(ctx context.Context, spawnedByScriptID *int64) (Task, error) {
+	row := q.db.QueryRowContext(ctx, latestTaskBySpawningScript, spawnedByScriptID)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Notes,
+		&i.State,
+		&i.DueDate,
+		&i.Priority,
+		&i.StagedOrder,
+		&i.SpawnedByScriptID,
+		&i.CreatedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const listAllPrioritiesAsc = `-- name: ListAllPrioritiesAsc :many
+SELECT id, priority FROM tasks ORDER BY priority ASC, id ASC
+`
+
+type ListAllPrioritiesAscRow struct {
+	ID       int64   `json:"id"`
+	Priority float64 `json:"priority"`
+}
+
+func (q *Queries) ListAllPrioritiesAsc(ctx context.Context) ([]ListAllPrioritiesAscRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllPrioritiesAsc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllPrioritiesAscRow
+	for rows.Next() {
+		var i ListAllPrioritiesAscRow
+		if err := rows.Scan(&i.ID, &i.Priority); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAllStagedAsc = `-- name: ListAllStagedAsc :many
+SELECT id, staged_order FROM tasks WHERE staged_order IS NOT NULL ORDER BY staged_order ASC, id ASC
+`
+
+type ListAllStagedAscRow struct {
+	ID          int64    `json:"id"`
+	StagedOrder *float64 `json:"staged_order"`
+}
+
+func (q *Queries) ListAllStagedAsc(ctx context.Context) ([]ListAllStagedAscRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAllStagedAsc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllStagedAscRow
+	for rows.Next() {
+		var i ListAllStagedAscRow
+		if err := rows.Scan(&i.ID, &i.StagedOrder); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTasksByScript = `-- name: ListTasksByScript :many
+SELECT id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at FROM tasks WHERE spawned_by_script_id = ?
+ORDER BY created_at DESC, id DESC
+`
+
+func (q *Queries) ListTasksByScript(ctx context.Context, spawnedByScriptID *int64) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listTasksByScript, spawnedByScriptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Notes,
+			&i.State,
+			&i.DueDate,
+			&i.Priority,
+			&i.StagedOrder,
+			&i.SpawnedByScriptID,
+			&i.CreatedAt,
+			&i.CompletedAt,
+			&i.CancelledAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const maxPriority = `-- name: MaxPriority :one
+SELECT COALESCE(MAX(priority), -1.0) FROM tasks
+`
+
+func (q *Queries) MaxPriority(ctx context.Context) (interface{}, error) {
+	row := q.db.QueryRowContext(ctx, maxPriority)
+	var coalesce interface{}
+	err := row.Scan(&coalesce)
+	return coalesce, err
+}
+
+const maxStagedOrder = `-- name: MaxStagedOrder :one
+SELECT COALESCE(MAX(staged_order), -1.0) FROM tasks WHERE staged_order IS NOT NULL
+`
+
+func (q *Queries) MaxStagedOrder(ctx context.Context) (interface{}, error) {
+	row := q.db.QueryRowContext(ctx, maxStagedOrder)
+	var coalesce interface{}
+	err := row.Scan(&coalesce)
+	return coalesce, err
+}
+
+const replaceTaskTags = `-- name: ReplaceTaskTags :exec
+DELETE FROM task_tags WHERE task_id = ?
+`
+
+func (q *Queries) ReplaceTaskTags(ctx context.Context, taskID int64) error {
+	_, err := q.db.ExecContext(ctx, replaceTaskTags, taskID)
+	return err
+}
+
+const setTaskPriority = `-- name: SetTaskPriority :one
+UPDATE tasks SET priority = ?, updated_at = datetime('now')
+WHERE id = ? RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
+`
+
+type SetTaskPriorityParams struct {
+	Priority float64 `json:"priority"`
+	ID       int64   `json:"id"`
+}
+
+func (q *Queries) SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, setTaskPriority, arg.Priority, arg.ID)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Notes,
+		&i.State,
+		&i.DueDate,
+		&i.Priority,
+		&i.StagedOrder,
+		&i.SpawnedByScriptID,
+		&i.CreatedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setTaskStaged = `-- name: SetTaskStaged :one
+UPDATE tasks SET staged_order = ?, updated_at = datetime('now')
+WHERE id = ? RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
+`
+
+type SetTaskStagedParams struct {
+	StagedOrder *float64 `json:"staged_order"`
+	ID          int64    `json:"id"`
+}
+
+func (q *Queries) SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, setTaskStaged, arg.StagedOrder, arg.ID)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Notes,
+		&i.State,
+		&i.DueDate,
+		&i.Priority,
+		&i.StagedOrder,
+		&i.SpawnedByScriptID,
+		&i.CreatedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const setTaskState = `-- name: SetTaskState :one
+UPDATE tasks
+SET state = ?, completed_at = ?, cancelled_at = ?, updated_at = datetime('now')
+WHERE id = ?
+RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
+`
+
+type SetTaskStateParams struct {
+	State       string  `json:"state"`
+	CompletedAt *string `json:"completed_at"`
+	CancelledAt *string `json:"cancelled_at"`
+	ID          int64   `json:"id"`
+}
+
+func (q *Queries) SetTaskState(ctx context.Context, arg SetTaskStateParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, setTaskState,
+		arg.State,
+		arg.CompletedAt,
+		arg.CancelledAt,
+		arg.ID,
+	)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Notes,
+		&i.State,
+		&i.DueDate,
+		&i.Priority,
+		&i.StagedOrder,
+		&i.SpawnedByScriptID,
+		&i.CreatedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateTaskFields = `-- name: UpdateTaskFields :one
+UPDATE tasks
+SET title = ?, notes = ?, due_date = ?, updated_at = datetime('now')
+WHERE id = ?
+RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
+`
+
+type UpdateTaskFieldsParams struct {
+	Title   string  `json:"title"`
+	Notes   string  `json:"notes"`
+	DueDate *string `json:"due_date"`
+	ID      int64   `json:"id"`
+}
+
+func (q *Queries) UpdateTaskFields(ctx context.Context, arg UpdateTaskFieldsParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, updateTaskFields,
+		arg.Title,
+		arg.Notes,
+		arg.DueDate,
+		arg.ID,
+	)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Notes,
+		&i.State,
+		&i.DueDate,
+		&i.Priority,
+		&i.StagedOrder,
+		&i.SpawnedByScriptID,
+		&i.CreatedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
