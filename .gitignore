@@ -2,6 +2,7 @@
 /.dev-data/
 /web/node_modules/
 /web/dist/
+/web/src/routeTree.gen.ts
 /internal/web/dist/
 .DS_Store
 .idea/
