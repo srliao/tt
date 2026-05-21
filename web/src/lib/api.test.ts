@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { api, ApiError } from './api';
+import { ApiError, api } from './api';
 
 function jsonResponse(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -14,9 +14,7 @@ describe('api()', () => {
   });
 
   it('returns parsed JSON for 2xx', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(
-      jsonResponse({ id: 1, title: 'hello' }, 200),
-    );
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ id: 1, title: 'hello' }, 200));
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await api<{ id: number; title: string }>('/tasks');
@@ -38,10 +36,7 @@ describe('api()', () => {
         details: { field: 'title' },
       },
     };
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValueOnce(jsonResponse(envelope, 400)),
-    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(jsonResponse(envelope, 400)));
 
     await expect(api('/tasks', { method: 'POST', body: '{}' })).rejects.toMatchObject({
       name: 'ApiError',
@@ -53,10 +48,7 @@ describe('api()', () => {
   });
 
   it('resolves to undefined on 204 No Content', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValueOnce(new Response(null, { status: 204 })),
-    );
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(new Response(null, { status: 204 })));
 
     const result = await api<void>('/tasks/1', { method: 'DELETE' });
 
@@ -66,9 +58,7 @@ describe('api()', () => {
   it('throws ApiError with http_error code when body is not JSON', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn()
-        .mockResolvedValueOnce(new Response('plain text', { status: 500 })),
+      vi.fn().mockResolvedValueOnce(new Response('plain text', { status: 500 })),
     );
 
     const err = (await api('/tasks').catch((e: unknown) => e)) as ApiError;

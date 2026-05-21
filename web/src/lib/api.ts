@@ -20,12 +20,7 @@ export class ApiError extends Error {
   readonly status: number;
   readonly details?: Record<string, unknown>;
 
-  constructor(
-    code: string,
-    message: string,
-    status: number,
-    details?: Record<string, unknown>,
-  ) {
+  constructor(code: string, message: string, status: number, details?: Record<string, unknown>) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
@@ -37,9 +32,10 @@ export class ApiError extends Error {
 const API_BASE = '/api/v1';
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const url = path.startsWith('http') || path.startsWith(API_BASE)
-    ? path
-    : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+  const url =
+    path.startsWith('http') || path.startsWith(API_BASE)
+      ? path
+      : `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 
   const headers = new Headers(init?.headers);
   if (!headers.has('Accept')) {

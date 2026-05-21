@@ -37,9 +37,7 @@ export function ShortcutCheatsheet() {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
-          <DialogDescription>
-            Global shortcuts available throughout the app.
-          </DialogDescription>
+          <DialogDescription>Global shortcuts available throughout the app.</DialogDescription>
         </DialogHeader>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
           {SHORTCUTS.map((s) => (
