@@ -153,6 +153,53 @@ func (s *Impl) Stage(ctx context.Context, id int64) (Task, error) {
 	return rowToTask(row, tags), nil
 }
 
+// Unstage removes the task from the focused batch by setting staged_order
+// back to NULL.
+func (s *Impl) Unstage(ctx context.Context, id int64) (Task, error) {
+	row, err := s.q.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
+		StagedOrder: nil,
+		ID:          id,
+	})
+	if err != nil {
+		return Task{}, fmt.Errorf("task: unstage: %w", err)
+	}
+	tags, err := s.loadTags(ctx, id)
+	if err != nil {
+		return Task{}, err
+	}
+	return rowToTask(row, tags), nil
+}
+
+// ClearStage empties the focused batch, regardless of each task's state.
+func (s *Impl) ClearStage(ctx context.Context) error {
+	if err := s.q.ClearStage(ctx); err != nil {
+		return fmt.Errorf("task: clear stage: %w", err)
+	}
+	return nil
+}
+
+// ClearFinishedFromStage removes only the done / cancelled tasks from the
+// focused batch, leaving still-actionable rows in place.
+func (s *Impl) ClearFinishedFromStage(ctx context.Context) error {
+	if err := s.q.ClearFinishedFromStage(ctx); err != nil {
+		return fmt.Errorf("task: clear finished from stage: %w", err)
+	}
+	return nil
+}
+
+// Get loads a task by id along with its tag names.
+func (s *Impl) Get(ctx context.Context, id int64) (Task, error) {
+	row, err := s.q.GetTask(ctx, id)
+	if err != nil {
+		return Task{}, fmt.Errorf("task: get %d: %w", id, err)
+	}
+	tags, err := s.loadTags(ctx, id)
+	if err != nil {
+		return Task{}, err
+	}
+	return rowToTask(row, tags), nil
+}
+
 // loadTags returns the tag names associated with a task, sorted by name.
 func (s *Impl) loadTags(ctx context.Context, taskID int64) ([]string, error) {
 	rows, err := s.q.GetTaskTags(ctx, taskID)
