@@ -1,18 +1,20 @@
 /**
- * "Add task" dialog. Triggered by:
- *   1. The visible "+ New task" button on the /tasks page header.
- *   2. The global `tt:new-task` CustomEvent dispatched by the `n` shortcut.
+ * Task create/edit dialog. Triggered by:
+ *   1. The visible "+ New task" button on the /tasks page header (create).
+ *   2. The global `tt:new-task` CustomEvent from the `n` shortcut (create).
+ *   3. Clicking a task title or its kebab "Edit" item (edit).
  *
- * Submits via `useCreateTask()`. Validation is enforced by zod + RHF; an
- * empty title trips a visible error, mirroring the server's
- * `validation_failed` envelope so client and server stay in sync.
+ * When `task` is supplied the dialog runs in edit mode and submits via
+ * `useUpdateTask()`; otherwise it runs in create mode via `useCreateTask()`.
+ * Validation is enforced by zod + RHF; an empty title trips a visible error,
+ * mirroring the server's `validation_failed` envelope.
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { useCreateTask } from '@/api/tasks';
+import { useCreateTask, useUpdateTask } from '@/api/tasks';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -23,7 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { TaskCreateInput } from '@/types/task';
+import type { Task, TaskCreateInput, TaskUpdateInput } from '@/types/task';
 
 const schema = z.object({
   title: z.string().trim().min(1, 'Title is required'),
@@ -37,10 +39,24 @@ type FormValues = z.infer<typeof schema>;
 export interface AddTaskModalProps {
   open: boolean;
   onOpenChange: (next: boolean) => void;
+  /** When set, the dialog edits this task instead of creating a new one. */
+  task?: Task | null;
 }
 
-export function AddTaskModal({ open, onOpenChange }: AddTaskModalProps) {
+function taskToFormValues(task: Task | null | undefined): FormValues {
+  if (!task) return { title: '', notes: '', due_date: '', tags: '' };
+  return {
+    title: task.title,
+    notes: task.notes ?? '',
+    due_date: task.due_date ?? '',
+    tags: (task.tags ?? []).join(', '),
+  };
+}
+
+export function AddTaskModal({ open, onOpenChange, task }: AddTaskModalProps) {
   const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
+  const isEdit = !!task;
   const {
     register,
     handleSubmit,
@@ -48,28 +64,44 @@ export function AddTaskModal({ open, onOpenChange }: AddTaskModalProps) {
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { title: '', notes: '', due_date: '', tags: '' },
+    defaultValues: taskToFormValues(task),
   });
 
-  // Reset when the dialog closes so a stale draft doesn't leak into the
-  // next "+ new task" interaction.
+  // Refresh the form whenever the dialog opens or the target task changes,
+  // and clear back to defaults on close so a stale draft doesn't leak into
+  // the next interaction.
   useEffect(() => {
-    if (!open) reset();
-  }, [open, reset]);
+    if (open) {
+      reset(taskToFormValues(task));
+    } else {
+      reset({ title: '', notes: '', due_date: '', tags: '' });
+    }
+  }, [open, task, reset]);
 
   const onSubmit = handleSubmit(async (values) => {
-    const input: TaskCreateInput = {
-      title: values.title.trim(),
-      notes: values.notes?.trim() || undefined,
-      due_date: values.due_date?.trim() || null,
-      tags: values.tags
-        ? values.tags
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : undefined,
-    };
-    await createTask.mutateAsync(input);
+    const tags = values.tags
+      ? values.tags
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+    if (isEdit && task) {
+      const input: TaskUpdateInput = {
+        title: values.title.trim(),
+        notes: values.notes?.trim() ?? '',
+        due_date: values.due_date?.trim() || null,
+        tags,
+      };
+      await updateTask.mutateAsync({ id: task.id, input });
+    } else {
+      const input: TaskCreateInput = {
+        title: values.title.trim(),
+        notes: values.notes?.trim() || undefined,
+        due_date: values.due_date?.trim() || null,
+        tags: tags.length ? tags : undefined,
+      };
+      await createTask.mutateAsync(input);
+    }
     onOpenChange(false);
   });
 
@@ -85,7 +117,7 @@ export function AddTaskModal({ open, onOpenChange }: AddTaskModalProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New task</DialogTitle>
+          <DialogTitle>{isEdit ? 'Edit task' : 'New task'}</DialogTitle>
         </DialogHeader>
         <form className="flex flex-col gap-3" onSubmit={onSubmit} onKeyDown={onKeyDown}>
           <div className="flex flex-col gap-1.5">
@@ -121,7 +153,7 @@ export function AddTaskModal({ open, onOpenChange }: AddTaskModalProps) {
               Cancel
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              Create task
+              {isEdit ? 'Save changes' : 'Create task'}
             </Button>
           </DialogFooter>
         </form>
