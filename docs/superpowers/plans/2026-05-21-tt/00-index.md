@@ -136,6 +136,9 @@ These were ambiguous in the spec; the plans now spell them out. Implementation s
 
 _(Append entries here as agents discover gaps during execution. Format: `[YYYY-MM-DD] [phase-id] description.`)_
 
+- [2026-05-21] [01] `build-release` recipe in the verbatim justfile block had `$(git describe ...)` inside single quotes, which `sh` does not expand. Reworked the recipe into a bash shebang block that captures `VERSION` first, then passes it into `-ldflags` via double quotes.
+- [2026-05-21] [01] Added `/internal/web/dist/` to `.gitignore` ahead of phase 09 to align with the embed strategy in "Resolved cross-phase contracts" — protects against a half-completed `just build` leaving copied assets on disk.
+
 ## Verification before claiming "done"
 
 Each phase file ends with a **Phase completion checklist**. Do not move to the next phase until every box is green.

@@ -2,6 +2,7 @@
 /.dev-data/
 /web/node_modules/
 /web/dist/
+/internal/web/dist/
 .DS_Store
 .idea/
 .vscode/
