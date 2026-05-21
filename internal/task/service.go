@@ -295,6 +295,128 @@ func neighborKey(row sqlcgen.Task, useStage bool) (*float64, error) {
 	return &v, nil
 }
 
+// List returns tasks matching f. The query is assembled dynamically in Go
+// because the filter shape is too varied for sqlc to model.
+//
+// Filters compose with AND semantics. Tag filtering uses a sub-select that
+// HAVING-checks the distinct count, so passing N tag ids requires the task
+// be linked to all N. Sort defaults to priority ASC, id ASC (the main-list
+// order); Ascending flips non-priority axes only. Limit / Offset are
+// applied verbatim when set (Limit == 0 disables paging).
+func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
+	var sb strings.Builder
+	args := make([]any, 0, 8)
+	sb.WriteString("SELECT id FROM tasks WHERE 1=1")
+
+	if len(f.States) > 0 {
+		sb.WriteString(" AND state IN (")
+		for i, st := range f.States {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("?")
+			args = append(args, string(st))
+		}
+		sb.WriteString(")")
+	}
+
+	if len(f.TagIDs) > 0 {
+		sb.WriteString(" AND id IN (SELECT task_id FROM task_tags WHERE tag_id IN (")
+		for i, id := range f.TagIDs {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("?")
+			args = append(args, id)
+		}
+		sb.WriteString(") GROUP BY task_id HAVING COUNT(DISTINCT tag_id) = ?)")
+		args = append(args, int64(len(f.TagIDs)))
+	}
+
+	switch f.Due {
+	case DueAny:
+		// no-op
+	case DueOverdue:
+		sb.WriteString(" AND due_date IS NOT NULL AND date(due_date) < date('now')")
+	case DueToday:
+		sb.WriteString(" AND due_date IS NOT NULL AND date(due_date) = date('now')")
+	case DueThisWeek:
+		sb.WriteString(" AND due_date IS NOT NULL AND date(due_date) BETWEEN date('now') AND date('now', '+7 days')")
+	case DueNone:
+		sb.WriteString(" AND due_date IS NULL")
+	}
+
+	if s := strings.TrimSpace(f.Search); s != "" {
+		needle := "%" + strings.ToLower(s) + "%"
+		sb.WriteString(" AND (LOWER(title) LIKE ? OR LOWER(notes) LIKE ?)")
+		args = append(args, needle, needle)
+	}
+
+	dir := "ASC"
+	if !f.Ascending {
+		dir = "DESC"
+	}
+	switch f.Sort {
+	case SortDueDate:
+		// NULLs last in either direction.
+		sb.WriteString(" ORDER BY due_date IS NULL, due_date ")
+		sb.WriteString(dir)
+		sb.WriteString(", id ASC")
+	case SortCreatedAt:
+		sb.WriteString(" ORDER BY created_at ")
+		sb.WriteString(dir)
+		sb.WriteString(", id ASC")
+	case SortTitle:
+		sb.WriteString(" ORDER BY LOWER(title) ")
+		sb.WriteString(dir)
+		sb.WriteString(", id ASC")
+	default:
+		// Priority: canonical ascending order, ignoring f.Ascending.
+		sb.WriteString(" ORDER BY priority ASC, id ASC")
+	}
+
+	if f.Limit > 0 {
+		sb.WriteString(" LIMIT ?")
+		args = append(args, f.Limit)
+		if f.Offset > 0 {
+			sb.WriteString(" OFFSET ?")
+			args = append(args, f.Offset)
+		}
+	}
+
+	rows, err := s.store.DB().QueryContext(ctx, sb.String(), args...)
+	if err != nil {
+		return nil, fmt.Errorf("task: list query: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("task: list scan: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("task: list rows: %w", err)
+	}
+
+	out := make([]Task, 0, len(ids))
+	for _, id := range ids {
+		row, err := s.q.GetTask(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("task: list get %d: %w", id, err)
+		}
+		tags, err := s.loadTags(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rowToTask(row, tags))
+	}
+	return out, nil
+}
+
 // RebalancePriority reassigns every task's priority to evenly spaced
 // integer keys (0..n-1) in their current ascending order. Runs inside a
 // single transaction so callers always observe a coherent snapshot.
