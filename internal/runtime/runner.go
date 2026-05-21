@@ -317,9 +317,22 @@ func (r *Runner) failRun(ctx context.Context, runID int64, msg string) {
 	}
 }
 
-// exampleRunner mirrors the shape consumer packages (scheduler, HTTP API)
-// will declare. The compile-time assertion below ensures *Runner remains
-// substitutable as that contract evolves.
+// exampleRunner documents the consumer-side interface contract.
+//
+// Per the project-wide dependency rule (consumer declares the interface),
+// downstream packages — the scheduler in internal/scheduler and the HTTP
+// API in internal/http — each declare their own narrow Runner interface.
+// *runtime.Runner satisfies those declarations structurally.
+//
+// The canonical shape is:
+//
+//	type Runner interface {
+//	    Run(ctx context.Context, scriptID, runID int64, trigger script.Trigger) error
+//	}
+//
+// The compile-time assertion below pins this shape so an accidental
+// signature change here breaks the build immediately rather than silently
+// breaking consumers at link time.
 type exampleRunner interface {
 	Run(ctx context.Context, scriptID, runID int64, trigger script.Trigger) error
 }
