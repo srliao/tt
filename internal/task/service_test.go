@@ -172,6 +172,128 @@ func TestSetState_DoesNotTouchStagedOrder(t *testing.T) {
 	}
 }
 
+func TestStage_AssignsAscendingStagedOrder(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, err := svc.Create(ctx, task.CreateInput{Title: "a"})
+	if err != nil {
+		t.Fatalf("Create(a): %v", err)
+	}
+	b, err := svc.Create(ctx, task.CreateInput{Title: "b"})
+	if err != nil {
+		t.Fatalf("Create(b): %v", err)
+	}
+	sa, err := svc.Stage(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("Stage(a): %v", err)
+	}
+	sb, err := svc.Stage(ctx, b.ID)
+	if err != nil {
+		t.Fatalf("Stage(b): %v", err)
+	}
+	if sa.StagedOrder == nil || sb.StagedOrder == nil {
+		t.Fatalf("StagedOrder nil: a=%v b=%v", sa.StagedOrder, sb.StagedOrder)
+	}
+	if !(*sb.StagedOrder > *sa.StagedOrder) {
+		t.Fatalf("expected sb.StagedOrder (%v) > sa.StagedOrder (%v)", *sb.StagedOrder, *sa.StagedOrder)
+	}
+}
+
+func TestUnstage_ClearsStagedOrder(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, err := svc.Create(ctx, task.CreateInput{Title: "a"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := svc.Stage(ctx, a.ID); err != nil {
+		t.Fatalf("Stage: %v", err)
+	}
+	got, err := svc.Unstage(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("Unstage: %v", err)
+	}
+	if got.StagedOrder != nil {
+		t.Fatalf("StagedOrder = %v, want nil", *got.StagedOrder)
+	}
+}
+
+func TestClearStage_ClearsAllRegardlessOfState(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, _ := svc.Create(ctx, task.CreateInput{Title: "a"})
+	b, _ := svc.Create(ctx, task.CreateInput{Title: "b"})
+	if _, err := svc.Stage(ctx, a.ID); err != nil {
+		t.Fatalf("Stage(a): %v", err)
+	}
+	if _, err := svc.Stage(ctx, b.ID); err != nil {
+		t.Fatalf("Stage(b): %v", err)
+	}
+	if _, err := svc.SetState(ctx, a.ID, task.StateDone); err != nil {
+		t.Fatalf("SetState(done): %v", err)
+	}
+
+	if err := svc.ClearStage(ctx); err != nil {
+		t.Fatalf("ClearStage: %v", err)
+	}
+
+	for _, id := range []int64{a.ID, b.ID} {
+		got, err := svc.Get(ctx, id)
+		if err != nil {
+			t.Fatalf("Get(%d): %v", id, err)
+		}
+		if got.StagedOrder != nil {
+			t.Fatalf("task %d StagedOrder = %v, want nil", id, *got.StagedOrder)
+		}
+	}
+}
+
+func TestClearFinishedFromStage_OnlyDoneOrCancelled(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	active, _ := svc.Create(ctx, task.CreateInput{Title: "active"})
+	done, _ := svc.Create(ctx, task.CreateInput{Title: "done"})
+	cancelled, _ := svc.Create(ctx, task.CreateInput{Title: "cancelled"})
+
+	for _, id := range []int64{active.ID, done.ID, cancelled.ID} {
+		if _, err := svc.Stage(ctx, id); err != nil {
+			t.Fatalf("Stage(%d): %v", id, err)
+		}
+	}
+	if _, err := svc.SetState(ctx, done.ID, task.StateDone); err != nil {
+		t.Fatalf("SetState(done): %v", err)
+	}
+	if _, err := svc.SetState(ctx, cancelled.ID, task.StateCancelled); err != nil {
+		t.Fatalf("SetState(cancelled): %v", err)
+	}
+
+	if err := svc.ClearFinishedFromStage(ctx); err != nil {
+		t.Fatalf("ClearFinishedFromStage: %v", err)
+	}
+
+	gotActive, err := svc.Get(ctx, active.ID)
+	if err != nil {
+		t.Fatalf("Get(active): %v", err)
+	}
+	if gotActive.StagedOrder == nil {
+		t.Fatalf("active.StagedOrder = nil, want still staged")
+	}
+
+	for _, id := range []int64{done.ID, cancelled.ID} {
+		got, err := svc.Get(ctx, id)
+		if err != nil {
+			t.Fatalf("Get(%d): %v", id, err)
+		}
+		if got.StagedOrder != nil {
+			t.Fatalf("task %d StagedOrder = %v, want nil", id, *got.StagedOrder)
+		}
+	}
+}
+
 func TestSetState_InvalidStateErrors(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)
