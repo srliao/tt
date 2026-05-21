@@ -10,12 +10,14 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/srliao/tt/internal/db/migrations"
+	sqlcgen "github.com/srliao/tt/internal/db/sqlc"
 )
 
 // Store wraps a *sql.DB connection to the application's SQLite database.
 // It is safe for concurrent use by multiple goroutines.
 type Store struct {
-	db *sql.DB
+	db      *sql.DB
+	queries *sqlcgen.Queries
 }
 
 // Open opens (or creates) the SQLite database at path and runs all pending
@@ -54,13 +56,23 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
-	return &Store{db: sqlDB}, nil
+	return &Store{
+		db:      sqlDB,
+		queries: sqlcgen.New(sqlDB),
+	}, nil
 }
 
 // DB returns the underlying *sql.DB. Prefer using typed query methods where
 // available; this accessor exists for callers that need raw SQL access.
 func (s *Store) DB() *sql.DB {
 	return s.db
+}
+
+// Queries returns the sqlc-generated typed query handle bound to this store's
+// connection. Use Queries.WithTx for queries that must run inside a
+// transaction.
+func (s *Store) Queries() *sqlcgen.Queries {
+	return s.queries
 }
 
 // Close closes the underlying database connection.
