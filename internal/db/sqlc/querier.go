@@ -12,20 +12,25 @@ type Querier interface {
 	AddTaskTag(ctx context.Context, arg AddTaskTagParams) error
 	ClearFinishedFromStage(ctx context.Context) error
 	ClearStage(ctx context.Context) error
+	CreateTag(ctx context.Context, name string) (Tag, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
+	DeleteTag(ctx context.Context, id int64) error
 	DeleteTask(ctx context.Context, id int64) error
+	GetTagByID(ctx context.Context, id int64) (Tag, error)
+	GetTagByName(ctx context.Context, name string) (Tag, error)
 	GetTask(ctx context.Context, id int64) (Task, error)
 	GetTaskTags(ctx context.Context, taskID int64) ([]GetTaskTagsRow, error)
 	LatestTaskBySpawningScript(ctx context.Context, spawnedByScriptID *int64) (Task, error)
 	ListAllPrioritiesAsc(ctx context.Context) ([]ListAllPrioritiesAscRow, error)
 	ListAllStagedAsc(ctx context.Context) ([]ListAllStagedAscRow, error)
+	ListTags(ctx context.Context) ([]Tag, error)
 	ListTasksByScript(ctx context.Context, spawnedByScriptID *int64) ([]Task, error)
 	MaxPriority(ctx context.Context) (interface{}, error)
 	MaxStagedOrder(ctx context.Context) (interface{}, error)
+	RenameTag(ctx context.Context, arg RenameTagParams) (Tag, error)
 	ReplaceTaskTags(ctx context.Context, taskID int64) error
 	SelectRunsHealth(ctx context.Context) (int64, error)
 	SelectScriptsHealth(ctx context.Context) (int64, error)
-	SelectTagsHealth(ctx context.Context) (int64, error)
 	SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams) (Task, error)
 	SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (Task, error)
 	SetTaskState(ctx context.Context, arg SetTaskStateParams) (Task, error)
