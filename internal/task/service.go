@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -641,3 +642,72 @@ func coerceFloat(v any) float64 {
 	}
 	return -1.0
 }
+
+// ByScript returns every task spawned by the given script, ordered by
+// created_at DESC, paged by limit/offset. limit <= 0 returns the full set
+// (after offset).
+func (s *Impl) ByScript(ctx context.Context, scriptID int64, limit, offset int) ([]Task, error) {
+	sid := scriptID
+	rows, err := s.q.ListTasksByScript(ctx, &sid)
+	if err != nil {
+		return nil, fmt.Errorf("task: list by script %d: %w", scriptID, err)
+	}
+
+	if offset > len(rows) {
+		return []Task{}, nil
+	}
+	rows = rows[offset:]
+	if limit > 0 && len(rows) > limit {
+		rows = rows[:limit]
+	}
+
+	out := make([]Task, 0, len(rows))
+	for _, r := range rows {
+		tags, err := s.loadTags(ctx, r.ID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rowToTask(r, tags))
+	}
+	return out, nil
+}
+
+// LatestBySpawningScript returns the most recently created task spawned by
+// the given script, or (nil, nil) if the script has no spawned tasks.
+func (s *Impl) LatestBySpawningScript(ctx context.Context, scriptID int64) (*Task, error) {
+	sid := scriptID
+	row, err := s.q.LatestTaskBySpawningScript(ctx, &sid)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("task: latest by script %d: %w", scriptID, err)
+	}
+	tags, err := s.loadTags(ctx, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	t := rowToTask(row, tags)
+	return &t, nil
+}
+
+// SetTagsByID replaces the full tag set associated with a task. The caller
+// is responsible for resolving tag names to ids via the tag service before
+// invoking this.
+func (s *Impl) SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error {
+	if err := s.q.ReplaceTaskTags(ctx, taskID); err != nil {
+		return fmt.Errorf("task: replace tags: %w", err)
+	}
+	for _, tid := range tagIDs {
+		if err := s.q.AddTaskTag(ctx, sqlcgen.AddTaskTagParams{
+			TaskID: taskID,
+			TagID:  tid,
+		}); err != nil {
+			return fmt.Errorf("task: add tag %d: %w", tid, err)
+		}
+	}
+	return nil
+}
+
+// Compile-time assertion that Impl satisfies the Service interface.
+var _ Service = (*Impl)(nil)
