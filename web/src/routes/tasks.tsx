@@ -1,13 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router';
-
-function TasksPage() {
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold">Tasks page (todo: phase 08a)</h1>
-    </div>
-  );
-}
+import { TasksPage } from '@/features/tasks/page';
+import { taskSearchSchema } from '@/features/tasks/use-task-list-search';
 
 export const Route = createFileRoute('/tasks')({
+  validateSearch: (search) => taskSearchSchema.parse(search),
   component: TasksPage,
 });
