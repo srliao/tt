@@ -110,13 +110,15 @@ export function hasActiveFilters(search: TaskSearch): boolean {
  * Pass `undefined` to clear a single field.
  */
 export function useTaskListSearch() {
-  const search = useSearch({ from: '/tasks' }) as TaskSearch;
-  const navigate = useNavigate({ from: '/tasks' });
+  // `strict: false` lets this hook be exercised under test routers that
+  // don't have the file-route's `from: '/tasks'` identifier registered.
+  const search = useSearch({ strict: false }) as TaskSearch;
+  const navigate = useNavigate();
 
   const setSearch = useCallback(
     (updates: Partial<TaskSearch>) => {
       void navigate({
-        to: '/tasks',
+        to: '.',
         search: (prev) => {
           const merged: TaskSearch = { ...(prev as TaskSearch), ...updates };
           // Strip empty/undefined values so the URL stays short.
@@ -137,4 +139,4 @@ export function useTaskListSearch() {
 }
 
 // Re-export the underlying types so callers don't have to dig.
-export type { TaskState, TaskDueRange, TaskSortAxis };
+export type { TaskDueRange, TaskSortAxis, TaskState };
