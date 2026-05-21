@@ -9,13 +9,226 @@ import (
 	"context"
 )
 
-const selectScriptsHealth = `-- name: SelectScriptsHealth :one
-SELECT COUNT(*) FROM scripts
+const createScript = `-- name: CreateScript :one
+INSERT INTO scripts (name, code, enabled, schedule_kind, schedule_config)
+VALUES (?, ?, ?, ?, ?) RETURNING id, name, code, enabled, schedule_kind, schedule_config, user_state, last_run_at, created_at, updated_at
 `
 
-func (q *Queries) SelectScriptsHealth(ctx context.Context) (int64, error) {
-	row := q.db.QueryRowContext(ctx, selectScriptsHealth)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type CreateScriptParams struct {
+	Name           string `json:"name"`
+	Code           string `json:"code"`
+	Enabled        int64  `json:"enabled"`
+	ScheduleKind   string `json:"schedule_kind"`
+	ScheduleConfig string `json:"schedule_config"`
+}
+
+func (q *Queries) CreateScript(ctx context.Context, arg CreateScriptParams) (Script, error) {
+	row := q.db.QueryRowContext(ctx, createScript,
+		arg.Name,
+		arg.Code,
+		arg.Enabled,
+		arg.ScheduleKind,
+		arg.ScheduleConfig,
+	)
+	var i Script
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Code,
+		&i.Enabled,
+		&i.ScheduleKind,
+		&i.ScheduleConfig,
+		&i.UserState,
+		&i.LastRunAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteScript = `-- name: DeleteScript :exec
+DELETE FROM scripts WHERE id = ?
+`
+
+func (q *Queries) DeleteScript(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteScript, id)
+	return err
+}
+
+const getScript = `-- name: GetScript :one
+SELECT id, name, code, enabled, schedule_kind, schedule_config, user_state, last_run_at, created_at, updated_at FROM scripts WHERE id = ?
+`
+
+func (q *Queries) GetScript(ctx context.Context, id int64) (Script, error) {
+	row := q.db.QueryRowContext(ctx, getScript, id)
+	var i Script
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Code,
+		&i.Enabled,
+		&i.ScheduleKind,
+		&i.ScheduleConfig,
+		&i.UserState,
+		&i.LastRunAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getScriptUserState = `-- name: GetScriptUserState :one
+SELECT user_state FROM scripts WHERE id = ?
+`
+
+func (q *Queries) GetScriptUserState(ctx context.Context, id int64) (string, error) {
+	row := q.db.QueryRowContext(ctx, getScriptUserState, id)
+	var user_state string
+	err := row.Scan(&user_state)
+	return user_state, err
+}
+
+const listEnabledScripts = `-- name: ListEnabledScripts :many
+SELECT id, name, code, enabled, schedule_kind, schedule_config, user_state, last_run_at, created_at, updated_at FROM scripts WHERE enabled = 1
+`
+
+func (q *Queries) ListEnabledScripts(ctx context.Context) ([]Script, error) {
+	rows, err := q.db.QueryContext(ctx, listEnabledScripts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Script
+	for rows.Next() {
+		var i Script
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Code,
+			&i.Enabled,
+			&i.ScheduleKind,
+			&i.ScheduleConfig,
+			&i.UserState,
+			&i.LastRunAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listScripts = `-- name: ListScripts :many
+SELECT id, name, code, enabled, schedule_kind, schedule_config, user_state, last_run_at, created_at, updated_at FROM scripts ORDER BY name ASC, id ASC
+`
+
+func (q *Queries) ListScripts(ctx context.Context) ([]Script, error) {
+	rows, err := q.db.QueryContext(ctx, listScripts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Script
+	for rows.Next() {
+		var i Script
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Code,
+			&i.Enabled,
+			&i.ScheduleKind,
+			&i.ScheduleConfig,
+			&i.UserState,
+			&i.LastRunAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setScriptLastRunAt = `-- name: SetScriptLastRunAt :exec
+UPDATE scripts SET last_run_at = ?, updated_at = datetime('now') WHERE id = ?
+`
+
+type SetScriptLastRunAtParams struct {
+	LastRunAt *string `json:"last_run_at"`
+	ID        int64   `json:"id"`
+}
+
+func (q *Queries) SetScriptLastRunAt(ctx context.Context, arg SetScriptLastRunAtParams) error {
+	_, err := q.db.ExecContext(ctx, setScriptLastRunAt, arg.LastRunAt, arg.ID)
+	return err
+}
+
+const setScriptUserState = `-- name: SetScriptUserState :exec
+UPDATE scripts SET user_state = ?, updated_at = datetime('now') WHERE id = ?
+`
+
+type SetScriptUserStateParams struct {
+	UserState string `json:"user_state"`
+	ID        int64  `json:"id"`
+}
+
+func (q *Queries) SetScriptUserState(ctx context.Context, arg SetScriptUserStateParams) error {
+	_, err := q.db.ExecContext(ctx, setScriptUserState, arg.UserState, arg.ID)
+	return err
+}
+
+const updateScript = `-- name: UpdateScript :one
+UPDATE scripts
+SET name = ?, code = ?, enabled = ?, schedule_kind = ?, schedule_config = ?,
+    updated_at = datetime('now')
+WHERE id = ? RETURNING id, name, code, enabled, schedule_kind, schedule_config, user_state, last_run_at, created_at, updated_at
+`
+
+type UpdateScriptParams struct {
+	Name           string `json:"name"`
+	Code           string `json:"code"`
+	Enabled        int64  `json:"enabled"`
+	ScheduleKind   string `json:"schedule_kind"`
+	ScheduleConfig string `json:"schedule_config"`
+	ID             int64  `json:"id"`
+}
+
+func (q *Queries) UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error) {
+	row := q.db.QueryRowContext(ctx, updateScript,
+		arg.Name,
+		arg.Code,
+		arg.Enabled,
+		arg.ScheduleKind,
+		arg.ScheduleConfig,
+		arg.ID,
+	)
+	var i Script
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Code,
+		&i.Enabled,
+		&i.ScheduleKind,
+		&i.ScheduleConfig,
+		&i.UserState,
+		&i.LastRunAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
