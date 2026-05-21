@@ -1,12 +1,12 @@
-import type { ReactNode } from 'react';
-import { Link } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/lib/api';
+import { Link } from '@tanstack/react-router';
+import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { api } from '@/lib/api';
+import { ShortcutCheatsheet } from './shortcut-cheatsheet';
 import { ThemeProvider } from './theme-provider';
 import { ThemeToggle } from './theme-toggle';
-import { ShortcutCheatsheet } from './shortcut-cheatsheet';
 
 interface StageCountTask {
   staged_order: number | null;
@@ -54,8 +54,7 @@ function TopNav() {
               to={item.to}
               className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
               activeProps={{
-                className:
-                  'rounded-md px-3 py-1.5 bg-accent text-accent-foreground',
+                className: 'rounded-md px-3 py-1.5 bg-accent text-accent-foreground',
               }}
             >
               {item.label}
