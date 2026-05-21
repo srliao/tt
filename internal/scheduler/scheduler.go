@@ -150,10 +150,16 @@ func (s *Scheduler) Start(ctx context.Context) error {
 
 // Stop signals both goroutines to exit and blocks until they do. Safe to
 // call more than once; subsequent calls are no-ops.
+//
+// We deliberately do not close(s.queue). EnqueueManual is called from HTTP
+// handler goroutines that have no synchronization with Stop, and the ticker
+// goroutine could be in the middle of a sweep — closing the queue would
+// expose those callers to a send-on-closed-channel panic. Instead, producers
+// observe s.stop and skip the send; the worker selects on both s.stop and
+// s.queue so it exits even with buffered jobs.
 func (s *Scheduler) Stop() {
 	s.stopOnce.Do(func() {
-		close(s.stop)  // signals the ticker goroutine to exit
-		close(s.queue) // signals the worker goroutine to exit after draining
+		close(s.stop)
 	})
 	s.done.Wait()
 }
@@ -182,9 +188,28 @@ func (s *Scheduler) enqueueScheduled(scriptID int64) {
 // tryPush is the shared non-blocking enqueue. Returns ErrSchedulerBusy
 // for manual triggers on full queue; for scheduled triggers it increments
 // the drop counter, logs, and returns nil so the ticker keeps marching.
+//
+// After Stop closes s.stop, producers must not send on s.queue (the worker
+// is exiting; sends would block forever and Stop would deadlock on
+// done.Wait). Manual callers get ErrSchedulerBusy so HTTP can map to 503;
+// scheduled pushes are silently discarded since the ticker is itself about
+// to exit.
 func (s *Scheduler) tryPush(j job) error {
 	select {
+	case <-s.stop:
+		if j.trigger == script.TriggerManual {
+			return ErrSchedulerBusy
+		}
+		return nil
+	default:
+	}
+	select {
 	case s.queue <- j:
+		return nil
+	case <-s.stop:
+		if j.trigger == script.TriggerManual {
+			return ErrSchedulerBusy
+		}
 		return nil
 	default:
 		if j.trigger == script.TriggerManual {

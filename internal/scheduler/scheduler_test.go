@@ -352,6 +352,37 @@ func TestQueueOverflow_ManualReturnsErrSchedulerBusy(t *testing.T) {
 	}
 }
 
+// TestEnqueueManualConcurrentWithStop verifies that the scheduler doesn't
+// panic with "send on closed channel" when HTTP handler goroutines hammer
+// EnqueueManual while Stop is running.
+func TestEnqueueManualConcurrentWithStop(t *testing.T) {
+	scripts := newStubLookup()
+	runner := newStubRunner()
+	s := scheduler.New(runner, scripts, silentLogger(),
+		scheduler.WithInterval(1*time.Hour),
+	)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				// Errors are fine post-Stop; the only failure mode we're
+				// guarding against is a runtime panic.
+				_ = s.EnqueueManual(int64(i), int64(j))
+			}
+		}(i)
+	}
+	// Let some sends land, then stop concurrently with the producers.
+	time.Sleep(5 * time.Millisecond)
+	s.Stop()
+	wg.Wait()
+}
+
 func TestRunnerPanicRecovered(t *testing.T) {
 	scripts := newStubLookup()
 	runner := newStubRunner()

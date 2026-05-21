@@ -29,17 +29,24 @@ func (s *Scheduler) runTicker(ctx context.Context) {
 
 // runWorker is the single consumer of the job queue. It executes one job
 // at a time so concurrent script effects can never interleave. The loop
-// exits when the queue is closed (Stop closes it) and every remaining
-// buffered job has been processed.
+// exits when s.stop is closed (Stop was called); any jobs still buffered
+// in s.queue at shutdown are discarded — they'll be picked up on next boot
+// by the orphan-recovery + initial sweep path.
 //
-// Both StartRun and runner.Run are wrapped in panic recovery: a single
-// misbehaving script must not take down the worker and freeze all future
-// scheduling.
+// Both StartRun and runner.Run are wrapped in panic recovery (per-job, via
+// processJob) so a single misbehaving script can't take down the worker.
 func (s *Scheduler) runWorker(ctx context.Context) {
 	defer s.done.Done()
 
-	for j := range s.queue {
-		s.processJob(ctx, j)
+	for {
+		select {
+		case <-s.stop:
+			return
+		case <-ctx.Done():
+			return
+		case j := <-s.queue:
+			s.processJob(ctx, j)
+		}
 	}
 }
 
