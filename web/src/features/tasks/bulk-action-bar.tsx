@@ -11,7 +11,7 @@
  * in `page.tsx` / Phase 1.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   type TaskListParams,
   useDeleteTask,
@@ -44,6 +44,29 @@ export interface BulkActionBarProps {
 const kbdClass =
   'ml-1 inline-flex items-center justify-center rounded border border-background/25 bg-background/10 px-1 font-mono text-[10px] leading-4';
 
+// Keyboard-focus ring tuned for the dark bar surface; the default browser
+// outline disappears against `bg-foreground`.
+const focusRing =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-background/50';
+
+// Primary (inverted/light) button on the dark bar.
+const primaryBtn = cn(
+  'inline-flex items-center rounded-md bg-background px-2.5 py-1 font-medium text-foreground text-sm shadow-sm transition-colors hover:bg-background/90',
+  focusRing,
+);
+// Secondary (ghost) action button on the dark bar.
+const secondaryBtn = cn(
+  'inline-flex items-center rounded-md px-2 py-1 text-sm transition-colors hover:bg-background/10',
+  focusRing,
+);
+// Destructive (red ghost) action button on the dark bar.
+const destructiveBtn = cn(
+  'inline-flex items-center rounded-md px-2 py-1 text-red-300 text-sm transition-colors hover:bg-red-500/20 hover:text-red-200',
+  focusRing,
+);
+// Small meta-row action ("Select all matching", "Clear").
+const metaBtn = cn('rounded px-1 hover:underline', focusRing);
+
 export function BulkActionBar({ selection, filter, onOpenTagEditor }: BulkActionBarProps) {
   const setState = useSetTaskState();
   const stage = useStageTask();
@@ -53,6 +76,9 @@ export function BulkActionBar({ selection, filter, onOpenTagEditor }: BulkAction
 
   // Resolve "all matching" via the same cached query the list view uses —
   // this is a cache hit when `filter` matches the list page's filter.
+  // NOTE: `matchingIds` reflects the result of useTasks(filter); page.tsx does
+  // not paginate today, so totalMatching equals the global filtered count. If
+  // pagination is added, switch to a server-side count endpoint.
   const { data: matching = [] } = useTasks(filter);
   const matchingIds = useMemo(() => new Set(matching.map((t) => t.id)), [matching]);
   const totalMatching = matchingIds.size;
@@ -60,28 +86,15 @@ export function BulkActionBar({ selection, filter, onOpenTagEditor }: BulkAction
     totalMatching > 0 && [...matchingIds].every((id) => selection.selected.has(id));
   const canExpandMatching = totalMatching > 0 && !allSelected;
 
-  // Wire `Esc` to clear the selection when no confirm dialog is open. The
-  // AlertDialog primitive consumes Esc itself when open, so this only fires
-  // when the bar is the active surface.
-  useEffect(() => {
-    if (selection.selected.size === 0) return;
-    const handler = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      if (confirmDelete || confirmCancel) return;
-      // Don't hijack Esc out of inputs (e.g. command palette / inline editors).
-      const target = event.target as HTMLElement | null;
-      if (target) {
-        const tag = target.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-        if (target.isContentEditable) return;
-      }
-      event.preventDefault();
-      selection.clear();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [selection, confirmDelete, confirmCancel]);
+  // Esc-to-clear is handled by `useTableShortcuts` in task-table.tsx (Phase 1,
+  // document-level). We intentionally do NOT register a window listener here:
+  // doing so wipes the selection while the user is dismissing the inline tag
+  // editor (which short-circuits the table handler via its `disabled` prop).
 
+  // Defensive: page.tsx already guards the mount with
+  // `{selection.selected.size > 0 && <BulkActionBar …>}`, so this branch is
+  // unreachable in production. Retained so unit tests that render the bar
+  // directly with an empty selection still see nothing.
   if (selection.selected.size === 0) return null;
   const ids = Array.from(selection.selected);
 
@@ -140,44 +153,24 @@ export function BulkActionBar({ selection, filter, onOpenTagEditor }: BulkAction
       <span className="h-4 w-px bg-background/20" aria-hidden="true" />
 
       {/* Primary action */}
-      <button
-        type="button"
-        onClick={onOpenTagEditor}
-        className="inline-flex items-center rounded-md bg-background px-2.5 py-1 font-medium text-foreground text-sm shadow-sm transition-colors hover:bg-background/90"
-      >
+      <button type="button" onClick={onOpenTagEditor} className={primaryBtn}>
         Tag…
         <kbd className={kbdClass}>t</kbd>
       </button>
 
       {/* Secondary actions */}
-      <button
-        type="button"
-        onClick={stageAll}
-        className="inline-flex items-center rounded-md px-2 py-1 text-sm transition-colors hover:bg-background/10"
-      >
+      <button type="button" onClick={stageAll} className={secondaryBtn}>
         Stage
         <kbd className={kbdClass}>s</kbd>
       </button>
-      <button
-        type="button"
-        onClick={markDone}
-        className="inline-flex items-center rounded-md px-2 py-1 text-sm transition-colors hover:bg-background/10"
-      >
+      <button type="button" onClick={markDone} className={secondaryBtn}>
         Mark done
         <kbd className={kbdClass}>d</kbd>
       </button>
-      <button
-        type="button"
-        onClick={() => setConfirmCancel(true)}
-        className="inline-flex items-center rounded-md px-2 py-1 text-sm transition-colors hover:bg-background/10"
-      >
+      <button type="button" onClick={() => setConfirmCancel(true)} className={secondaryBtn}>
         Cancel
       </button>
-      <button
-        type="button"
-        onClick={() => setConfirmDelete(true)}
-        className="inline-flex items-center rounded-md px-2 py-1 text-red-300 text-sm transition-colors hover:bg-red-500/20 hover:text-red-200"
-      >
+      <button type="button" onClick={() => setConfirmDelete(true)} className={destructiveBtn}>
         Delete
       </button>
 
@@ -187,7 +180,7 @@ export function BulkActionBar({ selection, filter, onOpenTagEditor }: BulkAction
           <button
             type="button"
             onClick={expandToMatching}
-            className="rounded px-1 underline-offset-2 hover:underline"
+            className={cn(metaBtn, 'underline-offset-2')}
           >
             Select all matching · {totalMatching}
           </button>
@@ -196,7 +189,7 @@ export function BulkActionBar({ selection, filter, onOpenTagEditor }: BulkAction
         <button
           type="button"
           onClick={() => selection.clear()}
-          className="inline-flex items-center rounded px-1 hover:underline"
+          className={cn(metaBtn, 'inline-flex items-center')}
         >
           Clear
           <kbd className={kbdClass}>Esc</kbd>
