@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { api } from '@/lib/api';
 import { ShortcutCheatsheet } from './shortcut-cheatsheet';
@@ -10,6 +9,7 @@ import { ThemeToggle } from './theme-toggle';
 
 interface StageCountTask {
   staged_order: number | null;
+  state: 'not_done' | 'done' | 'cancelled';
 }
 
 const NAV_ITEMS = [
@@ -20,24 +20,17 @@ const NAV_ITEMS = [
   { to: '/runs', label: 'Runs' },
 ] as const;
 
-function StageBadge() {
+function useStagedCount() {
   const { data } = useQuery<StageCountTask[]>({
     queryKey: ['tasks'],
     queryFn: () => api<StageCountTask[]>('/tasks'),
     retry: false,
-    // Phase 08b will share this cache; just render gracefully on failure here.
   });
-  const stagedCount = data?.filter((t) => t.staged_order !== null).length ?? 0;
-  return (
-    <Link to="/stage" aria-label="Go to stage">
-      <Badge variant="secondary" data-testid="stage-badge">
-        Stage ({stagedCount})
-      </Badge>
-    </Link>
-  );
+  return data?.filter((t) => t.staged_order !== null && t.state === 'not_done').length ?? 0;
 }
 
 function TopNav() {
+  const stagedCount = useStagedCount();
   return (
     <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
@@ -54,17 +47,25 @@ function TopNav() {
             <Link
               key={item.to}
               to={item.to}
-              className="rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
               activeProps={{
-                className: 'rounded-md px-3 py-1.5 bg-accent text-accent-foreground',
+                className:
+                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 bg-accent text-accent-foreground',
               }}
             >
               {item.label}
+              {item.to === '/stage' && stagedCount > 0 && (
+                <span
+                  data-testid="stage-badge"
+                  className="inline-flex min-w-[1.5em] items-center justify-center rounded-full bg-primary px-1.5 leading-none font-semibold text-primary-foreground"
+                >
+                  {stagedCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-2">
-          <StageBadge />
           <ThemeToggle />
         </div>
       </div>
