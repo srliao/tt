@@ -295,14 +295,13 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    const table = await screen.findByRole('table');
+    await screen.findByRole('table');
     // Focus a row via plain j, then press t.
     act(() => {
-      table.focus();
-      fireEvent.keyDown(table, { key: 'j' });
+      fireEvent.keyDown(document.body, { key: 'j' });
     });
     act(() => {
-      fireEvent.keyDown(table, { key: 't' });
+      fireEvent.keyDown(document.body, { key: 't' });
     });
     expect(onEditTags).toHaveBeenCalledTimes(1);
     expect(onEditTags).toHaveBeenCalledWith(expect.objectContaining({ id: 1, title: 'A' }));
@@ -324,10 +323,9 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    const table = await screen.findByRole('table');
+    await screen.findByRole('table');
     act(() => {
-      table.focus();
-      fireEvent.keyDown(table, { key: 't' });
+      fireEvent.keyDown(document.body, { key: 't' });
     });
     expect(onEditTags).not.toHaveBeenCalled();
   });
@@ -354,26 +352,25 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    const table = await screen.findByRole('table');
+    await screen.findByRole('table');
     // Focus row 2 (index 1) by pressing j twice.
     act(() => {
-      table.focus();
-      fireEvent.keyDown(table, { key: 'j' });
+      fireEvent.keyDown(document.body, { key: 'j' });
     });
     act(() => {
-      fireEvent.keyDown(table, { key: 'j' });
+      fireEvent.keyDown(document.body, { key: 'j' });
     });
     onSelectedChange.mockClear();
     onMultiSelectModeChange.mockClear();
     // ⇧j → extend to row 3.
     act(() => {
-      fireEvent.keyDown(table, { key: 'J', shiftKey: true });
+      fireEvent.keyDown(document.body, { key: 'J', shiftKey: true });
     });
     expect(onMultiSelectModeChange).toHaveBeenCalledWith(true);
     expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2, 3]));
     // ⇧j again → extend to row 4.
     act(() => {
-      fireEvent.keyDown(table, { key: 'J', shiftKey: true });
+      fireEvent.keyDown(document.body, { key: 'J', shiftKey: true });
     });
     expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2, 3, 4]));
   });
@@ -398,29 +395,28 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    const table = await screen.findByRole('table');
+    await screen.findByRole('table');
     act(() => {
-      table.focus();
-      fireEvent.keyDown(table, { key: 'j' });
+      fireEvent.keyDown(document.body, { key: 'j' });
     });
     act(() => {
-      fireEvent.keyDown(table, { key: 'j' });
+      fireEvent.keyDown(document.body, { key: 'j' });
     });
     // Anchor is row 2 now.
     act(() => {
-      fireEvent.keyDown(table, { key: 'J', shiftKey: true });
+      fireEvent.keyDown(document.body, { key: 'J', shiftKey: true });
     });
     act(() => {
-      fireEvent.keyDown(table, { key: 'J', shiftKey: true });
+      fireEvent.keyDown(document.body, { key: 'J', shiftKey: true });
     });
     expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2, 3, 4]));
     onSelectedChange.mockClear();
     act(() => {
-      fireEvent.keyDown(table, { key: 'K', shiftKey: true });
+      fireEvent.keyDown(document.body, { key: 'K', shiftKey: true });
     });
     expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2, 3]));
     act(() => {
-      fireEvent.keyDown(table, { key: 'K', shiftKey: true });
+      fireEvent.keyDown(document.body, { key: 'K', shiftKey: true });
     });
     expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2]));
   });
@@ -445,23 +441,22 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    const table = await screen.findByRole('table');
+    await screen.findByRole('table');
     act(() => {
-      table.focus();
-      fireEvent.keyDown(table, { key: 'j' }); // focus row 1
+      fireEvent.keyDown(document.body, { key: 'j' }); // focus row 1
     });
     act(() => {
-      fireEvent.keyDown(table, { key: 'J', shiftKey: true }); // range to row 2
+      fireEvent.keyDown(document.body, { key: 'J', shiftKey: true }); // range to row 2
     });
     expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([1, 2]));
     onSelectedChange.mockClear();
     act(() => {
-      fireEvent.keyDown(table, { key: 'j' }); // plain step → resets anchor; no selection change
+      fireEvent.keyDown(document.body, { key: 'j' }); // plain step → resets anchor; no selection change
     });
     expect(onSelectedChange).not.toHaveBeenCalled();
     // Now ⇧j → fresh range starting at the new focus (row 3).
     act(() => {
-      fireEvent.keyDown(table, { key: 'J', shiftKey: true });
+      fireEvent.keyDown(document.body, { key: 'J', shiftKey: true });
     });
     expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([3, 4]));
   });
@@ -483,10 +478,9 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    const table = await screen.findByRole('table');
+    await screen.findByRole('table');
     act(() => {
-      table.focus();
-      fireEvent.keyDown(table, { key: 'Escape' });
+      fireEvent.keyDown(document.body, { key: 'Escape' });
     });
     expect(onSelectedChange).toHaveBeenCalledWith(new Set());
     expect(onMultiSelectModeChange).toHaveBeenCalledWith(false);
@@ -509,10 +503,9 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    const table = await screen.findByRole('table');
+    await screen.findByRole('table');
     act(() => {
-      table.focus();
-      fireEvent.keyDown(table, { key: 'Escape' });
+      fireEvent.keyDown(document.body, { key: 'Escape' });
     });
     expect(onSelectedChange).not.toHaveBeenCalled();
     expect(onMultiSelectModeChange).not.toHaveBeenCalled();
@@ -535,5 +528,99 @@ describe('TaskTable', () => {
     // Two glyphs render — one per tag — each with the canonical aria label.
     expect(await screen.findByRole('button', { name: 'Tag backend' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Tag ops' })).toBeTruthy();
+  });
+
+  it('keydown on document.body after mount focuses row 0 (no click required)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onEditTags = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
+          sort="title"
+          multiSelectMode={false}
+          selectedIds={new Set()}
+          onSelectedChange={() => {}}
+          onEdit={() => {}}
+          onEditTags={onEditTags}
+        />,
+      ),
+    );
+    await screen.findByRole('table');
+    // No focus/click on the table — keystroke arrives on document.body.
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'j' });
+    });
+    // Press `t` — if row 0 is focused, onEditTags fires for task id 1.
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 't' });
+    });
+    expect(onEditTags).toHaveBeenCalledWith(expect.objectContaining({ id: 1 }));
+  });
+
+  it('keydown is a no-op when the active element is an <input>', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onEditTags = vi.fn();
+    render(
+      wrap(
+        <>
+          <input aria-label="search" />
+          <TaskTable
+            tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
+            sort="title"
+            multiSelectMode={false}
+            selectedIds={new Set()}
+            onSelectedChange={() => {}}
+            onEdit={() => {}}
+            onEditTags={onEditTags}
+          />
+        </>,
+      ),
+    );
+    const input = await screen.findByLabelText('search');
+    act(() => {
+      input.focus();
+      fireEvent.keyDown(input, { key: 'j' });
+    });
+    act(() => {
+      fireEvent.keyDown(input, { key: 't' });
+    });
+    expect(onEditTags).not.toHaveBeenCalled();
+  });
+
+  it('keydown is a no-op when an open dialog is present in the DOM', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onEditTags = vi.fn();
+    // Inject a Radix-style open dialog into the document. The handler
+    // detects it via querySelector and defers.
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('data-state', 'open');
+    document.body.appendChild(dialog);
+    try {
+      render(
+        wrap(
+          <TaskTable
+            tasks={[task({ id: 1, title: 'A' })]}
+            sort="title"
+            multiSelectMode={false}
+            selectedIds={new Set()}
+            onSelectedChange={() => {}}
+            onEdit={() => {}}
+            onEditTags={onEditTags}
+          />,
+        ),
+      );
+      await screen.findByRole('table');
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 'j' });
+      });
+      act(() => {
+        fireEvent.keyDown(document.body, { key: 't' });
+      });
+      expect(onEditTags).not.toHaveBeenCalled();
+    } finally {
+      dialog.remove();
+    }
   });
 });
