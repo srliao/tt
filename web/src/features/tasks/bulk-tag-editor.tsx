@@ -21,7 +21,7 @@
  */
 
 import { Command as CommandPrimitive } from 'cmdk';
-import { CheckIcon, MinusIcon, PlusIcon } from 'lucide-react';
+import { AlertTriangleIcon, PlusIcon } from 'lucide-react';
 import * as React from 'react';
 
 import { useTagsWithCounts } from '@/api/tags';
@@ -30,6 +30,7 @@ import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover'
 import { TagChip } from '@/components/ui/tag-chip';
 import { cn } from '@/lib/utils';
 import type { Task } from '@/types/task';
+import { TriStateIndicator } from './bulk-tag-editor.tristate';
 
 type Mode = 'add' | 'remove' | 'set';
 
@@ -312,31 +313,40 @@ export function BulkTagEditor({
 
           {/* Mode tabs */}
           <div className="flex gap-1 border-b px-2 py-2" role="tablist" aria-label="Tag operation">
-            {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="tab"
-                aria-selected={mode === m}
-                data-slot="bulk-tag-editor-mode"
-                data-mode={m}
-                data-active={mode === m || undefined}
-                onClick={() => {
-                  setMode(m);
-                  setStaged([]);
-                  setConfirmSet(false);
-                }}
-                className={cn(
-                  'flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
-                  mode === m
-                    ? 'bg-foreground text-background'
-                    : 'text-muted-foreground hover:bg-muted',
-                )}
-              >
-                {MODE_LABELS[m]}
-              </button>
-            ))}
+            {(Object.keys(MODE_LABELS) as Mode[]).map((m) => {
+              const isActive = mode === m;
+              const isDestructive = m === 'set';
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  data-slot="bulk-tag-editor-mode"
+                  data-mode={m}
+                  data-active={isActive || undefined}
+                  data-destructive={isDestructive || undefined}
+                  onClick={() => {
+                    setMode(m);
+                    setStaged([]);
+                    setConfirmSet(false);
+                  }}
+                  className={cn(
+                    'flex-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                    isActive
+                      ? isDestructive
+                        ? 'bg-destructive text-destructive-foreground ring-1 ring-destructive/40'
+                        : 'bg-foreground text-background'
+                      : isDestructive
+                        ? 'text-destructive/80 hover:bg-destructive/10'
+                        : 'text-muted-foreground hover:bg-muted',
+                  )}
+                >
+                  {MODE_LABELS[m]}
+                </button>
+              );
+            })}
           </div>
 
           {/* Staged chips */}
@@ -450,7 +460,7 @@ export function BulkTagEditor({
           <div className="flex flex-col gap-2 border-t px-3 py-2">
             {mode === 'set' && (
               <label
-                className="flex cursor-pointer items-start gap-2 text-xs text-muted-foreground"
+                className="flex cursor-pointer items-start gap-2 text-xs text-destructive"
                 data-slot="bulk-tag-editor-set-confirm"
               >
                 <input
@@ -458,6 +468,11 @@ export function BulkTagEditor({
                   checked={confirmSet}
                   onChange={(e) => setConfirmSet(e.target.checked)}
                   className="mt-0.5"
+                />
+                <AlertTriangleIcon
+                  className="mt-0.5 size-3.5 shrink-0"
+                  aria-hidden
+                  data-slot="bulk-tag-editor-set-warning"
                 />
                 <span>
                   I understand this replaces all tags
@@ -509,55 +524,4 @@ function presenceCountLabel(
   if (presence === 'all') return `all ${total}`;
   if (presence === 'none') return `0 of ${total}`;
   return `${count} of ${total}`;
-}
-
-interface TriStateIndicatorProps {
-  mode: Mode;
-  presence: 'all' | 'some' | 'none';
-  staged: boolean;
-}
-
-/**
- * Three-state checkbox visualization. Filled = will be (or already is) on
- * all tasks after apply. Half-bar = partial. Empty = absent. When the row is
- * staged, the box reflects the *post-apply* state for the current mode.
- */
-function TriStateIndicator({ mode, presence, staged }: TriStateIndicatorProps) {
-  // Compute the *displayed* state — what the checkbox should show given the
-  // current mode + staged flag.
-  let display: 'filled' | 'half' | 'empty';
-  if (mode === 'set') {
-    display = staged ? 'filled' : 'empty';
-  } else if (mode === 'add') {
-    display = staged
-      ? 'filled'
-      : presence === 'all'
-        ? 'filled'
-        : presence === 'some'
-          ? 'half'
-          : 'empty';
-  } else {
-    // remove: staged means "will be removed → ends up empty"
-    display = staged
-      ? 'empty'
-      : presence === 'all'
-        ? 'filled'
-        : presence === 'some'
-          ? 'half'
-          : 'empty';
-  }
-  return (
-    <span
-      aria-hidden
-      data-slot="bulk-tag-editor-tristate"
-      data-display={display}
-      className={cn(
-        'flex size-4 shrink-0 items-center justify-center rounded-[4px] border',
-        display === 'empty' ? 'border-input' : 'border-primary bg-primary text-primary-foreground',
-      )}
-    >
-      {display === 'filled' && <CheckIcon className="size-3" />}
-      {display === 'half' && <MinusIcon className="size-3" />}
-    </span>
-  );
 }
