@@ -103,7 +103,7 @@ features/tasks/use-task-list-search.ts
 
 - **Page component** in `<feature>/page.tsx`. Reads server state via the resource's `useXxx`. Owns the `editing` modal state at the top so global `n` shortcut can open it.
 - **Table / list** component holds optimistic state for drag-drop. On `useEffect([tasks])`, optimistic gets cleared to the latest server snapshot. Reorder = `setOptimistic(next)` THEN `reorder.mutate(payload)`.
-- **Per-page keyboard shortcuts** scoped to the list container ref. `j/k` for focus row, `e/Enter` to edit, `s` to stage, `u` to unstage, `d` to toggle done/not-done (no cancelled cycle), space to (de)select. See `web/src/features/tasks/task-table.tsx` `useTableShortcuts` and `web/src/features/stage/page.tsx` `useStageShortcuts`.
+- **Per-page keyboard shortcuts** scoped to the list container ref. `j/k` for focus row, `⇧j`/`⇧k` for range-select (auto-engages multi-select; anchor resets on plain step / checkbox click / unrelated key — see `rangeSelection` in `task-table.tsx`), `e/Enter` to edit, `s` to stage, `u` to unstage, `d` to toggle done/not-done (no cancelled cycle), `t` to open the inline tag editor (`InlineTagEditor` popover anchored to `[data-tag-cell]`), space to (de)select. See `web/src/features/tasks/task-table.tsx` `useTableShortcuts` and `web/src/features/stage/page.tsx` `useStageShortcuts`.
 - **Modals** are rendered at the bottom of the page; `open` state is controlled. The same component handles create AND edit by passing `task={editing}` for edit mode.
 
 ### Task / Stage row layout

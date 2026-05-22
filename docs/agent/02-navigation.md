@@ -58,7 +58,7 @@ Quick locator tables. When you need to read code, start here.
 | shadcn/ui primitives | `web/src/components/ui/*.tsx` |
 | Type mirrors of Go DTOs | `web/src/types/{task,tag,script,run}.ts` |
 | API hooks (one file per resource) | `web/src/api/{tasks,tags,scripts,runs,stage}.ts` |
-| Tasks page + table + row + filters + bulk bar | `web/src/features/tasks/*` |
+| Tasks page + table + row + filters + bulk bar + inline tag editor | `web/src/features/tasks/*` |
 | Stage page + list + row + soft-cap hint | `web/src/features/stage/*` |
 | Tags page | `web/src/features/tags/*` |
 | Scripts list + editor + cheatsheets + spawned-tasks panel | `web/src/features/scripts/*` |
