@@ -28,7 +28,7 @@ func TestStage_Reorder(t *testing.T) {
 		"before_id": a.ID,
 		"after_id":  b.ID,
 	})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -65,7 +65,7 @@ func TestStage_ClearAll(t *testing.T) {
 	_, _ = fx.tasks.Stage(ctx, b.ID)
 
 	resp := doJSON(t, http.MethodDelete, fx.server.URL+"/api/v1/stage", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -92,7 +92,7 @@ func TestStage_ClearFinished(t *testing.T) {
 	}
 
 	resp := doJSON(t, http.MethodDelete, fx.server.URL+"/api/v1/stage/finished", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}

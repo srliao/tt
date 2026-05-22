@@ -26,7 +26,7 @@ func TestRuns_List(t *testing.T) {
 	_, _ = fx.scripts.StartRun(ctx, scB.ID, script.TriggerScheduled)
 
 	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/runs", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -42,7 +42,7 @@ func TestRuns_List(t *testing.T) {
 	u, _ := url.Parse(fx.server.URL + "/api/v1/runs")
 	u.RawQuery = fmt.Sprintf("script_id=%d", scA.ID)
 	resp2 := doJSON(t, http.MethodGet, u.String(), nil)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	var only []script.Run
 	if err := json.NewDecoder(resp2.Body).Decode(&only); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -66,7 +66,7 @@ func TestRuns_FilterByStatus(t *testing.T) {
 	u, _ := url.Parse(fx.server.URL + "/api/v1/runs")
 	u.RawQuery = "status=ok"
 	resp := doJSON(t, http.MethodGet, u.String(), nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var runs []script.Run
 	if err := json.NewDecoder(resp.Body).Decode(&runs); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -88,7 +88,7 @@ func TestRuns_GetDetail(t *testing.T) {
 	_ = fx.scripts.FinishRun(ctx, run.ID, script.RunStatusOK, "", nil)
 
 	resp := doJSON(t, http.MethodGet, fmt.Sprintf("%s/api/v1/runs/%d", fx.server.URL, run.ID), nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d body = %s", resp.StatusCode, string(body))
@@ -121,7 +121,7 @@ func TestRuns_GetDetailNotFound(t *testing.T) {
 
 	fx := newTestServer(t, nil)
 	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/runs/99999", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}

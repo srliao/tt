@@ -23,7 +23,7 @@ func TestOpenInMemoryAndMigrate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query sqlite_master: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var got []string
 	for rows.Next() {

@@ -26,7 +26,7 @@ func TestSPA_ServesIndexNoCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /index.html: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -54,7 +54,7 @@ func TestSPA_ServesAssetWithLongCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -80,7 +80,7 @@ func TestSPA_MissingAssetIs404(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -100,7 +100,7 @@ func TestSPA_SPAFallbackServesIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -148,7 +148,7 @@ func TestSPA_FSSubMirrorsEmbed(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GET %s: %v", tc.path, err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != tc.wantStatus {
 				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.wantStatus)
 			}
@@ -176,7 +176,7 @@ func TestSPA_NilFsAlways404(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}

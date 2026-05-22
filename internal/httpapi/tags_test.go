@@ -37,7 +37,7 @@ func TestTags_CreateListRenameDelete(t *testing.T) {
 
 	// Create
 	resp := doJSON(t, http.MethodPost, fx.server.URL+"/api/v1/tags", map[string]any{"name": "work"})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("create status = %d, body = %s", resp.StatusCode, string(body))
@@ -49,7 +49,7 @@ func TestTags_CreateListRenameDelete(t *testing.T) {
 
 	// List
 	resp2 := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tags", nil)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	tags := decodeTags(t, resp2)
 	if len(tags) != 1 || tags[0].ID != created.ID {
 		t.Fatalf("list = %+v", tags)
@@ -58,7 +58,7 @@ func TestTags_CreateListRenameDelete(t *testing.T) {
 	// Rename
 	resp3 := doJSON(t, http.MethodPatch, fmt.Sprintf("%s/api/v1/tags/%d", fx.server.URL, created.ID),
 		map[string]any{"name": "career"})
-	defer resp3.Body.Close()
+	defer func() { _ = resp3.Body.Close() }()
 	if resp3.StatusCode != http.StatusOK {
 		t.Fatalf("rename status = %d", resp3.StatusCode)
 	}
@@ -69,13 +69,13 @@ func TestTags_CreateListRenameDelete(t *testing.T) {
 
 	// Delete
 	resp4 := doJSON(t, http.MethodDelete, fmt.Sprintf("%s/api/v1/tags/%d", fx.server.URL, created.ID), nil)
-	defer resp4.Body.Close()
+	defer func() { _ = resp4.Body.Close() }()
 	if resp4.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete status = %d", resp4.StatusCode)
 	}
 
 	resp5 := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tags", nil)
-	defer resp5.Body.Close()
+	defer func() { _ = resp5.Body.Close() }()
 	tags2 := decodeTags(t, resp5)
 	if len(tags2) != 0 {
 		t.Fatalf("after delete tags = %+v", tags2)
@@ -87,7 +87,7 @@ func TestTags_CreateEmptyNameIs400(t *testing.T) {
 
 	fx := newTestServer(t, nil)
 	resp := doJSON(t, http.MethodPost, fx.server.URL+"/api/v1/tags", map[string]any{"name": "  "})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -108,7 +108,7 @@ func TestTags_RenameDuplicateIs409(t *testing.T) {
 
 	resp := doJSON(t, http.MethodPatch, fmt.Sprintf("%s/api/v1/tags/%d", fx.server.URL, t1.ID),
 		map[string]any{"name": "beta"})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusConflict {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, string(body))
@@ -144,7 +144,7 @@ func TestTags_DeleteCascadesFromTasks(t *testing.T) {
 	}
 
 	resp := doJSON(t, http.MethodDelete, fmt.Sprintf("%s/api/v1/tags/%d", fx.server.URL, tagRow.ID), nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}

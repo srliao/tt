@@ -70,7 +70,7 @@ func TestTasks_CreateAndGet(t *testing.T) {
 		"notes": "from the store",
 		"tags":  []string{"errand"},
 	})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, string(body))
@@ -84,7 +84,7 @@ func TestTasks_CreateAndGet(t *testing.T) {
 	}
 
 	resp2 := doJSON(t, http.MethodGet, fmt.Sprintf("%s/api/v1/tasks/%d", fx.server.URL, created.ID), nil)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("get status = %d", resp2.StatusCode)
 	}
@@ -101,7 +101,7 @@ func TestTasks_CreateEmptyTitleIs400(t *testing.T) {
 	resp := doJSON(t, http.MethodPost, fx.server.URL+"/api/v1/tasks", map[string]any{
 		"title": "  ",
 	})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -128,7 +128,7 @@ func TestTasks_List(t *testing.T) {
 		}
 	}
 	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -154,7 +154,7 @@ func TestTasks_ListFilterByState(t *testing.T) {
 	}
 
 	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?state=done", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	tasks := decodeTasks(t, resp)
 	if len(tasks) != 1 || tasks[0].ID != a.ID {
 		t.Fatalf("filtered = %+v", tasks)
@@ -190,7 +190,7 @@ func TestTasks_ListFilterByTagAND(t *testing.T) {
 	}
 
 	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag=work&tag=urgent", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	tasks := decodeTasks(t, resp)
 	if len(tasks) != 1 || tasks[0].ID != t1.ID {
 		t.Fatalf("AND filter result = %+v", tasks)
@@ -210,7 +210,7 @@ func TestTasks_ListSearch(t *testing.T) {
 	}
 
 	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?q=milk", nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	tasks := decodeTasks(t, resp)
 	if len(tasks) != 1 || !strings.Contains(tasks[0].Title, "milk") {
 		t.Fatalf("search = %+v", tasks)
@@ -233,7 +233,7 @@ func TestTasks_ListSortDueDateDesc(t *testing.T) {
 
 	urlStr := fx.server.URL + "/api/v1/tasks?sort=due_date&asc=false"
 	resp := doJSON(t, http.MethodGet, urlStr, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	tasks := decodeTasks(t, resp)
 	if len(tasks) < 2 {
 		t.Fatalf("len = %d", len(tasks))
@@ -256,7 +256,7 @@ func TestTasks_Patch(t *testing.T) {
 		"notes": "updated",
 		"tags":  []string{"hello"},
 	})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, string(body))
@@ -281,7 +281,7 @@ func TestTasks_SetState(t *testing.T) {
 	resp := doJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/tasks/%d/state", fx.server.URL, t1.ID), map[string]any{
 		"state": "done",
 	})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -302,7 +302,7 @@ func TestTasks_StageAndUnstage(t *testing.T) {
 	stageURL := fmt.Sprintf("%s/api/v1/tasks/%d/stage", fx.server.URL, t1.ID)
 
 	resp := doJSON(t, http.MethodPost, stageURL, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("stage status = %d", resp.StatusCode)
 	}
@@ -312,7 +312,7 @@ func TestTasks_StageAndUnstage(t *testing.T) {
 	}
 
 	resp2 := doJSON(t, http.MethodDelete, stageURL, nil)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("unstage status = %d", resp2.StatusCode)
 	}
@@ -336,7 +336,7 @@ func TestTasks_ReorderMain(t *testing.T) {
 		"before_id": a.ID,
 		"after_id":  b.ID,
 	})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, string(body))
@@ -357,14 +357,14 @@ func TestTasks_Delete(t *testing.T) {
 	}
 	delURL := fmt.Sprintf("%s/api/v1/tasks/%d", fx.server.URL, t1.ID)
 	resp := doJSON(t, http.MethodDelete, delURL, nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, string(body))
 	}
 
 	resp2 := doJSON(t, http.MethodGet, delURL, nil)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	if resp2.StatusCode != http.StatusNotFound {
 		t.Fatalf("subsequent GET status = %d", resp2.StatusCode)
 	}
@@ -394,7 +394,7 @@ func TestTasks_InvalidStateRejected(t *testing.T) {
 	resp := doJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/tasks/%d/state", fx.server.URL, t1.ID), map[string]any{
 		"state": "weird",
 	})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -417,7 +417,7 @@ func TestTasks_InvalidListFilters(t *testing.T) {
 		u, _ := url.Parse(fx.server.URL + "/api/v1/tasks")
 		u.RawQuery = qs
 		resp := doJSON(t, http.MethodGet, u.String(), nil)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Fatalf("%q: status = %d", qs, resp.StatusCode)
 		}

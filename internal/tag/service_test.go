@@ -39,16 +39,16 @@ func TestCreateAndListSorted(t *testing.T) {
 	}
 }
 
-func TestCreateTrimsAndRejectsEmpty(t *testing.T) {
+func TestCreateNormalizesAndRejectsEmpty(t *testing.T) {
 	ctx := context.Background()
 	svc := newSvc(t)
 
-	tg, err := svc.Create(ctx, "  spaced  ")
+	tg, err := svc.Create(ctx, "  Spaced  ")
 	if err != nil {
 		t.Fatalf("Create(spaced): %v", err)
 	}
 	if tg.Name != "spaced" {
-		t.Errorf("trimmed name = %q, want %q", tg.Name, "spaced")
+		t.Errorf("normalized name = %q, want %q", tg.Name, "spaced")
 	}
 
 	if _, err := svc.Create(ctx, ""); err == nil {
@@ -56,6 +56,78 @@ func TestCreateTrimsAndRejectsEmpty(t *testing.T) {
 	}
 	if _, err := svc.Create(ctx, "   "); err == nil {
 		t.Errorf("Create(whitespace): expected error, got nil")
+	}
+}
+
+func TestCreateIsCaseInsensitive(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+
+	a, err := svc.Create(ctx, "Work")
+	if err != nil {
+		t.Fatalf("Create(Work): %v", err)
+	}
+	if a.Name != "work" {
+		t.Errorf("Create(Work) name = %q, want %q", a.Name, "work")
+	}
+
+	b, err := svc.Create(ctx, "WORK")
+	if err != nil {
+		t.Fatalf("Create(WORK): %v", err)
+	}
+	if b.ID != a.ID {
+		t.Errorf("Create(WORK) returned new id %d, want existing id %d", b.ID, a.ID)
+	}
+
+	got, err := svc.GetByName(ctx, "WoRk")
+	if err != nil {
+		t.Fatalf("GetByName(WoRk): %v", err)
+	}
+	if got == nil || got.ID != a.ID {
+		t.Errorf("GetByName(WoRk) = %+v, want id %d", got, a.ID)
+	}
+}
+
+func TestRenameLowercases(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+
+	tg, err := svc.Create(ctx, "old")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	renamed, err := svc.Rename(ctx, tg.ID, "  NewName  ")
+	if err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if renamed.Name != "newname" {
+		t.Errorf("Rename name = %q, want %q", renamed.Name, "newname")
+	}
+}
+
+func TestResolveLowercasesAndDedupesByCase(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+
+	ids, err := svc.Resolve(ctx, []string{"Work", "WORK", "home"}, true)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("Resolve returned %d ids (%v), want 2", len(ids), ids)
+	}
+
+	got, err := svc.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("List length = %d, want 2 (%+v)", len(got), got)
+	}
+	for _, tg := range got {
+		if tg.Name != strings.ToLower(tg.Name) {
+			t.Errorf("stored tag name %q not lowercase", tg.Name)
+		}
 	}
 }
 

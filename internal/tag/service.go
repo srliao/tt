@@ -39,38 +39,39 @@ func New(store *db.Store) *Impl {
 	return &Impl{store: store, q: store.Queries()}
 }
 
-// Create inserts a new tag with the given name. The name is trimmed before
-// insertion; an empty or whitespace-only name is rejected. To keep callers
-// (especially Resolve) idempotent, Create first looks up the name and returns
-// the existing tag if found instead of triggering a UNIQUE constraint error.
+// Create inserts a new tag with the given name. The name is normalized
+// (trimmed + lowercased) before insertion; an empty or whitespace-only name is
+// rejected. To keep callers (especially Resolve) idempotent, Create first
+// looks up the name and returns the existing tag if found instead of
+// triggering a UNIQUE constraint error.
 func (s *Impl) Create(ctx context.Context, name string) (Tag, error) {
-	trimmed := strings.TrimSpace(name)
-	if trimmed == "" {
+	normalized := normalize(name)
+	if normalized == "" {
 		return Tag{}, errors.New("tag: name is required")
 	}
 
-	if existing, err := s.GetByName(ctx, trimmed); err != nil {
+	if existing, err := s.GetByName(ctx, normalized); err != nil {
 		return Tag{}, err
 	} else if existing != nil {
 		return *existing, nil
 	}
 
-	row, err := s.q.CreateTag(ctx, trimmed)
+	row, err := s.q.CreateTag(ctx, normalized)
 	if err != nil {
-		return Tag{}, fmt.Errorf("tag: create %q: %w", trimmed, err)
+		return Tag{}, fmt.Errorf("tag: create %q: %w", normalized, err)
 	}
 	return rowToTag(row), nil
 }
 
-// Rename updates the name of tag id. The new name is trimmed and rejected if
-// empty.
+// Rename updates the name of tag id. The new name is normalized (trimmed +
+// lowercased) and rejected if empty.
 func (s *Impl) Rename(ctx context.Context, id int64, name string) (Tag, error) {
-	trimmed := strings.TrimSpace(name)
-	if trimmed == "" {
+	normalized := normalize(name)
+	if normalized == "" {
 		return Tag{}, errors.New("tag: name is required")
 	}
 	row, err := s.q.RenameTag(ctx, sqlcgen.RenameTagParams{
-		Name: trimmed,
+		Name: normalized,
 		ID:   id,
 	})
 	if err != nil {
@@ -100,16 +101,17 @@ func (s *Impl) List(ctx context.Context) ([]Tag, error) {
 	return out, nil
 }
 
-// GetByName returns the tag with the supplied (untrimmed) name. Returns
-// (nil, nil) when no row matches so callers can distinguish "missing" from
-// "lookup failed".
+// GetByName returns the tag whose stored name matches the normalized form of
+// the supplied name. Returns (nil, nil) when no row matches so callers can
+// distinguish "missing" from "lookup failed".
 func (s *Impl) GetByName(ctx context.Context, name string) (*Tag, error) {
-	row, err := s.q.GetTagByName(ctx, name)
+	normalized := normalize(name)
+	row, err := s.q.GetTagByName(ctx, normalized)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("tag: get by name %q: %w", name, err)
+		return nil, fmt.Errorf("tag: get by name %q: %w", normalized, err)
 	}
 	t := rowToTag(row)
 	return &t, nil
@@ -124,7 +126,7 @@ func (s *Impl) Resolve(ctx context.Context, names []string, autoCreate bool) ([]
 	seen := make(map[string]struct{}, len(names))
 	unique := make([]string, 0, len(names))
 	for _, raw := range names {
-		n := strings.TrimSpace(raw)
+		n := normalize(raw)
 		if n == "" {
 			continue
 		}
@@ -161,6 +163,14 @@ func (s *Impl) Resolve(ctx context.Context, names []string, autoCreate bool) ([]
 		return nil, fmt.Errorf("tag: unknown tags: %s", strings.Join(missing, ", "))
 	}
 	return ids, nil
+}
+
+// normalize is the single canonical form for tag names: trimmed whitespace
+// and lowercased. All entry points (Create, Rename, GetByName, Resolve) feed
+// names through this so storage and lookups stay case-insensitive regardless
+// of what the user typed.
+func normalize(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 // rowToTag projects a sqlc-generated Tag row into the domain type.
