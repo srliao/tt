@@ -27,6 +27,7 @@ import { EditTaskModal } from './edit-task-modal';
 import { FilterSidebar } from './filter-sidebar';
 import { InlineTagEditor } from './inline-tag-editor';
 import { TaskTable } from './task-table';
+import { useSelection } from './use-selection';
 import { applyQuickFilter, hasActiveFilters, useTaskListSearch } from './use-task-list-search';
 
 export function TasksPage() {
@@ -46,7 +47,7 @@ export function TasksPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [editingTags, setEditingTags] = useState<Task | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const selection = useSelection(tasks);
 
   useNewTaskListener(() => setCreating(true));
 
@@ -92,8 +93,8 @@ export function TasksPage() {
           <TaskTable
             tasks={tasks}
             sort={sort}
-            selectedIds={selectedIds}
-            onSelectedChange={setSelectedIds}
+            selectedIds={selection.selected}
+            onSelectedChange={(next) => selection.setAll(next)}
             onEdit={(t) => setEditing(t)}
             onEditTags={(t) => setEditingTags(t)}
             shortcutsDisabled={editingTags !== null}
@@ -102,8 +103,8 @@ export function TasksPage() {
         )}
       </section>
 
-      {selectedIds.size > 0 && (
-        <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} />
+      {selection.selected.size > 0 && (
+        <BulkActionBar selectedIds={selection.selected} onClear={() => selection.clear()} />
       )}
 
       <AddTaskModal open={creating} onOpenChange={setCreating} />
