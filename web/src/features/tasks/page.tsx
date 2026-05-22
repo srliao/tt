@@ -24,6 +24,7 @@ import { AddTaskModal, useNewTaskListener } from './add-task-modal';
 import { BulkActionBar } from './bulk-action-bar';
 import { EditTaskModal } from './edit-task-modal';
 import { FilterSidebar } from './filter-sidebar';
+import { InlineTagEditor } from './inline-tag-editor';
 import { TaskTable } from './task-table';
 import { applyQuickFilter, hasActiveFilters, useTaskListSearch } from './use-task-list-search';
 
@@ -43,6 +44,7 @@ export function TasksPage() {
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
+  const [editingTags, setEditingTags] = useState<Task | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
@@ -102,9 +104,12 @@ export function TasksPage() {
             tasks={tasks}
             sort={sort}
             multiSelectMode={multiSelectMode}
+            onMultiSelectModeChange={setMultiSelectMode}
             selectedIds={selectedIds}
             onSelectedChange={setSelectedIds}
             onEdit={(t) => setEditing(t)}
+            onEditTags={(t) => setEditingTags(t)}
+            shortcutsDisabled={editingTags !== null}
             hasFilters={filtersActive}
           />
         )}
@@ -122,6 +127,8 @@ export function TasksPage() {
           if (!next) setEditing(null);
         }}
       />
+
+      <InlineTagEditor task={editingTags} onClose={() => setEditingTags(null)} />
     </div>
   );
 }
