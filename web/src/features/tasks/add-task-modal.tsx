@@ -1,161 +1,74 @@
 /**
- * Task create/edit dialog. Triggered by:
- *   1. The visible "+ New task" button on the /tasks page header (create).
- *   2. The global `tt:new-task` CustomEvent from the `n` shortcut (create).
- *   3. Clicking a task title or its kebab "Edit" item (edit).
+ * Spotlight-style create-task bar. Opened by:
+ *   1. The visible "+ New task" button on the /tasks page header.
+ *   2. The global `tt:new-task` CustomEvent (the `n` shortcut).
  *
- * When `task` is supplied the dialog runs in edit mode and submits via
- * `useUpdateTask()`; otherwise it runs in create mode via `useCreateTask()`.
- * Validation is enforced by zod + RHF; an empty title trips a visible error,
- * mirroring the server's `validation_failed` envelope.
+ * Intentionally minimal — a single bar floating near the top of the screen
+ * with no chrome. Enter creates the task and closes; Esc cancels (handled by
+ * Radix Dialog). When `stageAfterCreate` is set (e.g. on /stage) the new task
+ * is staged immediately so it lands in the user's current focus batch.
  */
 
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { useCreateTask, useUpdateTask } from '@/api/tasks';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import type { Task, TaskCreateInput, TaskUpdateInput } from '@/types/task';
-
-const schema = z.object({
-  title: z.string().trim().min(1, 'Title is required'),
-  notes: z.string().optional(),
-  due_date: z.string().optional(),
-  tags: z.string().optional(),
-});
-
-type FormValues = z.infer<typeof schema>;
+import { Dialog as DialogPrimitive } from 'radix-ui';
+import { useEffect, useRef, useState } from 'react';
+import { useCreateTask, useStageTask } from '@/api/tasks';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 export interface AddTaskModalProps {
   open: boolean;
   onOpenChange: (next: boolean) => void;
-  /** When set, the dialog edits this task instead of creating a new one. */
-  task?: Task | null;
+  /** When true, also stage the new task immediately after creating it. */
+  stageAfterCreate?: boolean;
 }
 
-function taskToFormValues(task: Task | null | undefined): FormValues {
-  if (!task) return { title: '', notes: '', due_date: '', tags: '' };
-  return {
-    title: task.title,
-    notes: task.notes ?? '',
-    due_date: task.due_date ?? '',
-    tags: (task.tags ?? []).join(', '),
-  };
-}
-
-export function AddTaskModal({ open, onOpenChange, task }: AddTaskModalProps) {
+export function AddTaskModal({ open, onOpenChange, stageAfterCreate }: AddTaskModalProps) {
   const createTask = useCreateTask();
-  const updateTask = useUpdateTask();
-  const isEdit = !!task;
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: taskToFormValues(task),
-  });
+  const stageTask = useStageTask();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [title, setTitle] = useState('');
 
-  // Refresh the form whenever the dialog opens or the target task changes,
-  // and clear back to defaults on close so a stale draft doesn't leak into
-  // the next interaction.
   useEffect(() => {
-    if (open) {
-      reset(taskToFormValues(task));
-    } else {
-      reset({ title: '', notes: '', due_date: '', tags: '' });
-    }
-  }, [open, task, reset]);
+    if (!open) setTitle('');
+  }, [open]);
 
-  const onSubmit = handleSubmit(async (values) => {
-    const tags = values.tags
-      ? values.tags
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
-    if (isEdit && task) {
-      const input: TaskUpdateInput = {
-        title: values.title.trim(),
-        notes: values.notes?.trim() ?? '',
-        due_date: values.due_date?.trim() || null,
-        tags,
-      };
-      await updateTask.mutateAsync({ id: task.id, input });
-    } else {
-      const input: TaskCreateInput = {
-        title: values.title.trim(),
-        notes: values.notes?.trim() || undefined,
-        due_date: values.due_date?.trim() || null,
-        tags: tags.length ? tags : undefined,
-      };
-      await createTask.mutateAsync(input);
+  const submit = async () => {
+    const trimmed = title.trim();
+    if (!trimmed || createTask.isPending || stageTask.isPending) return;
+    const created = await createTask.mutateAsync({ title: trimmed });
+    if (stageAfterCreate) {
+      await stageTask.mutateAsync(created.id);
     }
     onOpenChange(false);
-  });
-
-  // Cmd/Ctrl-Enter submits from any field.
-  const onKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
-    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-      event.preventDefault();
-      void onSubmit();
-    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit task' : 'New task'}</DialogTitle>
-        </DialogHeader>
-        <form className="flex flex-col gap-3" onSubmit={onSubmit} onKeyDown={onKeyDown}>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="add-task-title">Title</Label>
-            <Input id="add-task-title" autoFocus {...register('title')} />
-            {errors.title && (
-              <p className="text-xs text-destructive" role="alert">
-                {errors.title.message}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="add-task-notes">Notes</Label>
-            <textarea
-              id="add-task-notes"
-              rows={3}
-              className="min-h-16 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-              {...register('notes')}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="add-task-due">Due date</Label>
-              <Input id="add-task-due" type="date" {...register('due_date')} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="add-task-tags">Tags</Label>
-              <Input id="add-task-tags" placeholder="comma,separated" {...register('tags')} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isEdit ? 'Save changes' : 'Create task'}
-            </Button>
-          </DialogFooter>
+      <DialogContent
+        showCloseButton={false}
+        className="top-[20%] -translate-y-0 gap-0 p-0 sm:max-w-lg"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
+      >
+        <DialogPrimitive.Description className="sr-only">
+          Type a title and press Enter to create a new task. Press Escape to cancel.
+        </DialogPrimitive.Description>
+        <DialogTitle className="sr-only">New task</DialogTitle>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
+          <input
+            ref={inputRef}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="New task…"
+            aria-label="New task title"
+            className="w-full bg-transparent px-5 py-4 text-lg outline-none placeholder:text-muted-foreground"
+          />
         </form>
       </DialogContent>
     </Dialog>
@@ -163,9 +76,8 @@ export function AddTaskModal({ open, onOpenChange, task }: AddTaskModalProps) {
 }
 
 /**
- * Imperative wrapper around `AddTaskModal` that opens itself in response to
- * the global `tt:new-task` event. Use this on the /tasks page so the `n`
- * keyboard shortcut works.
+ * Imperative listener for the global `tt:new-task` event (dispatched by the
+ * `n` shortcut). Pages mount this so `n` opens their create modal.
  */
 export function useNewTaskListener(onOpen: () => void) {
   useEffect(() => {

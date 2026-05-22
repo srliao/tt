@@ -3,14 +3,13 @@
  *
  * - The top bar with "N staged" count + Clear-finished + Clear-stage + "Add
  *   from list →" actions.
+ * - `<AddTaskModal stageAfterCreate>` — opened by the global `n` shortcut so
+ *   the new task is staged immediately.
  * - The `<SoftCapHint>` banner when count > 7.
  * - The `<StageList>` (dnd-kit reorder + per-row state cycle + unstage).
  * - Per-page j/k/Enter/e/u/space/d shortcuts, scoped to the list container.
- * - The shared edit modal mounted at the bottom — opened either by clicking
- *   a row title or pressing `e`/`Enter` on a focused row.
- *
- * Per spec §6 the empty state nudges the user to /tasks rather than to a
- * "create staged task" affordance.
+ * - `<EditTaskModal>` mounted at the bottom — opened either by clicking a
+ *   row title or pressing `e`/`Enter` on a focused row.
  */
 
 import { Link, useNavigate } from '@tanstack/react-router';
@@ -31,7 +30,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import type { Task } from '@/types/task';
-import { AddTaskModal } from '../tasks/add-task-modal';
+import { AddTaskModal, useNewTaskListener } from '../tasks/add-task-modal';
+import { EditTaskModal } from '../tasks/edit-task-modal';
 import { SoftCapHint } from './soft-cap-hint';
 import { StageList } from './stage-list';
 import { nextState } from './stage-row';
@@ -43,9 +43,12 @@ export function StagePage() {
   const setState = useSetTaskState();
   const unstage = useUnstageTask();
 
+  const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [focusedId, setFocusedId] = useState<number | null>(null);
+
+  useNewTaskListener(() => setCreating(true));
 
   const containerRef = useRef<HTMLDivElement>(null);
   useStageShortcuts({
@@ -134,12 +137,13 @@ export function StagePage() {
         )}
       </div>
 
-      <AddTaskModal
-        open={!!editing}
+      <AddTaskModal open={creating} onOpenChange={setCreating} stageAfterCreate />
+
+      <EditTaskModal
+        task={editing}
         onOpenChange={(next) => {
           if (!next) setEditing(null);
         }}
-        task={editing}
       />
     </section>
   );
