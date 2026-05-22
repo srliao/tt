@@ -13,6 +13,7 @@
  *   "deleted" chip without an extra round-trip.
  */
 
+import type { Query } from '@tanstack/react-query';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { Log, Run, RunStatus } from '@/types/run';
@@ -65,9 +66,17 @@ export interface RunDetail extends Run {
   spawned_tasks: SpawnedTaskSummary[];
 }
 
+export type RefetchIntervalArg =
+  | number
+  | false
+  | ((query: Query<RunDetail, Error>) => number | false | undefined);
+
 export interface UseRunOptions {
-  /** When provided, override the polling interval. Default = no polling. */
-  refetchInterval?: number | false;
+  /**
+   * Static interval (ms), `false` to disable, or a function that receives the
+   * current `Query` (read `query.state.data` for status-aware polling).
+   */
+  refetchInterval?: RefetchIntervalArg;
 }
 
 export function useRun(id: number | undefined, opts: UseRunOptions = {}) {
