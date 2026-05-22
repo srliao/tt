@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Task } from '@/types/task';
@@ -124,6 +124,7 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 1, title: 'A' })]}
           sort="priority"
+          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={() => {}}
@@ -140,6 +141,7 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 1, title: 'A' })]}
           sort="title"
+          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={() => {}}
@@ -147,6 +149,55 @@ describe('TaskTable', () => {
       ),
     );
     expect(screen.queryByRole('button', { name: 'Reorder A' })).toBeNull();
+  });
+
+  it('hides the multi-select checkbox unless multiSelectMode is on', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const { rerender } = render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' })]}
+          sort="title"
+          multiSelectMode={false}
+          selectedIds={new Set()}
+          onSelectedChange={() => {}}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    expect(screen.queryByRole('checkbox', { name: 'Select A' })).toBeNull();
+
+    rerender(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' })]}
+          sort="title"
+          multiSelectMode={true}
+          selectedIds={new Set()}
+          onSelectedChange={() => {}}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    expect(screen.getByRole('checkbox', { name: 'Select A' })).toBeTruthy();
+  });
+
+  it('renders the stage bookmark and done radio for each row', () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' })]}
+          sort="title"
+          multiSelectMode={false}
+          selectedIds={new Set()}
+          onSelectedChange={() => {}}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    expect(screen.getByRole('button', { name: 'Stage A' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Mark A as done/ })).toBeTruthy();
   });
 
   it('clicking the title invokes onEdit', () => {
@@ -157,6 +208,7 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 7, title: 'Edit me' })]}
           sort="title"
+          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={onEdit}
@@ -167,44 +219,5 @@ describe('TaskTable', () => {
       screen.getByRole('button', { name: 'Edit me' }).click();
     });
     expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 7, title: 'Edit me' }));
-  });
-
-  it('kebab "Mark done" calls POST /tasks/:id/state', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({}));
-    vi.stubGlobal('fetch', fetchMock);
-    render(
-      wrap(
-        <TaskTable
-          tasks={[task({ id: 42, title: 'A' })]}
-          sort="title"
-          selectedIds={new Set()}
-          onSelectedChange={() => {}}
-          onEdit={() => {}}
-        />,
-      ),
-    );
-
-    // Radix opens its dropdown on pointerdown; simulate that explicitly.
-    const trigger = screen.getByRole('button', { name: 'Actions for A' });
-    await act(async () => {
-      fireEvent.pointerDown(trigger, { button: 0, pointerType: 'mouse' });
-      fireEvent.pointerUp(trigger, { button: 0, pointerType: 'mouse' });
-      fireEvent.click(trigger);
-    });
-
-    const markDone = await screen.findByText('Mark done');
-    await act(async () => {
-      fireEvent.click(markDone);
-    });
-
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        '/api/v1/tasks/42/state',
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ state: 'done' }),
-        }),
-      );
-    });
   });
 });

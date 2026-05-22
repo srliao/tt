@@ -67,9 +67,13 @@ See [07-http-api.md](./07-http-api.md) for the step-by-step. TL;DR:
 1. Edit the page's table component (e.g., `web/src/features/tasks/task-table.tsx`):
    - Add the `<th>` to the thead row.
    - Pass any new prop to `TaskRow` / `SortableRow`.
-2. Edit `task-row.tsx`: render the new `<td>`.
+2. Edit `task-row.tsx`: render the new `<td>`. Note the canonical row column order (checkbox / drag / done-toggle / title / bookmark) documented in [08-frontend.md](./08-frontend.md#task--stage-row-layout) — insert new columns inside the title block when possible to keep the tasks and stage rows symmetrical.
 3. If the value is server-derived, ensure the `Task` type already includes it. Otherwise see "Add a field" above.
 4. Update tests in `task-table.test.tsx`.
+
+## Add a per-task destructive / state action
+
+Row UI has no kebab menu — destructive / one-off state changes belong in the `EditTaskModal` footer (`web/src/features/tasks/edit-task-modal.tsx`). Pattern: add a footer `<Button>`; if it's destructive, gate behind an `AlertDialog` confirm (see the existing Delete button). The done/not-done toggle is the only state action that lives on the row itself.
 
 ## Add a global keyboard shortcut
 

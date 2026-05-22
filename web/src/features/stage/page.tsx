@@ -34,7 +34,7 @@ import { AddTaskModal, useNewTaskListener } from '../tasks/add-task-modal';
 import { EditTaskModal } from '../tasks/edit-task-modal';
 import { SoftCapHint } from './soft-cap-hint';
 import { StageList } from './stage-list';
-import { nextState } from './stage-row';
+import { toggleDone } from './stage-row';
 
 export function StagePage() {
   const { data: tasks = [], isLoading } = useStagedTasks();
@@ -57,7 +57,7 @@ export function StagePage() {
     focusedId,
     setFocusedId,
     onEdit: (t) => setEditing(t),
-    onCycleState: (id, st) => setState.mutate({ id, state: st }),
+    onToggleDone: (id, st) => setState.mutate({ id, state: st }),
     onUnstage: (id) => unstage.mutate(id),
   });
 
@@ -169,7 +169,7 @@ interface StageShortcutsArgs {
   focusedId: number | null;
   setFocusedId: (id: number | null) => void;
   onEdit: (task: Task) => void;
-  onCycleState: (id: number, state: ReturnType<typeof nextState>) => void;
+  onToggleDone: (id: number, state: ReturnType<typeof toggleDone>) => void;
   onUnstage: (id: number) => void;
 }
 
@@ -181,8 +181,8 @@ interface StageShortcutsArgs {
  * - `j`/`k` — move focus down/up.
  * - `Enter`/`e` — open the edit modal for the focused row.
  * - `u` — unstage the focused row.
- * - `d` — cycle the focused row's state (not_done → done → cancelled → ...).
- * - `space` — also cycles state (matches the spec's "space toggles done").
+ * - `d` — toggle the focused row's done state (done ↔ not_done).
+ * - `space` — same as `d`.
  */
 function useStageShortcuts({
   containerRef,
@@ -190,7 +190,7 @@ function useStageShortcuts({
   focusedId,
   setFocusedId,
   onEdit,
-  onCycleState,
+  onToggleDone,
   onUnstage,
 }: StageShortcutsArgs) {
   useEffect(() => {
@@ -239,11 +239,11 @@ function useStageShortcuts({
         onUnstage(focused.id);
       } else if (event.key === 'd' || event.key === ' ') {
         event.preventDefault();
-        onCycleState(focused.id, nextState(focused.state));
+        onToggleDone(focused.id, toggleDone(focused.state));
       }
     };
 
     el.addEventListener('keydown', handler);
     return () => el.removeEventListener('keydown', handler);
-  }, [containerRef, tasks, focusedId, setFocusedId, onEdit, onCycleState, onUnstage]);
+  }, [containerRef, tasks, focusedId, setFocusedId, onEdit, onToggleDone, onUnstage]);
 }

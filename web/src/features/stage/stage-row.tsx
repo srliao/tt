@@ -1,26 +1,16 @@
 /**
- * Single staged task row rendered inside `<StageList>`. Unlike the /tasks
- * table this is a flexbox row (not a `<tr>`) so dnd-kit can hoist a single
- * sortable item without table-cell shimming.
+ * Single staged task row rendered inside `<StageList>`. Flexbox row so dnd-kit
+ * can hoist a single sortable item without table-cell shimming.
  *
- * Done/cancelled rows are visually de-emphasised (strikethrough title +
- * desaturated background) but stay in place at their current `staged_order`,
- * per spec §6.
+ * Layout (left → right): drag handle, done radio, content (title + tags +
+ * due), bookmark (toggles stage/unstage). Done/cancelled rows are visually
+ * de-emphasised but stay in place at their current `staged_order`.
  */
 
 import { format, isPast, parseISO } from 'date-fns';
-import {
-  AlertTriangleIcon,
-  CheckCircle2Icon,
-  CircleDashedIcon,
-  CircleIcon,
-  GripVerticalIcon,
-  XCircleIcon,
-  XIcon,
-} from 'lucide-react';
+import { AlertTriangleIcon, BookmarkIcon, CheckIcon, GripVerticalIcon } from 'lucide-react';
 import { type CSSProperties, forwardRef, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Task, TaskState } from '@/types/task';
 
@@ -33,33 +23,18 @@ export interface StageRowProps {
   /** Inline style — used to apply dnd-kit transforms on the row. */
   style?: CSSProperties;
   onEdit: () => void;
-  onCycleState: () => void;
+  onToggleDone: () => void;
   onUnstage: () => void;
 }
 
-/** State-cycle order used by the inline toggle button + `d` shortcut. */
-export function nextState(state: TaskState): TaskState {
-  switch (state) {
-    case 'not_done':
-      return 'done';
-    case 'done':
-      return 'cancelled';
-    case 'cancelled':
-      return 'not_done';
-  }
+/**
+ * Toggle helper: done ↔ not_done. Cancelled tasks become done on click (the
+ * radio shows them as "not done"). Cancelling is no longer a click action;
+ * it lives in the edit modal.
+ */
+export function toggleDone(state: TaskState): TaskState {
+  return state === 'done' ? 'not_done' : 'done';
 }
-
-const STATE_ICON: Record<TaskState, typeof CircleIcon> = {
-  not_done: CircleIcon,
-  done: CheckCircle2Icon,
-  cancelled: CircleDashedIcon,
-};
-
-const STATE_LABEL: Record<TaskState, string> = {
-  not_done: 'Not done',
-  done: 'Done',
-  cancelled: 'Cancelled',
-};
 
 function dueBadge(task: Task) {
   if (!task.due_date) return null;
@@ -83,12 +58,43 @@ function dueBadge(task: Task) {
   );
 }
 
+/**
+ * Done-state radio. Empty circle for not_done/cancelled; filled with check
+ * for done. Cancelled rows still get a strikethrough on the title.
+ */
+function DoneRadio({
+  state,
+  onClick,
+  title,
+}: {
+  state: TaskState;
+  onClick: () => void;
+  title: string;
+}) {
+  const done = state === 'done';
+  return (
+    <button
+      type="button"
+      aria-pressed={done}
+      aria-label={`Mark ${title} as ${done ? 'not done' : 'done'}`}
+      onClick={onClick}
+      className={cn(
+        'inline-flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors',
+        done
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-muted-foreground/60 text-transparent hover:border-foreground',
+      )}
+    >
+      <CheckIcon className="size-3" aria-hidden="true" />
+    </button>
+  );
+}
+
 export const StageRow = forwardRef<HTMLDivElement, StageRowProps>(function StageRow(
-  { task, focused, dragHandle, style, onEdit, onCycleState, onUnstage },
+  { task, focused, dragHandle, style, onEdit, onToggleDone, onUnstage },
   ref,
 ) {
   const finished = task.state === 'done' || task.state === 'cancelled';
-  const StateIcon = STATE_ICON[task.state];
 
   return (
     <div
@@ -109,18 +115,7 @@ export const StageRow = forwardRef<HTMLDivElement, StageRowProps>(function Stage
         </span>
       )}
 
-      <button
-        type="button"
-        aria-label={`Cycle state for ${task.title} (currently ${STATE_LABEL[task.state]})`}
-        className={cn(
-          'inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent',
-          task.state === 'done' && 'text-emerald-600 dark:text-emerald-400',
-          task.state === 'cancelled' && 'text-destructive',
-        )}
-        onClick={onCycleState}
-      >
-        <StateIcon className="size-4" aria-hidden="true" />
-      </button>
+      <DoneRadio state={task.state} onClick={onToggleDone} title={task.title} />
 
       <button
         type="button"
@@ -143,19 +138,15 @@ export const StageRow = forwardRef<HTMLDivElement, StageRowProps>(function Stage
 
       <div className="shrink-0">{dueBadge(task)}</div>
 
-      <Button
+      <button
         type="button"
-        variant="ghost"
-        size="icon-sm"
         aria-label={`Unstage ${task.title}`}
+        aria-pressed={true}
         onClick={onUnstage}
+        className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-primary transition-colors hover:bg-accent hover:text-accent-foreground"
       >
-        {task.state === 'cancelled' ? (
-          <XCircleIcon className="size-4" aria-hidden="true" />
-        ) : (
-          <XIcon className="size-4" aria-hidden="true" />
-        )}
-      </Button>
+        <BookmarkIcon className="size-4 fill-current" aria-hidden="true" />
+      </button>
     </div>
   );
 });

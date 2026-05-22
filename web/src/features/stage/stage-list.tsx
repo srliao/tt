@@ -22,7 +22,7 @@ import { type CSSProperties, useEffect, useMemo, useState } from 'react';
 import { useReorderStage } from '@/api/stage';
 import { useSetTaskState, useUnstageTask } from '@/api/tasks';
 import type { Task } from '@/types/task';
-import { nextState, StageRow } from './stage-row';
+import { StageRow, toggleDone } from './stage-row';
 
 export interface StageListProps {
   tasks: Task[];
@@ -110,7 +110,7 @@ export function StageList({ tasks, focusedId, onEdit }: StageListProps) {
               task={task}
               focused={task.id === focusedId}
               onEdit={() => onEdit(task)}
-              onCycleState={() => setState.mutate({ id: task.id, state: nextState(task.state) })}
+              onToggleDone={() => setState.mutate({ id: task.id, state: toggleDone(task.state) })}
               onUnstage={() => unstage.mutate(task.id)}
             />
           ))}
@@ -124,7 +124,7 @@ interface SortableStageRowProps {
   task: Task;
   focused: boolean;
   onEdit: () => void;
-  onCycleState: () => void;
+  onToggleDone: () => void;
   onUnstage: () => void;
 }
 
@@ -132,7 +132,7 @@ function SortableStageRow({
   task,
   focused,
   onEdit,
-  onCycleState,
+  onToggleDone,
   onUnstage,
 }: SortableStageRowProps) {
   const { setNodeRef, transform, transition, attributes, listeners, isDragging } = useSortable({
@@ -163,7 +163,7 @@ function SortableStageRow({
         </button>
       }
       onEdit={onEdit}
-      onCycleState={onCycleState}
+      onToggleDone={onToggleDone}
       onUnstage={onUnstage}
     />
   );

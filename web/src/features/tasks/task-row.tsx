@@ -1,31 +1,19 @@
 /**
  * Single task row rendered inside `<TaskTable>`. Kept in its own file so the
- * table can stay focused on layout/keyboard handling while individual rows
- * own click + kebab-menu behaviour.
+ * table can stay focused on layout/keyboard handling.
  *
- * Renders columns: bulk-select checkbox, drag handle (conditional), stage
- * toggle button, title (click → edit), state pill, tag chips, due date
- * (overdue indicator), kebab menu.
+ * Column order (left → right): optional multi-select checkbox (only when
+ * `multiSelectMode` is on), optional drag handle (only when sort=priority),
+ * done radio, title (+ notes), tags, due, bookmark on the right that toggles
+ * stage/unstage. Edit, delete, and "mark cancelled" live in the edit modal —
+ * there's no kebab menu.
  */
 
 import { format, isPast, parseISO } from 'date-fns';
-import {
-  AlertTriangleIcon,
-  BookmarkIcon,
-  GripVerticalIcon,
-  MoreHorizontalIcon,
-} from 'lucide-react';
+import { AlertTriangleIcon, BookmarkIcon, CheckIcon, GripVerticalIcon } from 'lucide-react';
 import { type CSSProperties, forwardRef, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import type { Task, TaskState } from '@/types/task';
 
@@ -33,6 +21,8 @@ export interface TaskRowProps {
   task: Task;
   /** When true, the row is currently keyboard-focused (j/k navigation). */
   focused?: boolean;
+  /** When true, render the multi-select checkbox column. */
+  multiSelectMode: boolean;
   /** When true, the row is bulk-selected (checkbox checked). */
   selected: boolean;
   onToggleSelect: (next: boolean) => void;
@@ -43,10 +33,14 @@ export interface TaskRowProps {
   /** Inline style — used to apply dnd-kit transforms on the row. */
   style?: CSSProperties;
   onEdit: () => void;
-  onSetState: (state: TaskState) => void;
+  onToggleDone: () => void;
   onStage: () => void;
   onUnstage: () => void;
-  onDelete: () => void;
+}
+
+/** Toggle helper: done ↔ not_done. Cancelled becomes done on click. */
+export function toggleDoneState(state: TaskState): TaskState {
+  return state === 'done' ? 'not_done' : 'done';
 }
 
 function dueBadge(task: Task) {
@@ -74,40 +68,54 @@ function dueBadge(task: Task) {
   );
 }
 
-function stateVariant(state: TaskState): 'default' | 'secondary' | 'outline' {
-  switch (state) {
-    case 'done':
-      return 'secondary';
-    case 'cancelled':
-      return 'outline';
-    default:
-      return 'default';
-  }
+function DoneRadio({
+  state,
+  onClick,
+  title,
+}: {
+  state: TaskState;
+  onClick: () => void;
+  title: string;
+}) {
+  const done = state === 'done';
+  return (
+    <button
+      type="button"
+      aria-pressed={done}
+      aria-label={`Mark ${title} as ${done ? 'not done' : 'done'}`}
+      onClick={onClick}
+      className={cn(
+        'inline-flex size-5 shrink-0 items-center justify-center rounded-full border transition-colors',
+        done
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-muted-foreground/60 text-transparent hover:border-foreground',
+      )}
+    >
+      <CheckIcon className="size-3" aria-hidden="true" />
+    </button>
+  );
 }
-
-const STATE_LABEL: Record<TaskState, string> = {
-  not_done: 'Open',
-  done: 'Done',
-  cancelled: 'Cancelled',
-};
 
 export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function TaskRow(
   {
     task,
     focused,
+    multiSelectMode,
     selected,
     onToggleSelect,
     showDragHandle,
     dragHandle,
     style,
     onEdit,
-    onSetState,
+    onToggleDone,
     onStage,
     onUnstage,
-    onDelete,
   },
   ref,
 ) {
+  const staged = task.staged_order !== null;
+  const finished = task.state === 'done' || task.state === 'cancelled';
+
   return (
     <tr
       ref={ref}
@@ -115,15 +123,21 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
       data-task-id={task.id}
       data-focused={focused || undefined}
       data-selected={selected || undefined}
-      className="border-b hover:bg-muted/40 data-[focused]:bg-accent/40"
+      data-state={task.state}
+      className={cn(
+        'border-b hover:bg-muted/40 data-[focused]:bg-accent/40',
+        finished && 'opacity-60',
+      )}
     >
-      <td className="px-2 py-2 align-middle">
-        <Checkbox
-          checked={selected}
-          onCheckedChange={(c) => onToggleSelect(c === true)}
-          aria-label={`Select ${task.title}`}
-        />
-      </td>
+      {multiSelectMode && (
+        <td className="px-2 py-2 align-middle">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(c) => onToggleSelect(c === true)}
+            aria-label={`Select ${task.title}`}
+          />
+        </td>
+      )}
       {showDragHandle && (
         <td className="px-1 py-2 align-middle">
           {dragHandle ?? (
@@ -133,39 +147,21 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
           )}
         </td>
       )}
-      <td className="pl-3 pr-2 py-2 align-middle">
-        <button
-          type="button"
-          onClick={() => (task.staged_order === null ? onStage() : onUnstage())}
-          aria-label={task.staged_order === null ? `Stage ${task.title}` : `Unstage ${task.title}`}
-          aria-pressed={task.staged_order !== null}
-          data-staged={task.staged_order !== null || undefined}
-          className={cn(
-            'inline-flex size-7 items-center justify-center rounded-md transition-colors',
-            'hover:bg-accent hover:text-accent-foreground',
-            task.staged_order !== null ? 'text-primary' : 'text-muted-foreground',
-          )}
-        >
-          <BookmarkIcon
-            className={cn('size-4', task.staged_order !== null && 'fill-current')}
-            aria-hidden="true"
-          />
-        </button>
+      <td className="px-2 py-2 align-middle">
+        <DoneRadio state={task.state} onClick={onToggleDone} title={task.title} />
       </td>
       <td className="px-2 py-2 align-middle">
         <button
           type="button"
-          className="text-left text-sm font-medium hover:underline"
+          className={cn(
+            'text-left text-sm font-medium hover:underline',
+            finished && 'line-through text-muted-foreground',
+          )}
           onClick={onEdit}
         >
           {task.title}
         </button>
         {task.notes && <p className="line-clamp-1 text-xs text-muted-foreground">{task.notes}</p>}
-      </td>
-      <td className="px-2 py-2 align-middle">
-        <Badge variant={stateVariant(task.state)} className="text-[10px]">
-          {STATE_LABEL[task.state]}
-        </Badge>
       </td>
       <td className="px-2 py-2 align-middle">
         <div className="flex flex-wrap gap-1">
@@ -177,41 +173,21 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
         </div>
       </td>
       <td className="px-2 py-2 align-middle">{dueBadge(task)}</td>
-      <td className="px-1 py-2 align-middle">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${task.title}`}>
-              <MoreHorizontalIcon />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={onEdit}>Edit</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {task.state !== 'done' && (
-              <DropdownMenuItem onClick={() => onSetState('done')}>Mark done</DropdownMenuItem>
-            )}
-            {task.state !== 'not_done' && (
-              <DropdownMenuItem onClick={() => onSetState('not_done')}>
-                Mark not done
-              </DropdownMenuItem>
-            )}
-            {task.state !== 'cancelled' && (
-              <DropdownMenuItem onClick={() => onSetState('cancelled')}>
-                Mark cancelled
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            {task.staged_order === null ? (
-              <DropdownMenuItem onClick={onStage}>Stage</DropdownMenuItem>
-            ) : (
-              <DropdownMenuItem onClick={onUnstage}>Unstage</DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={onDelete}>
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      <td className="px-2 py-2 align-middle text-right">
+        <button
+          type="button"
+          onClick={() => (staged ? onUnstage() : onStage())}
+          aria-label={staged ? `Unstage ${task.title}` : `Stage ${task.title}`}
+          aria-pressed={staged}
+          data-staged={staged || undefined}
+          className={cn(
+            'inline-flex size-7 items-center justify-center rounded-md transition-colors',
+            'hover:bg-accent hover:text-accent-foreground',
+            staged ? 'text-primary' : 'text-muted-foreground',
+          )}
+        >
+          <BookmarkIcon className={cn('size-4', staged && 'fill-current')} aria-hidden="true" />
+        </button>
       </td>
     </tr>
   );
