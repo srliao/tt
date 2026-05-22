@@ -18,19 +18,15 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import { GripVerticalIcon } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  useDeleteTask,
-  useReorderMain,
-  useSetTaskState,
-  useStageTask,
-  useUnstageTask,
-} from '@/api/tasks';
-import type { Task, TaskSortAxis, TaskState } from '@/types/task';
-import { TaskRow } from './task-row';
+import { useReorderMain, useSetTaskState, useStageTask, useUnstageTask } from '@/api/tasks';
+import type { Task, TaskSortAxis } from '@/types/task';
+import { TaskRow, toggleDoneState } from './task-row';
 
 export interface TaskTableProps {
   tasks: Task[];
   sort: TaskSortAxis;
+  /** When true, render the multi-select checkbox column. */
+  multiSelectMode: boolean;
   selectedIds: Set<number>;
   onSelectedChange: (next: Set<number>) => void;
   onEdit: (task: Task) => void;
@@ -91,6 +87,7 @@ export function computeDragEnd(
 export function TaskTable({
   tasks,
   sort,
+  multiSelectMode,
   selectedIds,
   onSelectedChange,
   onEdit,
@@ -100,7 +97,6 @@ export function TaskTable({
   const setState = useSetTaskState();
   const stage = useStageTask();
   const unstage = useUnstageTask();
-  const del = useDeleteTask();
   const reorder = useReorderMain();
 
   // Optimistic ordering for drag-drop. Resets whenever the underlying server
@@ -127,7 +123,7 @@ export function TaskTable({
     selectedIds,
     onSelectedChange,
     onEdit,
-    onSetState: (id, st) => setState.mutate({ id, state: st }),
+    onToggleDone: (id, st) => setState.mutate({ id, state: st }),
     onStage: (id) => stage.mutate(id),
   });
 
@@ -157,14 +153,14 @@ export function TaskTable({
           enabled={showDragHandle}
           task={task}
           focused={task.id === focusedId}
+          multiSelectMode={multiSelectMode}
           selected={selectedIds.has(task.id)}
           onToggleSelect={(next) => toggleSelect(task.id, next)}
           showDragHandle={showDragHandle}
           onEdit={() => onEdit(task)}
-          onSetState={(st) => setState.mutate({ id: task.id, state: st })}
+          onToggleDone={() => setState.mutate({ id: task.id, state: toggleDoneState(task.state) })}
           onStage={() => stage.mutate(task.id)}
           onUnstage={() => unstage.mutate(task.id)}
-          onDelete={() => del.mutate(task.id)}
         />
       ))}
     </tbody>
@@ -189,14 +185,13 @@ export function TaskTable({
           >
             <thead className="text-xs text-muted-foreground">
               <tr className="border-b">
-                <th className="w-8 px-2 py-2 text-left font-medium" />
+                {multiSelectMode && <th className="w-8 px-2 py-2" />}
                 {showDragHandle && <th className="w-6 px-1 py-2" />}
-                <th className="w-10 pl-3 pr-2 py-2" />
+                <th className="w-8 px-2 py-2" />
                 <th className="px-2 py-2 text-left font-medium">Title</th>
-                <th className="w-20 px-2 py-2 text-left font-medium">State</th>
                 <th className="w-40 px-2 py-2 text-left font-medium">Tags</th>
                 <th className="w-20 px-2 py-2 text-left font-medium">Due</th>
-                <th className="w-8 px-1 py-2" />
+                <th className="w-10 px-2 py-2" />
               </tr>
             </thead>
             {tableBody}
@@ -211,14 +206,14 @@ interface SortableRowProps {
   enabled: boolean;
   task: Task;
   focused: boolean;
+  multiSelectMode: boolean;
   selected: boolean;
   onToggleSelect: (next: boolean) => void;
   showDragHandle: boolean;
   onEdit: () => void;
-  onSetState: (state: TaskState) => void;
+  onToggleDone: () => void;
   onStage: () => void;
   onUnstage: () => void;
-  onDelete: () => void;
 }
 
 /**
@@ -245,6 +240,7 @@ function SortableRow({ enabled, ...row }: SortableRowProps) {
       style={style}
       task={row.task}
       focused={row.focused}
+      multiSelectMode={row.multiSelectMode}
       selected={row.selected}
       onToggleSelect={row.onToggleSelect}
       showDragHandle={row.showDragHandle}
@@ -262,10 +258,9 @@ function SortableRow({ enabled, ...row }: SortableRowProps) {
         ) : null
       }
       onEdit={row.onEdit}
-      onSetState={row.onSetState}
+      onToggleDone={row.onToggleDone}
       onStage={row.onStage}
       onUnstage={row.onUnstage}
-      onDelete={row.onDelete}
     />
   );
 }
@@ -278,7 +273,7 @@ interface TableShortcutsArgs {
   selectedIds: Set<number>;
   onSelectedChange: (next: Set<number>) => void;
   onEdit: (task: Task) => void;
-  onSetState: (id: number, state: TaskState) => void;
+  onToggleDone: (id: number, state: ReturnType<typeof toggleDoneState>) => void;
   onStage: (id: number) => void;
 }
 
@@ -295,7 +290,7 @@ function useTableShortcuts({
   selectedIds,
   onSelectedChange,
   onEdit,
-  onSetState,
+  onToggleDone,
   onStage,
 }: TableShortcutsArgs) {
   useEffect(() => {
@@ -344,8 +339,7 @@ function useTableShortcuts({
         onStage(focusedTask.id);
       } else if (event.key === 'd') {
         event.preventDefault();
-        const next = focusedTask.state === 'done' ? 'not_done' : 'done';
-        onSetState(focusedTask.id, next);
+        onToggleDone(focusedTask.id, toggleDoneState(focusedTask.state));
       } else if (event.key === ' ') {
         event.preventDefault();
         const copy = new Set(selectedIds);
@@ -365,7 +359,7 @@ function useTableShortcuts({
     selectedIds,
     onSelectedChange,
     onEdit,
-    onSetState,
+    onToggleDone,
     onStage,
   ]);
 }

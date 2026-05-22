@@ -15,7 +15,7 @@
  */
 
 import { Link } from '@tanstack/react-router';
-import { PlusIcon } from 'lucide-react';
+import { CheckSquareIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
 import { useTasks } from '@/api/tasks';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,7 @@ export function TasksPage() {
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   useNewTaskListener(() => setCreating(true));
@@ -51,9 +52,24 @@ export function TasksPage() {
       <section className="flex-1 px-4 py-4">
         <header className="mb-3 flex items-center justify-between">
           <h1 className="font-heading text-xl font-medium">Tasks</h1>
-          <Button size="sm" onClick={() => setCreating(true)}>
-            <PlusIcon /> New task
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={multiSelectMode ? 'secondary' : 'outline'}
+              aria-pressed={multiSelectMode}
+              onClick={() => {
+                setMultiSelectMode((v) => {
+                  if (v) setSelectedIds(new Set());
+                  return !v;
+                });
+              }}
+            >
+              <CheckSquareIcon /> Multi-select
+            </Button>
+            <Button size="sm" onClick={() => setCreating(true)}>
+              <PlusIcon /> New task
+            </Button>
+          </div>
         </header>
 
         {showEmpty ? (
@@ -62,6 +78,7 @@ export function TasksPage() {
           <TaskTable
             tasks={tasks}
             sort={sort}
+            multiSelectMode={multiSelectMode}
             selectedIds={selectedIds}
             onSelectedChange={setSelectedIds}
             onEdit={(t) => setEditing(t)}
@@ -70,7 +87,9 @@ export function TasksPage() {
         )}
       </section>
 
-      <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} />
+      {multiSelectMode && (
+        <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} />
+      )}
 
       <AddTaskModal open={creating} onOpenChange={setCreating} />
 

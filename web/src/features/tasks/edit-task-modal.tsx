@@ -1,17 +1,30 @@
 /**
- * Edit-task dialog. Opened by clicking a task title or its kebab "Edit" item
- * on the /tasks or /stage pages. Exposes the full editable surface — title,
- * notes, due date, tags — and submits via `useUpdateTask()`.
+ * Edit-task dialog. Opened by clicking a task title on the /tasks or /stage
+ * pages. Exposes the full editable surface — title, notes, due date, tags —
+ * and submits via `useUpdateTask()`. Also surfaces the two non-form actions
+ * "Mark cancelled" and "Delete" (with a confirm prompt) since the row UI no
+ * longer has a kebab menu.
  *
- * Task creation lives elsewhere (see `quick-add-task.tsx`); this component is
+ * Task creation lives elsewhere (see `add-task-modal.tsx`); this component is
  * edit-only and requires a `task` prop.
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect } from 'react';
+import { Trash2Icon, XCircleIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
-import { useUpdateTask } from '@/api/tasks';
+import { useDeleteTask, useSetTaskState, useUpdateTask } from '@/api/tasks';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -51,7 +64,10 @@ function taskToFormValues(task: Task | null): FormValues {
 
 export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
   const updateTask = useUpdateTask();
+  const setState = useSetTaskState();
+  const deleteTask = useDeleteTask();
   const open = !!task;
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const {
     register,
     handleSubmit,
@@ -67,6 +83,7 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
       reset(taskToFormValues(task));
     } else {
       reset({ title: '', notes: '', due_date: '', tags: '' });
+      setConfirmDelete(false);
     }
   }, [open, task, reset]);
 
@@ -94,6 +111,20 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
       event.preventDefault();
       void onSubmit();
     }
+  };
+
+  const cancelled = task?.state === 'cancelled';
+  const onToggleCancelled = () => {
+    if (!task) return;
+    setState.mutate({ id: task.id, state: cancelled ? 'not_done' : 'cancelled' });
+    onOpenChange(false);
+  };
+
+  const onDelete = () => {
+    if (!task) return;
+    deleteTask.mutate(task.id);
+    setConfirmDelete(false);
+    onOpenChange(false);
   };
 
   return (
@@ -131,16 +162,43 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
               <Input id="edit-task-tags" placeholder="comma,separated" {...register('tags')} />
             </div>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              Save changes
-            </Button>
+          <DialogFooter className="flex-wrap sm:justify-between">
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={onToggleCancelled}>
+                <XCircleIcon /> {cancelled ? 'Un-cancel' : 'Mark cancelled'}
+              </Button>
+              <Button type="button" variant="destructive" onClick={() => setConfirmDelete(true)}>
+                <Trash2Icon /> Delete
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                Save changes
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this task?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This cannot be undone. The task will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={onDelete}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

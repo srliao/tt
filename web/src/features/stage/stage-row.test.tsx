@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Task } from '@/types/task';
-import { nextState, StageRow } from './stage-row';
+import { StageRow, toggleDone } from './stage-row';
 
 function task(partial: Partial<Task> & { id: number; title: string }): Task {
   return {
@@ -20,11 +20,14 @@ function task(partial: Partial<Task> & { id: number; title: string }): Task {
   };
 }
 
-describe('nextState', () => {
-  it('cycles not_done → done → cancelled → not_done', () => {
-    expect(nextState('not_done')).toBe('done');
-    expect(nextState('done')).toBe('cancelled');
-    expect(nextState('cancelled')).toBe('not_done');
+describe('toggleDone', () => {
+  it('toggles between done and not_done', () => {
+    expect(toggleDone('not_done')).toBe('done');
+    expect(toggleDone('done')).toBe('not_done');
+  });
+
+  it('treats cancelled as not_done (clicking the radio marks it done)', () => {
+    expect(toggleDone('cancelled')).toBe('done');
   });
 });
 
@@ -34,7 +37,7 @@ describe('StageRow', () => {
       <StageRow
         task={task({ id: 1, title: 'Buy milk', state: 'done' })}
         onEdit={() => {}}
-        onCycleState={() => {}}
+        onToggleDone={() => {}}
         onUnstage={() => {}}
       />,
     );
@@ -47,7 +50,7 @@ describe('StageRow', () => {
       <StageRow
         task={task({ id: 1, title: 'Skip', state: 'cancelled' })}
         onEdit={() => {}}
-        onCycleState={() => {}}
+        onToggleDone={() => {}}
         onUnstage={() => {}}
       />,
     );
@@ -63,7 +66,7 @@ describe('StageRow', () => {
       <StageRow
         task={task({ id: 1, title: 'Open task' })}
         onEdit={() => {}}
-        onCycleState={() => {}}
+        onToggleDone={() => {}}
         onUnstage={() => {}}
       />,
     );
@@ -71,29 +74,29 @@ describe('StageRow', () => {
     expect(title).not.toHaveClass('line-through');
   });
 
-  it('invokes onCycleState when the state toggle is clicked', () => {
-    const onCycleState = vi.fn();
+  it('invokes onToggleDone when the done radio is clicked', () => {
+    const onToggleDone = vi.fn();
     render(
       <StageRow
         task={task({ id: 5, title: 'Foo' })}
         onEdit={() => {}}
-        onCycleState={onCycleState}
+        onToggleDone={onToggleDone}
         onUnstage={() => {}}
       />,
     );
     act(() => {
-      screen.getByRole('button', { name: /Cycle state for Foo/ }).click();
+      screen.getByRole('button', { name: /Mark Foo as done/ }).click();
     });
-    expect(onCycleState).toHaveBeenCalledTimes(1);
+    expect(onToggleDone).toHaveBeenCalledTimes(1);
   });
 
-  it('invokes onUnstage when the unstage button is clicked', () => {
+  it('invokes onUnstage when the bookmark is clicked', () => {
     const onUnstage = vi.fn();
     render(
       <StageRow
         task={task({ id: 5, title: 'Foo' })}
         onEdit={() => {}}
-        onCycleState={() => {}}
+        onToggleDone={() => {}}
         onUnstage={onUnstage}
       />,
     );
@@ -109,7 +112,7 @@ describe('StageRow', () => {
       <StageRow
         task={task({ id: 5, title: 'Foo' })}
         onEdit={onEdit}
-        onCycleState={() => {}}
+        onToggleDone={() => {}}
         onUnstage={() => {}}
       />,
     );
