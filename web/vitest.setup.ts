@@ -38,6 +38,12 @@ if (typeof window !== 'undefined') {
   }
   // ThemeProvider asks the system colour scheme via matchMedia; jsdom lacks
   // it so default to light + a no-op listener.
+  // jsdom doesn't implement window.confirm(); default to "OK" so the
+  // unsaved-changes guard doesn't crash during test navigation.
+  if (typeof window.confirm !== 'function') {
+    // biome-ignore lint/suspicious/noExplicitAny: minimal jsdom polyfill
+    (window as any).confirm = () => true;
+  }
   if (typeof window.matchMedia !== 'function') {
     // biome-ignore lint/suspicious/noExplicitAny: minimal jsdom polyfill
     (window as any).matchMedia = (query: string) => ({

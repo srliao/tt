@@ -1,12 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { ScriptEditorPage } from '@/features/scripts/editor-page';
 
 function ScriptDetailPage() {
   const { id } = Route.useParams();
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold">Script #{id} (todo: phase 08d)</h1>
-    </div>
-  );
+  const numericId = Number.parseInt(id, 10);
+  if (!Number.isFinite(numericId)) {
+    return <div className="p-6">Invalid script id.</div>;
+  }
+  return <ScriptEditorPage id={numericId} />;
 }
 
 export const Route = createFileRoute('/scripts/$id')({
