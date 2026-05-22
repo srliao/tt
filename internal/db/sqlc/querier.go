@@ -39,6 +39,7 @@ type Querier interface {
 	ListScriptRunsByScript(ctx context.Context, arg ListScriptRunsByScriptParams) ([]ScriptRun, error)
 	ListScripts(ctx context.Context) ([]Script, error)
 	ListTags(ctx context.Context) ([]Tag, error)
+	ListTagsWithCounts(ctx context.Context) ([]ListTagsWithCountsRow, error)
 	ListTasksByScript(ctx context.Context, spawnedByScriptID *int64) ([]Task, error)
 	MarkOrphanedRunsAsError(ctx context.Context) error
 	MaxPriority(ctx context.Context) (interface{}, error)

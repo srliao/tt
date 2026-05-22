@@ -12,15 +12,49 @@ interface Shortcut {
   description: string;
 }
 
-const SHORTCUTS: Shortcut[] = [
-  { keys: 'n', description: 'Create new task (auto-staged on Stage page)' },
-  { keys: '/', description: 'Focus search' },
-  { keys: 'g t', description: 'Go to Tasks' },
-  { keys: 'g s', description: 'Go to Stage' },
-  { keys: 'g c', description: 'Go to Scripts' },
-  { keys: 'g g', description: 'Go to Tags' },
-  { keys: 'g r', description: 'Go to Runs' },
-  { keys: 'h / ?', description: 'Toggle this help cheatsheet' },
+interface ShortcutGroup {
+  title: string;
+  items: Shortcut[];
+}
+
+/**
+ * Three-section keyboard reference. Per CLAUDE.md, every UI shortcut must be
+ * discoverable here. When adding or removing a shortcut elsewhere, update the
+ * matching group below in the same change.
+ */
+export const SHORTCUT_GROUPS: ShortcutGroup[] = [
+  {
+    title: 'Global',
+    items: [
+      { keys: '⌘ K', description: 'Open command palette' },
+      { keys: '/', description: 'Open search (same palette)' },
+      { keys: 'n', description: 'New task' },
+      { keys: '?', description: 'This cheatsheet' },
+    ],
+  },
+  {
+    title: 'Navigate',
+    items: [
+      { keys: 'g t', description: 'Tasks' },
+      { keys: 'g s', description: 'Stage' },
+      { keys: 'g c', description: 'Scripts' },
+      { keys: 'g g', description: 'Tags' },
+      { keys: 'g r', description: 'Runs' },
+    ],
+  },
+  {
+    title: 'On a task',
+    items: [
+      { keys: 'j / k', description: 'Move focus down / up' },
+      { keys: '⇧ j / ⇧ k', description: 'Extend selection range' },
+      { keys: '↵', description: 'Edit task' },
+      { keys: 'e', description: 'Edit task' },
+      { keys: 'd', description: 'Toggle done' },
+      { keys: 's', description: 'Stage / unstage' },
+      { keys: 't', description: 'Edit tags inline' },
+      { keys: '␣', description: 'Toggle multi-select' },
+    ],
+  },
 ];
 
 export function ShortcutCheatsheet() {
@@ -37,20 +71,32 @@ export function ShortcutCheatsheet() {
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
-          <DialogDescription>Global shortcuts available throughout the app.</DialogDescription>
+          <DialogDescription>
+            Keys available throughout the app. Single-letter shortcuts only fire when you aren't
+            typing in a text field.
+          </DialogDescription>
         </DialogHeader>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
-          {SHORTCUTS.map((s) => (
-            <div key={s.keys} className="contents">
-              <dt>
-                <kbd className="rounded border bg-muted px-2 py-0.5 font-mono text-xs">
-                  {s.keys}
-                </kbd>
-              </dt>
-              <dd className="text-muted-foreground">{s.description}</dd>
-            </div>
+        <div className="flex flex-col gap-4">
+          {SHORTCUT_GROUPS.map((group) => (
+            <section key={group.title} className="flex flex-col gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {group.title}
+              </h3>
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
+                {group.items.map((s) => (
+                  <div key={s.keys} className="contents">
+                    <dt>
+                      <kbd className="rounded border bg-muted px-2 py-0.5 font-mono text-xs">
+                        {s.keys}
+                      </kbd>
+                    </dt>
+                    <dd className="text-muted-foreground">{s.description}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
           ))}
-        </dl>
+        </div>
       </DialogContent>
     </Dialog>
   );

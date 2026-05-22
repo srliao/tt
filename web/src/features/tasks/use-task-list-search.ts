@@ -9,7 +9,7 @@
  */
 
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { useCallback } from 'react';
+import { type MouseEvent, useCallback } from 'react';
 import { z } from 'zod';
 import type { TaskListParams } from '@/api/tasks';
 import type { TaskDueRange, TaskSortAxis, TaskState } from '@/types/task';
@@ -24,8 +24,10 @@ export const QUICK_FILTERS = [
   'recently-completed',
   'cancelled',
 ] as const;
+export const TAG_MODES = ['any', 'all'] as const;
 
 export type QuickFilter = (typeof QUICK_FILTERS)[number];
+export type TagMode = (typeof TAG_MODES)[number];
 
 /**
  * Zod schema for the /tasks URL search params. Used both by the
@@ -35,11 +37,20 @@ export const taskSearchSchema = z
   .object({
     states: z.array(z.enum(TASK_STATES)).optional(),
     tags: z.array(z.string()).optional(),
+    tagsExclude: z.array(z.string()).optional(),
+    tagMode: z.enum(TAG_MODES).optional(),
     due: z.enum(TASK_DUE_RANGES).optional(),
     q: z.string().optional(),
     sort: z.enum(TASK_SORTS).optional(),
     asc: z.boolean().optional(),
     quick: z.enum(QUICK_FILTERS).optional(),
+    /**
+     * Transient signal used by the command palette to ask the /tasks page to
+     * open the edit modal for a given task id. NOT a filter — it doesn't
+     * affect the task list query and is excluded from `hasActiveFilters`.
+     * The page clears it after consuming so refresh/back doesn't reopen.
+     */
+    open: z.coerce.number().optional(),
   })
   .partial();
 
@@ -53,9 +64,15 @@ export type TaskSearch = z.infer<typeof taskSearchSchema>;
  */
 export function applyQuickFilter(search: TaskSearch): TaskListParams {
   const quick = search.quick;
+  // We always send tag_mode when tags are non-empty so the server respects
+  // the UI default of "any" — see comments on TaskListParams.tagMode.
+  const tagsPresent = search.tags && search.tags.length > 0;
+  const tagsExcludePresent = search.tagsExclude && search.tagsExclude.length > 0;
   const base: TaskListParams = {
     states: search.states && search.states.length > 0 ? search.states : undefined,
-    tags: search.tags && search.tags.length > 0 ? search.tags : undefined,
+    tags: tagsPresent ? search.tags : undefined,
+    tagsExclude: tagsExcludePresent ? search.tagsExclude : undefined,
+    tagMode: tagsPresent ? (search.tagMode ?? 'any') : undefined,
     due: search.due,
     q: search.q,
     sort: search.sort,
@@ -90,6 +107,8 @@ export function applyQuickFilter(search: TaskSearch): TaskListParams {
   return {
     states: base.states ?? preset.states,
     tags: base.tags,
+    tagsExclude: base.tagsExclude,
+    tagMode: base.tagMode,
     due: base.due ?? preset.due,
     q: base.q,
     sort: base.sort ?? preset.sort,
@@ -102,10 +121,30 @@ export function hasActiveFilters(search: TaskSearch): boolean {
   return Boolean(
     (search.states && search.states.length > 0) ||
       (search.tags && search.tags.length > 0) ||
+      (search.tagsExclude && search.tagsExclude.length > 0) ||
       search.due ||
       search.q ||
       search.quick,
   );
+}
+
+/**
+ * True when the effective state filter hides at least one canonical state.
+ *
+ * The "default" view (no `states` in the URL) mirrors the sidebar's
+ * default-checked "Not done" — see `applyQuickFilter` — so it is considered
+ * restricted and the active-filter strip surfaces the "Open only · include
+ * done?" affordance even on a fresh `/tasks` visit. An empty `states` array
+ * is treated identically to the unset case.
+ *
+ * Only when all three canonical states are explicitly selected is the view
+ * considered unrestricted (no affordance).
+ */
+export function isStateRestricted(search: TaskSearch): boolean {
+  // Default view (states unset or empty) = filtered to not_done only.
+  if (!search.states || search.states.length === 0) return true;
+  // Restricted iff at least one canonical state is missing from the selection.
+  return TASK_STATES.some((s) => !search.states?.includes(s));
 }
 
 /**
@@ -144,3 +183,48 @@ export function useTaskListSearch() {
 
 // Re-export the underlying types so callers don't have to dig.
 export type { TaskDueRange, TaskSortAxis, TaskState };
+
+/** Click-modifier semantics for `<TagGlyph>` / row tag interactions. */
+export type TagFilterMode = 'replace' | 'add' | 'exclude';
+
+/**
+ * Translate a React MouseEvent's modifier keys into a filter mutation mode.
+ * Shared by row tag glyphs and any future click-to-filter affordance.
+ *
+ *   bare click   → replace (single-tag focus)
+ *   shift+click  → add to the current `tags` filter
+ *   alt+click    → add to the `tagsExclude` filter
+ */
+export function clickModeFromEvent(e: MouseEvent): TagFilterMode {
+  if (e.altKey) return 'exclude';
+  if (e.shiftKey) return 'add';
+  return 'replace';
+}
+
+/**
+ * Returns a stable callback that mutates the URL's tag filter according to
+ * the given mode. `replace` clears any prior exclusions so the user lands
+ * on a clean single-tag view.
+ */
+export function useTagFilterMutator() {
+  const { search, setSearch } = useTaskListSearch();
+  return useCallback(
+    (name: string, mode: TagFilterMode) => {
+      if (mode === 'replace') {
+        setSearch({ tags: [name], tagsExclude: undefined });
+        return;
+      }
+      if (mode === 'add') {
+        const set = new Set(search.tags ?? []);
+        set.add(name);
+        setSearch({ tags: [...set] });
+        return;
+      }
+      // exclude
+      const set = new Set(search.tagsExclude ?? []);
+      set.add(name);
+      setSearch({ tagsExclude: [...set] });
+    },
+    [search, setSearch],
+  );
+}

@@ -21,6 +21,17 @@ export interface TaskListParams {
   states?: TaskState[];
   /** Tag names (server resolves to IDs). */
   tags?: string[];
+  /**
+   * Tag names to exclude. Serialised as a single CSV `tags_exclude=a,b,c`
+   * query param to keep the URL short for the common alt-click case.
+   */
+  tagsExclude?: string[];
+  /**
+   * How multiple tag filters combine on the server. The backend defaults to
+   * `all` when the field is unset, so the UI sends `any` explicitly whenever
+   * `tags` is non-empty (the UI default is `any` — see filter sidebar).
+   */
+  tagMode?: 'any' | 'all';
   due?: TaskDueRange;
   q?: string;
   sort?: TaskSortAxis;
@@ -33,6 +44,12 @@ export function buildTaskListQuery(params: TaskListParams): string {
   const sp = new URLSearchParams();
   for (const s of params.states ?? []) sp.append('state', s);
   for (const t of params.tags ?? []) sp.append('tag', t);
+  if (params.tagMode && (params.tags?.length ?? 0) > 0) {
+    sp.set('tag_mode', params.tagMode);
+  }
+  if (params.tagsExclude && params.tagsExclude.length > 0) {
+    sp.set('tags_exclude', params.tagsExclude.join(','));
+  }
   if (params.due) sp.set('due', params.due);
   if (params.q) sp.set('q', params.q);
   if (params.sort) sp.set('sort', params.sort);

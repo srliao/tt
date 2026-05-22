@@ -42,6 +42,7 @@ File: `internal/tag/service.go`.
 |---|---|
 | `Create` | Idempotent — normalizes (trim + lowercase) and looks up by name first to dodge UNIQUE constraint. Empty name → error. |
 | `Rename` / `Delete` / `List` / `GetByName` | Straightforward; `Rename` and `GetByName` also normalize their name input. |
+| `ListWithCounts` | Same ordering as `List` plus `count` (distinct task ids via `task_tags` LEFT JOIN). Tags with no tasks come back with `count=0`. Backs `GET /tags?counts=1`. |
 | `Resolve(names, autoCreate)` | Normalize (trim + lowercase), dedupe-preserve-order, lookup each. With `autoCreate=true`, insert missing. With `false`, return `"tag: unknown tags: a, b"` error containing every missing name. |
 
 All tag-name entry points funnel through a single `normalize` helper, so stored names are always lowercase regardless of user input. Lookups (`GetByName`, `Resolve`) lowercase before querying, keeping case-insensitive matches in sync.

@@ -51,18 +51,20 @@ Quick locator tables. When you need to read code, start here.
 | Global layout / top nav / stage badge | `web/src/components/layout.tsx` |
 | Theme provider + toggle | `web/src/components/theme-{provider,toggle}.tsx` |
 | Keyboard shortcut cheatsheet (`?`) | `web/src/components/shortcut-cheatsheet.tsx` |
-| Global keyboard shortcuts (`n`, `/`, `g X`, `?`) | `web/src/lib/shortcuts.ts` |
+| Global keyboard shortcuts (`n`, `g X`, `?`) | `web/src/lib/shortcuts.ts` |
+| Command palette (`/`, ⌘K) — tasks/tags search + nav | `web/src/components/command-palette.tsx` |
 | fetch wrapper + `ApiError` | `web/src/lib/api.ts` |
 | TanStack Query client | `web/src/lib/query.ts` |
 | shadcn/ui primitives | `web/src/components/ui/*.tsx` |
 | Type mirrors of Go DTOs | `web/src/types/{task,tag,script,run}.ts` |
 | API hooks (one file per resource) | `web/src/api/{tasks,tags,scripts,runs,stage}.ts` |
-| Tasks page + table + row + filters + bulk bar | `web/src/features/tasks/*` |
+| Tasks page + table + row + filters + bulk bar + inline tag editor | `web/src/features/tasks/*` |
 | Stage page + list + row + soft-cap hint | `web/src/features/stage/*` |
 | Tags page | `web/src/features/tags/*` |
 | Scripts list + editor + cheatsheets + spawned-tasks panel | `web/src/features/scripts/*` |
 | Runs list + detail + logs table + status pill | `web/src/features/runs/*` |
 | URL-driven filter state for /tasks | `web/src/features/tasks/use-task-list-search.ts` |
+| Active-filter strip (chips above the task table) | `web/src/features/tasks/active-filter-strip.tsx` |
 
 ## Build / dev / tooling
 

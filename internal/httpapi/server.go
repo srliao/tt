@@ -41,6 +41,7 @@ type TagService interface {
 	Rename(ctx context.Context, id int64, name string) (tag.Tag, error)
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context) ([]tag.Tag, error)
+	ListWithCounts(ctx context.Context) ([]tag.TagWithCount, error)
 	Resolve(ctx context.Context, names []string, autoCreate bool) ([]int64, error)
 }
 

@@ -38,6 +38,17 @@ describe('buildTaskListQuery', () => {
   it('returns empty string when no params', () => {
     expect(buildTaskListQuery({})).toBe('');
   });
+
+  it('serialises tagsExclude as a single CSV tags_exclude param', () => {
+    const qs = buildTaskListQuery({
+      tagsExclude: ['skip', 'later'],
+    });
+    expect(qs).toBe('?tags_exclude=skip%2Clater');
+  });
+
+  it('omits tags_exclude when empty', () => {
+    expect(buildTaskListQuery({ tagsExclude: [] })).toBe('');
+  });
 });
 
 describe('useTasks', () => {

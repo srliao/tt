@@ -126,6 +126,75 @@ func TestTags_RenameDuplicateIs409(t *testing.T) {
 	}
 }
 
+func TestTags_ListWithCounts(t *testing.T) {
+	t.Parallel()
+
+	fx := newTestServer(t, nil)
+	ctx := context.Background()
+
+	tagWork, err := fx.tags.Create(ctx, "work")
+	if err != nil {
+		t.Fatalf("create work: %v", err)
+	}
+	tagHome, err := fx.tags.Create(ctx, "home")
+	if err != nil {
+		t.Fatalf("create home: %v", err)
+	}
+	// "lonely" gets created but never attached — must come back with count 0.
+	tagLonely, err := fx.tags.Create(ctx, "lonely")
+	if err != nil {
+		t.Fatalf("create lonely: %v", err)
+	}
+
+	t1, err := fx.tasks.Create(ctx, task.CreateInput{Title: "t1"})
+	if err != nil {
+		t.Fatalf("create task 1: %v", err)
+	}
+	t2, err := fx.tasks.Create(ctx, task.CreateInput{Title: "t2"})
+	if err != nil {
+		t.Fatalf("create task 2: %v", err)
+	}
+	if err := fx.tasks.SetTagsByID(ctx, t1.ID, []int64{tagWork.ID, tagHome.ID}); err != nil {
+		t.Fatalf("attach to t1: %v", err)
+	}
+	if err := fx.tasks.SetTagsByID(ctx, t2.ID, []int64{tagWork.ID}); err != nil {
+		t.Fatalf("attach to t2: %v", err)
+	}
+
+	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tags?counts=1", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, string(body))
+	}
+	var out []tag.TagWithCount
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out) != 3 {
+		t.Fatalf("expected 3 tags, got %d (%+v)", len(out), out)
+	}
+	counts := map[string]int64{}
+	for _, r := range out {
+		counts[r.Name] = r.Count
+	}
+	if counts["work"] != 2 {
+		t.Errorf("work count = %d, want 2", counts["work"])
+	}
+	if counts["home"] != 1 {
+		t.Errorf("home count = %d, want 1", counts["home"])
+	}
+	if counts["lonely"] != 0 {
+		t.Errorf("lonely count = %d, want 0", counts["lonely"])
+	}
+	// Sanity: ids round-trip too.
+	for _, r := range out {
+		if r.Name == "lonely" && r.ID != tagLonely.ID {
+			t.Errorf("lonely id = %d, want %d", r.ID, tagLonely.ID)
+		}
+	}
+}
+
 func TestTags_DeleteCascadesFromTasks(t *testing.T) {
 	t.Parallel()
 

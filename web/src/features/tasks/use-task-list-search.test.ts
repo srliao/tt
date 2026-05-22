@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyQuickFilter, hasActiveFilters, taskSearchSchema } from './use-task-list-search';
+import {
+  applyQuickFilter,
+  clickModeFromEvent,
+  hasActiveFilters,
+  isStateRestricted,
+  taskSearchSchema,
+} from './use-task-list-search';
 
 describe('taskSearchSchema', () => {
   it('parses a fully-populated URL search object', () => {
@@ -30,6 +36,7 @@ describe('applyQuickFilter', () => {
     expect(applyQuickFilter({ states: ['done'] })).toEqual({
       states: ['done'],
       tags: undefined,
+      tagMode: undefined,
       due: undefined,
       q: undefined,
       sort: undefined,
@@ -41,11 +48,27 @@ describe('applyQuickFilter', () => {
     expect(applyQuickFilter({})).toEqual({
       states: ['not_done'],
       tags: undefined,
+      tagMode: undefined,
       due: undefined,
       q: undefined,
       sort: undefined,
       asc: undefined,
     });
+  });
+
+  it('sends tag_mode=any whenever tags are non-empty and no mode was set', () => {
+    const out = applyQuickFilter({ tags: ['work'] });
+    expect(out.tags).toEqual(['work']);
+    expect(out.tagMode).toBe('any');
+  });
+
+  it('passes through an explicit tagMode=all', () => {
+    const out = applyQuickFilter({ tags: ['work', 'urgent'], tagMode: 'all' });
+    expect(out.tagMode).toBe('all');
+  });
+
+  it('omits tag_mode when no tags are selected', () => {
+    expect(applyQuickFilter({ tagMode: 'all' }).tagMode).toBeUndefined();
   });
 
   it('expands the "overdue" preset', () => {
@@ -83,6 +106,38 @@ describe('applyQuickFilter', () => {
   });
 });
 
+describe('clickModeFromEvent', () => {
+  function mkEvent(opts: { altKey?: boolean; shiftKey?: boolean } = {}) {
+    return {
+      altKey: !!opts.altKey,
+      shiftKey: !!opts.shiftKey,
+    } as React.MouseEvent;
+  }
+
+  it('returns "replace" for a bare click', () => {
+    expect(clickModeFromEvent(mkEvent())).toBe('replace');
+  });
+
+  it('returns "add" for shift-click', () => {
+    expect(clickModeFromEvent(mkEvent({ shiftKey: true }))).toBe('add');
+  });
+
+  it('returns "exclude" for alt-click', () => {
+    expect(clickModeFromEvent(mkEvent({ altKey: true }))).toBe('exclude');
+  });
+
+  it('prefers exclude when both alt and shift are pressed', () => {
+    expect(clickModeFromEvent(mkEvent({ altKey: true, shiftKey: true }))).toBe('exclude');
+  });
+});
+
+describe('taskSearchSchema (tagsExclude)', () => {
+  it('parses tagsExclude as a string array', () => {
+    const parsed = taskSearchSchema.parse({ tagsExclude: ['noise', 'archived'] });
+    expect(parsed.tagsExclude).toEqual(['noise', 'archived']);
+  });
+});
+
 describe('hasActiveFilters', () => {
   it('returns false for an empty search', () => {
     expect(hasActiveFilters({})).toBe(false);
@@ -92,6 +147,44 @@ describe('hasActiveFilters', () => {
     expect(hasActiveFilters({ q: 'x' })).toBe(true);
     expect(hasActiveFilters({ quick: 'overdue' })).toBe(true);
     expect(hasActiveFilters({ tags: ['work'] })).toBe(true);
+    expect(hasActiveFilters({ tagsExclude: ['noise'] })).toBe(true);
     expect(hasActiveFilters({ states: ['done'] })).toBe(true);
+  });
+});
+
+describe('isStateRestricted', () => {
+  it('returns true when no states are set (default view = not_done only)', () => {
+    expect(isStateRestricted({})).toBe(true);
+  });
+
+  it('returns true when states is empty (treated as default)', () => {
+    expect(isStateRestricted({ states: [] })).toBe(true);
+  });
+
+  it('returns false when all three states are explicitly selected', () => {
+    expect(isStateRestricted({ states: ['not_done', 'done', 'cancelled'] })).toBe(false);
+  });
+
+  it('returns true when only a strict subset of states is selected', () => {
+    expect(isStateRestricted({ states: ['not_done'] })).toBe(true);
+    expect(isStateRestricted({ states: ['done'] })).toBe(true);
+    expect(isStateRestricted({ states: ['not_done', 'done'] })).toBe(true);
+  });
+});
+
+describe('applyQuickFilter (tagsExclude)', () => {
+  it('propagates tagsExclude through to the params', () => {
+    const out = applyQuickFilter({ tagsExclude: ['noise'] });
+    expect(out.tagsExclude).toEqual(['noise']);
+  });
+
+  it('omits tagsExclude when empty', () => {
+    expect(applyQuickFilter({ tagsExclude: [] }).tagsExclude).toBeUndefined();
+  });
+
+  it('preserves tagsExclude alongside a quick preset', () => {
+    const out = applyQuickFilter({ quick: 'overdue', tagsExclude: ['noise'] });
+    expect(out.tagsExclude).toEqual(['noise']);
+    expect(out.due).toBe('overdue');
   });
 });

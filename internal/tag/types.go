@@ -13,3 +13,11 @@ type Tag struct {
 	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"created_at"`
 }
+
+// TagWithCount is the listing shape returned by Service.ListWithCounts. Count
+// is the number of distinct tasks referencing the tag through task_tags.
+// Mirrored on the frontend at `web/src/types/tag.ts`.
+type TagWithCount struct {
+	Tag
+	Count int64 `json:"count"`
+}

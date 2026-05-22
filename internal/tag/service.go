@@ -24,6 +24,7 @@ type Service interface {
 	Rename(ctx context.Context, id int64, name string) (Tag, error)
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context) ([]Tag, error)
+	ListWithCounts(ctx context.Context) ([]TagWithCount, error)
 	GetByName(ctx context.Context, name string) (*Tag, error)
 	Resolve(ctx context.Context, names []string, autoCreate bool) ([]int64, error)
 }
@@ -97,6 +98,28 @@ func (s *Impl) List(ctx context.Context) ([]Tag, error) {
 	out := make([]Tag, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, rowToTag(r))
+	}
+	return out, nil
+}
+
+// ListWithCounts returns all tags in alphabetical order by name, each paired
+// with the number of distinct tasks referencing the tag via task_tags. Tags
+// with no tasks come back with Count == 0 (the LEFT JOIN preserves them).
+func (s *Impl) ListWithCounts(ctx context.Context) ([]TagWithCount, error) {
+	rows, err := s.q.ListTagsWithCounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("tag: list with counts: %w", err)
+	}
+	out := make([]TagWithCount, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, TagWithCount{
+			Tag: Tag{
+				ID:        r.ID,
+				Name:      r.Name,
+				CreatedAt: parseSqliteTime(r.CreatedAt),
+			},
+			Count: r.Count,
+		})
 	}
 	return out, nil
 }

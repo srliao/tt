@@ -21,16 +21,6 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return false;
 }
 
-function focusSearchInput(): boolean {
-  const el = document.querySelector<HTMLInputElement>('[data-search-input]');
-  if (el) {
-    el.focus();
-    el.select?.();
-    return true;
-  }
-  return false;
-}
-
 export function useGlobalShortcuts(router: AppRouter) {
   useEffect(() => {
     let leader: 'g' | null = null;
@@ -84,16 +74,9 @@ export function useGlobalShortcuts(router: AppRouter) {
         return;
       }
 
-      if (key === '/') {
-        event.preventDefault();
-        if (!focusSearchInput()) {
-          void router.navigate({ to: '/tasks' }).then(() => {
-            // Try again on the next tick after the page mounts.
-            setTimeout(focusSearchInput, 0);
-          });
-        }
-        return;
-      }
+      // Note: `/` is intentionally NOT handled here — the global command
+      // palette (web/src/components/command-palette.tsx) owns that key and
+      // installs its own document-level listener.
 
       if (key === 'n') {
         event.preventDefault();
