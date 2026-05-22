@@ -401,6 +401,22 @@ function useTableShortcuts({
         setFocusedId(tasks[clamped].id);
       };
 
+      // Escape exits multi-select mode and clears the selection. We only
+      // consume the key when there's something to clear, so other Escape
+      // consumers (e.g. closing a popover) keep working when the table
+      // is in its default state. Inputs/textareas were already filtered
+      // above; the `disabled` guard handles the modal-open case.
+      if (event.key === 'Escape') {
+        if (multiSelectModeRef.current || selectedIds.size > 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          anchorRef.current = null;
+          if (selectedIds.size > 0) onSelectedChange(new Set());
+          if (multiSelectModeRef.current) onMultiSelectModeChange?.(false);
+        }
+        return;
+      }
+
       // ⇧ + letter delivers a capital letter. We branch on those so the
       // logic stays clear: lower-case = plain step (resets anchor),
       // upper-case = extend range (anchor sticky).

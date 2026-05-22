@@ -466,6 +466,58 @@ describe('TaskTable', () => {
     expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([3, 4]));
   });
 
+  it('Escape exits multi-select mode and clears the selection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    const onMultiSelectModeChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
+          sort="title"
+          multiSelectMode={true}
+          onMultiSelectModeChange={onMultiSelectModeChange}
+          selectedIds={new Set([1, 2])}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    const table = await screen.findByRole('table');
+    act(() => {
+      table.focus();
+      fireEvent.keyDown(table, { key: 'Escape' });
+    });
+    expect(onSelectedChange).toHaveBeenCalledWith(new Set());
+    expect(onMultiSelectModeChange).toHaveBeenCalledWith(false);
+  });
+
+  it('Escape is a no-op when multi-select is off and nothing is selected', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    const onMultiSelectModeChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' })]}
+          sort="title"
+          multiSelectMode={false}
+          onMultiSelectModeChange={onMultiSelectModeChange}
+          selectedIds={new Set()}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    const table = await screen.findByRole('table');
+    act(() => {
+      table.focus();
+      fireEvent.keyDown(table, { key: 'Escape' });
+    });
+    expect(onSelectedChange).not.toHaveBeenCalled();
+    expect(onMultiSelectModeChange).not.toHaveBeenCalled();
+  });
+
   it('renders a tag glyph for each task tag and forwards the tag name on click', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     render(
