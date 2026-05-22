@@ -506,6 +506,112 @@ func equalStringSets(got, want []string) bool {
 	return true
 }
 
+func TestList_FilterByTags_ModeAllAndAny(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	t1, err := svc.Create(ctx, task.CreateInput{Title: "single-tag"})
+	if err != nil {
+		t.Fatalf("Create t1: %v", err)
+	}
+	t2, err := svc.Create(ctx, task.CreateInput{Title: "double-tag"})
+	if err != nil {
+		t.Fatalf("Create t2: %v", err)
+	}
+
+	tagA := insertTag(t, store, ctx, "alpha")
+	tagB := insertTag(t, store, ctx, "bravo")
+
+	if err := svc.SetTagsByID(ctx, t1.ID, []int64{tagA}); err != nil {
+		t.Fatalf("SetTagsByID t1: %v", err)
+	}
+	if err := svc.SetTagsByID(ctx, t2.ID, []int64{tagA, tagB}); err != nil {
+		t.Fatalf("SetTagsByID t2: %v", err)
+	}
+
+	// Default (empty TagMode) preserves the historical AND/all semantics:
+	// only t2 carries both alpha and bravo.
+	gotAllDefault, err := svc.List(ctx, task.FilterSort{TagIDs: []int64{tagA, tagB}})
+	if err != nil {
+		t.Fatalf("List(default): %v", err)
+	}
+	if len(gotAllDefault) != 1 || gotAllDefault[0].ID != t2.ID {
+		t.Fatalf("default mode = %+v, want [%d]", gotAllDefault, t2.ID)
+	}
+
+	// Explicit TagModeAll matches the default.
+	gotAll, err := svc.List(ctx, task.FilterSort{TagIDs: []int64{tagA, tagB}, TagMode: task.TagModeAll})
+	if err != nil {
+		t.Fatalf("List(all): %v", err)
+	}
+	if len(gotAll) != 1 || gotAll[0].ID != t2.ID {
+		t.Fatalf("TagModeAll = %+v, want [%d]", gotAll, t2.ID)
+	}
+
+	// TagModeAny returns every task carrying at least one of the supplied tags.
+	gotAny, err := svc.List(ctx, task.FilterSort{TagIDs: []int64{tagA, tagB}, TagMode: task.TagModeAny})
+	if err != nil {
+		t.Fatalf("List(any): %v", err)
+	}
+	if len(gotAny) != 2 {
+		t.Fatalf("TagModeAny len = %d, want 2 (%+v)", len(gotAny), gotAny)
+	}
+	seen := map[int64]bool{gotAny[0].ID: true, gotAny[1].ID: true}
+	if !seen[t1.ID] || !seen[t2.ID] {
+		t.Fatalf("TagModeAny missing expected ids: got %+v", gotAny)
+	}
+}
+
+func TestList_FilterByTagsExclude(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	plain, err := svc.Create(ctx, task.CreateInput{Title: "plain"})
+	if err != nil {
+		t.Fatalf("Create plain: %v", err)
+	}
+	tagged, err := svc.Create(ctx, task.CreateInput{Title: "tagged"})
+	if err != nil {
+		t.Fatalf("Create tagged: %v", err)
+	}
+	both, err := svc.Create(ctx, task.CreateInput{Title: "both"})
+	if err != nil {
+		t.Fatalf("Create both: %v", err)
+	}
+
+	tagA := insertTag(t, store, ctx, "alpha")
+	tagB := insertTag(t, store, ctx, "bravo")
+
+	if err := svc.SetTagsByID(ctx, tagged.ID, []int64{tagA}); err != nil {
+		t.Fatalf("SetTagsByID tagged: %v", err)
+	}
+	if err := svc.SetTagsByID(ctx, both.ID, []int64{tagA, tagB}); err != nil {
+		t.Fatalf("SetTagsByID both: %v", err)
+	}
+
+	// Exclude alpha → only the plain task survives.
+	got, err := svc.List(ctx, task.FilterSort{TagExcludeIDs: []int64{tagA}})
+	if err != nil {
+		t.Fatalf("List(exclude alpha): %v", err)
+	}
+	if len(got) != 1 || got[0].ID != plain.ID {
+		t.Fatalf("exclude alpha = %+v, want [%d]", got, plain.ID)
+	}
+
+	// Combine inclusion (alpha) with exclusion (bravo): tagged passes,
+	// both is dropped because it carries bravo.
+	got, err = svc.List(ctx, task.FilterSort{
+		TagIDs:        []int64{tagA},
+		TagExcludeIDs: []int64{tagB},
+	})
+	if err != nil {
+		t.Fatalf("List(include alpha exclude bravo): %v", err)
+	}
+	if len(got) != 1 || got[0].ID != tagged.ID {
+		t.Fatalf("include alpha exclude bravo = %+v, want [%d]", got, tagged.ID)
+	}
+}
+
 func TestList_DefaultSortByPriority(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)

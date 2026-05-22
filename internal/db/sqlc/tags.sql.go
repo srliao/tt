@@ -78,6 +78,52 @@ func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
 	return items, nil
 }
 
+const listTagsWithCounts = `-- name: ListTagsWithCounts :many
+SELECT t.id, t.name, t.created_at, COALESCE(c.cnt, 0) AS count
+FROM tags t
+LEFT JOIN (
+  SELECT tag_id, COUNT(DISTINCT task_id) AS cnt
+  FROM task_tags
+  GROUP BY tag_id
+) c ON c.tag_id = t.id
+ORDER BY t.name ASC
+`
+
+type ListTagsWithCountsRow struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	CreatedAt string `json:"created_at"`
+	Count     int64  `json:"count"`
+}
+
+func (q *Queries) ListTagsWithCounts(ctx context.Context) ([]ListTagsWithCountsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTagsWithCounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTagsWithCountsRow
+	for rows.Next() {
+		var i ListTagsWithCountsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.Count,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const renameTag = `-- name: RenameTag :one
 UPDATE tags SET name = ? WHERE id = ? RETURNING id, name, created_at
 `

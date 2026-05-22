@@ -12,7 +12,7 @@
 
 import { PencilIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { useDeleteTag, useRenameTag } from '@/api/tags';
+import { useDeleteTag, useRenameTag, useTagsWithCounts } from '@/api/tags';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +36,15 @@ export interface TagRowProps {
 export function TagRow({ tag }: TagRowProps) {
   const rename = useRenameTag();
   const del = useDeleteTag();
+  // Used to surface an honest "this will untag N tasks" copy in the
+  // delete-confirm dialog. The /tags page already mounts a `useTagsWithCounts`
+  // for the list itself, so this is a cache-hit and adds no extra requests.
+  const { data: tagsWithCounts } = useTagsWithCounts();
+  // Defensive against test mocks that may return non-array bodies before the
+  // real `?counts=1` request resolves.
+  const taskCount = Array.isArray(tagsWithCounts)
+    ? (tagsWithCounts.find((t) => t.id === tag.id)?.count ?? 0)
+    : 0;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(tag.name);
   const [error, setError] = useState<string | null>(null);
@@ -146,7 +155,17 @@ export function TagRow({ tag }: TagRowProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete tag "{tag.name}"?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the tag from any tasks that use it. Continue?
+              {taskCount === 0 ? (
+                'No tasks currently use this tag.'
+              ) : (
+                <>
+                  This will untag{' '}
+                  <b>
+                    {taskCount} task{taskCount === 1 ? '' : 's'}
+                  </b>
+                  . Continue?
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

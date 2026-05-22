@@ -27,7 +27,8 @@ web/src/
 │   ├── ui/                 shadcn primitives (button, dialog, input, table, …)
 │   ├── layout.tsx          top nav + stage badge + theme; wraps every route
 │   ├── theme-{provider,toggle}.tsx
-│   └── shortcut-cheatsheet.tsx  rendered by `?`
+│   ├── shortcut-cheatsheet.tsx  rendered by `?`
+│   └── command-palette.tsx      rendered by `/` or ⌘K (cmdk)
 ├── features/               one folder per top-level page; deeper subcomponents inside
 │   ├── tasks/
 │   ├── stage/
@@ -37,7 +38,7 @@ web/src/
 ├── lib/
 │   ├── api.ts              fetch wrapper + ApiError + envelope decoding
 │   ├── query.ts            QueryClient (30s staleTime, retry: 1)
-│   ├── shortcuts.ts        global keyboard handler (n, /, gX, ?)
+│   ├── shortcuts.ts        global keyboard handler (n, gX, ?) — `/` and ⌘K owned by command-palette.tsx
 │   └── utils.ts            cn() etc.
 ├── routes/                 file-based TanStack routes
 ├── types/                  hand-written mirrors of Go DTOs
@@ -72,12 +73,15 @@ Component → useXxx() hook → api<T>('/...') → fetch → ApiError-aware deco
 ```
 routes/tasks.tsx           validateSearch via taskSearchSchema (zod)
 features/tasks/use-task-list-search.ts
-  ├── taskSearchSchema     zod schema (states, tags, due, q, sort, asc, quick)
+  ├── taskSearchSchema     zod schema (states, tags, tagsExclude, tagMode, due, q, sort, asc, quick)
   ├── applyQuickFilter()   translate `quick=overdue` to effective filter
   ├── hasActiveFilters()   for empty-state suppression
+  ├── isStateRestricted()  true when `states` hides any canonical state — default view (unset/empty) counts as restricted (mirrors not_done-only behavior)
   └── useTaskListSearch()  returns { search, setSearch(updates) }
                            setSearch strips empty/undefined values
 ```
+
+`<ActiveFilterStrip>` (`features/tasks/active-filter-strip.tsx`) reads the same hook and renders a removable chip per active filter axis above `<TaskTable>`. Hidden when neither `hasActiveFilters` nor `isStateRestricted` is true.
 
 `setSearch({})`-style updates use shallow-merge → cleanup → navigate. Refresh-stable, browser-back works, shareable URL.
 
@@ -102,7 +106,7 @@ features/tasks/use-task-list-search.ts
 
 - **Page component** in `<feature>/page.tsx`. Reads server state via the resource's `useXxx`. Owns the `editing` modal state at the top so global `n` shortcut can open it.
 - **Table / list** component holds optimistic state for drag-drop. On `useEffect([tasks])`, optimistic gets cleared to the latest server snapshot. Reorder = `setOptimistic(next)` THEN `reorder.mutate(payload)`.
-- **Per-page keyboard shortcuts** scoped to the list container ref. `j/k` for focus row, `e/Enter` to edit, `s` to stage, `u` to unstage, `d` to toggle done/not-done (no cancelled cycle), space to (de)select. See `web/src/features/tasks/task-table.tsx` `useTableShortcuts` and `web/src/features/stage/page.tsx` `useStageShortcuts`.
+- **Per-page keyboard shortcuts** scoped to the list container ref. `j/k` for focus row, `⇧j`/`⇧k` for range-select (auto-engages multi-select; anchor resets on plain step / checkbox click / unrelated key — see `rangeSelection` in `task-table.tsx`), `e/Enter` to edit, `s` to stage, `u` to unstage, `d` to toggle done/not-done (no cancelled cycle), `t` to open the inline tag editor (`InlineTagEditor` popover anchored to `[data-tag-cell]`), space to (de)select. See `web/src/features/tasks/task-table.tsx` `useTableShortcuts` and `web/src/features/stage/page.tsx` `useStageShortcuts`.
 - **Modals** are rendered at the bottom of the page; `open` state is controlled. The same component handles create AND edit by passing `task={editing}` for edit mode.
 
 ### Task / Stage row layout
@@ -128,11 +132,33 @@ Multi-select on `/tasks` is owned by `features/tasks/page.tsx` (`multiSelectMode
 | Key | Action |
 |---|---|
 | `n` | Dispatch `tt:new-task` event (any add-modal-aware page listens) |
-| `/` | Focus the search input (navigate to /tasks first if needed) |
 | `g t/s/c/g/r` | Go to Tasks / Stage / Scripts / Tags / Runs (chord, 1s leader timeout) |
 | `?` | Toggle cheatsheet (dispatch `tt:toggle-cheatsheet`) |
 
 Shortcuts are **suppressed when an editable element has focus** (`<input>`, `<textarea>`, `<select>`, contenteditable).
+
+### Command palette (`/` and ⌘K)
+
+`web/src/components/command-palette.tsx` owns `/` and ⌘K via its own
+`document` keydown listener (installed in `AppLayout`, not in
+`useGlobalShortcuts`). It uses the `cmdk`-backed primitives in
+`web/src/components/ui/command.tsx` and searches the full unfiltered
+task set (`useTasks({})`) plus tag list (`useTagsWithCounts()`).
+
+Selecting a task navigates to `/tasks?open=<id>`. The /tasks page watches
+`search.open` (declared in `taskSearchSchema` as `z.coerce.number().optional()`)
+in a `useEffect`, resolves the id against the unfiltered `useTasks({})`
+cache (so it works no matter what filters are active), opens the edit
+modal, and immediately clears `open` via `setSearch({ open: undefined })`
+so refresh/back doesn't reopen the modal. `open` is a transient *signal*,
+not a filter — it is intentionally excluded from `hasActiveFilters()` and
+the server query. Avoids the race the prior `tt:open-task` CustomEvent
+mechanism had under concurrent rendering.
+
+⌘↵ inside the palette applies the typed query as `?q=` and navigates to
+`/tasks`. The `?q=` URL contract is unchanged — the sidebar
+`<SearchField>` was removed but the schema and server-side filter still
+apply when the param is present.
 
 ## Drag-drop reorder
 

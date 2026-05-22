@@ -1,9 +1,25 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen } from '@testing-library/react';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from '@tanstack/react-router';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ThemeProvider } from '@/components/theme-provider';
 import type { Task } from '@/types/task';
-import { computeDragEnd, computeReorderPayload, moveTask, TaskTable } from './task-table';
+import {
+  computeDragEnd,
+  computeReorderPayload,
+  moveTask,
+  rangeSelection,
+  TaskTable,
+} from './task-table';
+import { taskSearchSchema } from './use-task-list-search';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -30,10 +46,31 @@ function task(partial: Partial<Task> & { id: number; title: string }): Task {
 }
 
 function wrap(children: ReactNode) {
+  // TaskTable reads URL search params via `useTaskListSearch`, which needs a
+  // tanstack router context — provide a minimal in-memory router so the
+  // component renders without hitting `useMatch` null guards. ThemeProvider
+  // is required because <TagGlyph> reads `resolvedTheme`.
+  const rootRoute = createRootRoute({ component: () => <Outlet /> });
+  const tasksRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/tasks',
+    validateSearch: (s) => taskSearchSchema.parse(s),
+    component: () => <>{children}</>,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([tasksRoute]),
+    history: createMemoryHistory({ initialEntries: ['/tasks'] }),
+  });
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  return (
+    <ThemeProvider>
+      <QueryClientProvider client={qc}>
+        <RouterProvider router={router as never} />
+      </QueryClientProvider>
+    </ThemeProvider>
+  );
 }
 
 describe('computeDragEnd', () => {
@@ -81,6 +118,23 @@ describe('moveTask + computeReorderPayload (Alt-C semantics)', () => {
   });
 });
 
+describe('rangeSelection', () => {
+  const tasks = [{ id: 1 } as Task, { id: 2 } as Task, { id: 3 } as Task, { id: 4 } as Task];
+  it('returns an inclusive id set spanning anchor → cursor', () => {
+    expect(rangeSelection(tasks, 1, 3)).toEqual(new Set([2, 3, 4]));
+  });
+  it('handles cursor < anchor (range walks both directions)', () => {
+    expect(rangeSelection(tasks, 2, 0)).toEqual(new Set([1, 2, 3]));
+  });
+  it('returns a single-id set when anchor equals cursor', () => {
+    expect(rangeSelection(tasks, 1, 1)).toEqual(new Set([2]));
+  });
+  it('returns an empty set when either index is negative', () => {
+    expect(rangeSelection(tasks, -1, 2)).toEqual(new Set());
+    expect(rangeSelection(tasks, 1, -1)).toEqual(new Set());
+  });
+});
+
 describe('computeReorderPayload', () => {
   it('returns null neighbours for first row', () => {
     const t1 = task({ id: 1, title: 'a' });
@@ -117,7 +171,7 @@ describe('computeReorderPayload', () => {
 describe('TaskTable', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders a drag handle column when sort=priority', () => {
+  it('renders a drag handle column when sort=priority', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     render(
       wrap(
@@ -131,10 +185,10 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    expect(screen.getByRole('button', { name: 'Reorder A' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Reorder A' })).toBeTruthy();
   });
 
-  it('does not render a drag handle when sort=title', () => {
+  it('does not render a drag handle when sort=title', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     render(
       wrap(
@@ -148,10 +202,12 @@ describe('TaskTable', () => {
         />,
       ),
     );
+    // Wait for the row to mount, then assert there is no reorder handle.
+    await screen.findByRole('button', { name: /Mark A as done/ });
     expect(screen.queryByRole('button', { name: 'Reorder A' })).toBeNull();
   });
 
-  it('hides the multi-select checkbox unless multiSelectMode is on', () => {
+  it('hides the multi-select checkbox unless multiSelectMode is on', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     const { rerender } = render(
       wrap(
@@ -165,6 +221,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
+    await screen.findByRole('button', { name: /Mark A as done/ });
     expect(screen.queryByRole('checkbox', { name: 'Select A' })).toBeNull();
 
     rerender(
@@ -179,10 +236,10 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    expect(screen.getByRole('checkbox', { name: 'Select A' })).toBeTruthy();
+    expect(await screen.findByRole('checkbox', { name: 'Select A' })).toBeTruthy();
   });
 
-  it('renders the stage bookmark and done radio for each row', () => {
+  it('renders the stage bookmark and done radio for each row', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     render(
       wrap(
@@ -196,11 +253,11 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    expect(screen.getByRole('button', { name: 'Stage A' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Stage A' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Mark A as done/ })).toBeTruthy();
   });
 
-  it('clicking the title invokes onEdit', () => {
+  it('clicking the title invokes onEdit', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     const onEdit = vi.fn();
     render(
@@ -215,9 +272,268 @@ describe('TaskTable', () => {
         />,
       ),
     );
+    const button = await screen.findByRole('button', { name: 'Edit me' });
     act(() => {
-      screen.getByRole('button', { name: 'Edit me' }).click();
+      button.click();
     });
     expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 7, title: 'Edit me' }));
+  });
+
+  it('pressing t on a focused row invokes onEditTags with that task', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onEditTags = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
+          sort="title"
+          multiSelectMode={false}
+          selectedIds={new Set()}
+          onSelectedChange={() => {}}
+          onEdit={() => {}}
+          onEditTags={onEditTags}
+        />,
+      ),
+    );
+    const table = await screen.findByRole('table');
+    // Focus a row via plain j, then press t.
+    act(() => {
+      table.focus();
+      fireEvent.keyDown(table, { key: 'j' });
+    });
+    act(() => {
+      fireEvent.keyDown(table, { key: 't' });
+    });
+    expect(onEditTags).toHaveBeenCalledTimes(1);
+    expect(onEditTags).toHaveBeenCalledWith(expect.objectContaining({ id: 1, title: 'A' }));
+  });
+
+  it('t shortcut does nothing when no row is focused', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onEditTags = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' })]}
+          sort="title"
+          multiSelectMode={false}
+          selectedIds={new Set()}
+          onSelectedChange={() => {}}
+          onEdit={() => {}}
+          onEditTags={onEditTags}
+        />,
+      ),
+    );
+    const table = await screen.findByRole('table');
+    act(() => {
+      table.focus();
+      fireEvent.keyDown(table, { key: 't' });
+    });
+    expect(onEditTags).not.toHaveBeenCalled();
+  });
+
+  it('shift-j extends selection from the focused row downward and auto-enables multi-select', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    const onMultiSelectModeChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[
+            task({ id: 1, title: 'A' }),
+            task({ id: 2, title: 'B' }),
+            task({ id: 3, title: 'C' }),
+            task({ id: 4, title: 'D' }),
+          ]}
+          sort="title"
+          multiSelectMode={false}
+          onMultiSelectModeChange={onMultiSelectModeChange}
+          selectedIds={new Set()}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    const table = await screen.findByRole('table');
+    // Focus row 2 (index 1) by pressing j twice.
+    act(() => {
+      table.focus();
+      fireEvent.keyDown(table, { key: 'j' });
+    });
+    act(() => {
+      fireEvent.keyDown(table, { key: 'j' });
+    });
+    onSelectedChange.mockClear();
+    onMultiSelectModeChange.mockClear();
+    // ⇧j → extend to row 3.
+    act(() => {
+      fireEvent.keyDown(table, { key: 'J', shiftKey: true });
+    });
+    expect(onMultiSelectModeChange).toHaveBeenCalledWith(true);
+    expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2, 3]));
+    // ⇧j again → extend to row 4.
+    act(() => {
+      fireEvent.keyDown(table, { key: 'J', shiftKey: true });
+    });
+    expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2, 3, 4]));
+  });
+
+  it('shift-k after shift-j shrinks the range back toward the anchor', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[
+            task({ id: 1, title: 'A' }),
+            task({ id: 2, title: 'B' }),
+            task({ id: 3, title: 'C' }),
+            task({ id: 4, title: 'D' }),
+          ]}
+          sort="title"
+          multiSelectMode={true}
+          selectedIds={new Set()}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    const table = await screen.findByRole('table');
+    act(() => {
+      table.focus();
+      fireEvent.keyDown(table, { key: 'j' });
+    });
+    act(() => {
+      fireEvent.keyDown(table, { key: 'j' });
+    });
+    // Anchor is row 2 now.
+    act(() => {
+      fireEvent.keyDown(table, { key: 'J', shiftKey: true });
+    });
+    act(() => {
+      fireEvent.keyDown(table, { key: 'J', shiftKey: true });
+    });
+    expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2, 3, 4]));
+    onSelectedChange.mockClear();
+    act(() => {
+      fireEvent.keyDown(table, { key: 'K', shiftKey: true });
+    });
+    expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2, 3]));
+    act(() => {
+      fireEvent.keyDown(table, { key: 'K', shiftKey: true });
+    });
+    expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2]));
+  });
+
+  it('plain j after a shift-j range resets the anchor (next shift-j starts a fresh range)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[
+            task({ id: 1, title: 'A' }),
+            task({ id: 2, title: 'B' }),
+            task({ id: 3, title: 'C' }),
+            task({ id: 4, title: 'D' }),
+          ]}
+          sort="title"
+          multiSelectMode={true}
+          selectedIds={new Set()}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    const table = await screen.findByRole('table');
+    act(() => {
+      table.focus();
+      fireEvent.keyDown(table, { key: 'j' }); // focus row 1
+    });
+    act(() => {
+      fireEvent.keyDown(table, { key: 'J', shiftKey: true }); // range to row 2
+    });
+    expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([1, 2]));
+    onSelectedChange.mockClear();
+    act(() => {
+      fireEvent.keyDown(table, { key: 'j' }); // plain step → resets anchor; no selection change
+    });
+    expect(onSelectedChange).not.toHaveBeenCalled();
+    // Now ⇧j → fresh range starting at the new focus (row 3).
+    act(() => {
+      fireEvent.keyDown(table, { key: 'J', shiftKey: true });
+    });
+    expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([3, 4]));
+  });
+
+  it('Escape exits multi-select mode and clears the selection', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    const onMultiSelectModeChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
+          sort="title"
+          multiSelectMode={true}
+          onMultiSelectModeChange={onMultiSelectModeChange}
+          selectedIds={new Set([1, 2])}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    const table = await screen.findByRole('table');
+    act(() => {
+      table.focus();
+      fireEvent.keyDown(table, { key: 'Escape' });
+    });
+    expect(onSelectedChange).toHaveBeenCalledWith(new Set());
+    expect(onMultiSelectModeChange).toHaveBeenCalledWith(false);
+  });
+
+  it('Escape is a no-op when multi-select is off and nothing is selected', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    const onMultiSelectModeChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' })]}
+          sort="title"
+          multiSelectMode={false}
+          onMultiSelectModeChange={onMultiSelectModeChange}
+          selectedIds={new Set()}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    const table = await screen.findByRole('table');
+    act(() => {
+      table.focus();
+      fireEvent.keyDown(table, { key: 'Escape' });
+    });
+    expect(onSelectedChange).not.toHaveBeenCalled();
+    expect(onMultiSelectModeChange).not.toHaveBeenCalled();
+  });
+
+  it('renders a tag glyph for each task tag and forwards the tag name on click', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A', tags: ['backend', 'ops'] })]}
+          sort="title"
+          multiSelectMode={false}
+          selectedIds={new Set()}
+          onSelectedChange={() => {}}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    // Two glyphs render — one per tag — each with the canonical aria label.
+    expect(await screen.findByRole('button', { name: 'Tag backend' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tag ops' })).toBeTruthy();
   });
 });

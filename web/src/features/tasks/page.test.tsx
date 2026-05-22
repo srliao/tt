@@ -7,7 +7,7 @@ import {
   Outlet,
   RouterProvider,
 } from '@tanstack/react-router';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TasksPage } from './page';
 import { taskSearchSchema } from './use-task-list-search';
@@ -38,11 +38,12 @@ function renderPage(initial = '/tasks') {
     history: createMemoryHistory({ initialEntries: [initial] }),
   });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const result = render(
     <QueryClientProvider client={qc}>
       <RouterProvider router={router as never} />
     </QueryClientProvider>,
   );
+  return { router, ...result };
 }
 
 describe('TasksPage', () => {
@@ -85,5 +86,38 @@ describe('TasksPage', () => {
     renderPage();
     expect(await screen.findByText('Existing', undefined, { timeout: 2000 })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Create your first task/ })).toBeNull();
+  });
+
+  it('opens the edit modal when ?open=<id> is in the URL and clears the signal', async () => {
+    const taskRow = {
+      id: 42,
+      title: 'Open-me',
+      notes: '',
+      state: 'not_done' as const,
+      due_date: null,
+      priority: 0,
+      staged_order: null,
+      spawned_by_script_id: null,
+      created_at: '2026-05-01T00:00:00Z',
+      completed_at: null,
+      cancelled_at: null,
+      updated_at: '2026-05-01T00:00:00Z',
+      tags: [],
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/tags')) return Promise.resolve(jsonResponse([]));
+        return Promise.resolve(jsonResponse([taskRow]));
+      }),
+    );
+    const { router } = renderPage('/tasks?open=42');
+
+    // The edit modal renders a DialogTitle of "Edit task".
+    expect(await screen.findByText('Edit task', undefined, { timeout: 2000 })).toBeTruthy();
+    // And the `open` signal is cleared so refresh/back doesn't reopen the modal.
+    await waitFor(() => {
+      expect((router.state.location.search as { open?: number }).open).toBeUndefined();
+    });
   });
 });

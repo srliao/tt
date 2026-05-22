@@ -16,32 +16,58 @@
 
 import { Link } from '@tanstack/react-router';
 import { CheckSquareIcon, PlusIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTasks } from '@/api/tasks';
 import { Button } from '@/components/ui/button';
 import type { Task } from '@/types/task';
+import { ActiveFilterStrip } from './active-filter-strip';
 import { AddTaskModal, useNewTaskListener } from './add-task-modal';
 import { BulkActionBar } from './bulk-action-bar';
 import { EditTaskModal } from './edit-task-modal';
 import { FilterSidebar } from './filter-sidebar';
+import { InlineTagEditor } from './inline-tag-editor';
 import { TaskTable } from './task-table';
 import { applyQuickFilter, hasActiveFilters, useTaskListSearch } from './use-task-list-search';
 
 export function TasksPage() {
-  const { search } = useTaskListSearch();
+  const { search, setSearch } = useTaskListSearch();
   const effective = applyQuickFilter(search);
   // Default sort is `priority` so the drag-handle column is visible until the
   // user explicitly picks another sort axis.
   const sort = effective.sort ?? 'priority';
 
   const { data: tasks = [], isLoading } = useTasks({ ...effective, sort });
+  // Unfiltered list used to resolve `?open=<id>` requests from the command
+  // palette. The palette caches this same query key, so this is usually a
+  // free cache hit when arriving from the palette. Falls back to the
+  // filtered list when both are populated.
+  const { data: allTasks, isFetched: allTasksFetched } = useTasks({});
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
+  const [editingTags, setEditingTags] = useState<Task | null>(null);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   useNewTaskListener(() => setCreating(true));
+
+  // The command palette navigates here with `?open=<id>` to request the edit
+  // modal. We resolve the id against the unfiltered task list (so it works
+  // regardless of the current filters), open the modal, and immediately
+  // clear `open` so refresh/back doesn't reopen indefinitely. If the id no
+  // longer exists, silently clear it — best-effort UX, no toast.
+  const openId = search.open;
+  useEffect(() => {
+    if (typeof openId !== 'number') return;
+    // Wait for the unfiltered list to resolve before deciding the id is
+    // missing — otherwise a fresh page load with `?open=` would clear the
+    // signal before the data arrives.
+    if (!allTasksFetched) return;
+    const target =
+      (allTasks ?? []).find((t) => t.id === openId) ?? tasks.find((t) => t.id === openId);
+    if (target) setEditing(target);
+    setSearch({ open: undefined });
+  }, [openId, allTasks, allTasksFetched, tasks, setSearch]);
 
   const filtersActive = hasActiveFilters(search);
   const showEmpty = !isLoading && tasks.length === 0 && !filtersActive;
@@ -72,6 +98,8 @@ export function TasksPage() {
           </div>
         </header>
 
+        <ActiveFilterStrip />
+
         {showEmpty ? (
           <EmptyState onCreate={() => setCreating(true)} />
         ) : (
@@ -79,9 +107,12 @@ export function TasksPage() {
             tasks={tasks}
             sort={sort}
             multiSelectMode={multiSelectMode}
+            onMultiSelectModeChange={setMultiSelectMode}
             selectedIds={selectedIds}
             onSelectedChange={setSelectedIds}
             onEdit={(t) => setEditing(t)}
+            onEditTags={(t) => setEditingTags(t)}
+            shortcutsDisabled={editingTags !== null}
             hasFilters={filtersActive}
           />
         )}
@@ -99,6 +130,8 @@ export function TasksPage() {
           if (!next) setEditing(null);
         }}
       />
+
+      <InlineTagEditor task={editingTags} onClose={() => setEditingTags(null)} />
     </div>
   );
 }
