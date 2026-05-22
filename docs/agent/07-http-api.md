@@ -24,7 +24,7 @@ POST   /api/v1/stage/reorder       { task_id, before_id?, after_id? }
 DELETE /api/v1/stage               (clear all staged)
 DELETE /api/v1/stage/finished      (clear only done+cancelled)
 
-GET    /api/v1/tags
+GET    /api/v1/tags?counts=1       (counts=1 → [{id,name,count,…}] via tag.Service.ListWithCounts)
 POST   /api/v1/tags                { name }
 PATCH  /api/v1/tags/{id}           { name }
 DELETE /api/v1/tags/{id}
