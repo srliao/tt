@@ -178,7 +178,6 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 1, title: 'A' })]}
           sort="priority"
-          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={() => {}}
@@ -195,7 +194,6 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 1, title: 'A' })]}
           sort="title"
-          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={() => {}}
@@ -207,35 +205,21 @@ describe('TaskTable', () => {
     expect(screen.queryByRole('button', { name: 'Reorder A' })).toBeNull();
   });
 
-  it('hides the multi-select checkbox unless multiSelectMode is on', async () => {
+  it('always renders the selection checkbox cell (faded until hover/select)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
-    const { rerender } = render(
+    render(
       wrap(
         <TaskTable
           tasks={[task({ id: 1, title: 'A' })]}
           sort="title"
-          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={() => {}}
         />,
       ),
     );
-    await screen.findByRole('button', { name: /Mark A as done/ });
-    expect(screen.queryByRole('checkbox', { name: 'Select A' })).toBeNull();
-
-    rerender(
-      wrap(
-        <TaskTable
-          tasks={[task({ id: 1, title: 'A' })]}
-          sort="title"
-          multiSelectMode={true}
-          selectedIds={new Set()}
-          onSelectedChange={() => {}}
-          onEdit={() => {}}
-        />,
-      ),
-    );
+    // Checkbox is always present — visibility is purely a CSS concern handled
+    // by group-hover/row + data-[state=checked] opacity rules.
     expect(await screen.findByRole('checkbox', { name: 'Select A' })).toBeTruthy();
   });
 
@@ -246,7 +230,6 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 1, title: 'A' })]}
           sort="title"
-          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={() => {}}
@@ -265,7 +248,6 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 7, title: 'Edit me' })]}
           sort="title"
-          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={onEdit}
@@ -287,7 +269,6 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
           sort="title"
-          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={() => {}}
@@ -315,7 +296,6 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 1, title: 'A' })]}
           sort="title"
-          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={() => {}}
@@ -330,10 +310,9 @@ describe('TaskTable', () => {
     expect(onEditTags).not.toHaveBeenCalled();
   });
 
-  it('shift-j extends selection from the focused row downward and auto-enables multi-select', async () => {
+  it('shift-j extends selection from the focused row downward', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     const onSelectedChange = vi.fn();
-    const onMultiSelectModeChange = vi.fn();
     render(
       wrap(
         <TaskTable
@@ -344,8 +323,6 @@ describe('TaskTable', () => {
             task({ id: 4, title: 'D' }),
           ]}
           sort="title"
-          multiSelectMode={false}
-          onMultiSelectModeChange={onMultiSelectModeChange}
           selectedIds={new Set()}
           onSelectedChange={onSelectedChange}
           onEdit={() => {}}
@@ -361,12 +338,10 @@ describe('TaskTable', () => {
       fireEvent.keyDown(document.body, { key: 'j' });
     });
     onSelectedChange.mockClear();
-    onMultiSelectModeChange.mockClear();
     // ⇧j → extend to row 3.
     act(() => {
       fireEvent.keyDown(document.body, { key: 'J', shiftKey: true });
     });
-    expect(onMultiSelectModeChange).toHaveBeenCalledWith(true);
     expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([2, 3]));
     // ⇧j again → extend to row 4.
     act(() => {
@@ -388,7 +363,6 @@ describe('TaskTable', () => {
             task({ id: 4, title: 'D' }),
           ]}
           sort="title"
-          multiSelectMode={true}
           selectedIds={new Set()}
           onSelectedChange={onSelectedChange}
           onEdit={() => {}}
@@ -434,7 +408,6 @@ describe('TaskTable', () => {
             task({ id: 4, title: 'D' }),
           ]}
           sort="title"
-          multiSelectMode={true}
           selectedIds={new Set()}
           onSelectedChange={onSelectedChange}
           onEdit={() => {}}
@@ -464,14 +437,11 @@ describe('TaskTable', () => {
   it('Escape exits multi-select mode and clears the selection', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     const onSelectedChange = vi.fn();
-    const onMultiSelectModeChange = vi.fn();
     render(
       wrap(
         <TaskTable
           tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
           sort="title"
-          multiSelectMode={true}
-          onMultiSelectModeChange={onMultiSelectModeChange}
           selectedIds={new Set([1, 2])}
           onSelectedChange={onSelectedChange}
           onEdit={() => {}}
@@ -483,20 +453,16 @@ describe('TaskTable', () => {
       fireEvent.keyDown(document.body, { key: 'Escape' });
     });
     expect(onSelectedChange).toHaveBeenCalledWith(new Set());
-    expect(onMultiSelectModeChange).toHaveBeenCalledWith(false);
   });
 
-  it('Escape is a no-op when multi-select is off and nothing is selected', async () => {
+  it('Escape is a no-op when nothing is selected', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     const onSelectedChange = vi.fn();
-    const onMultiSelectModeChange = vi.fn();
     render(
       wrap(
         <TaskTable
           tasks={[task({ id: 1, title: 'A' })]}
           sort="title"
-          multiSelectMode={false}
-          onMultiSelectModeChange={onMultiSelectModeChange}
           selectedIds={new Set()}
           onSelectedChange={onSelectedChange}
           onEdit={() => {}}
@@ -508,7 +474,55 @@ describe('TaskTable', () => {
       fireEvent.keyDown(document.body, { key: 'Escape' });
     });
     expect(onSelectedChange).not.toHaveBeenCalled();
-    expect(onMultiSelectModeChange).not.toHaveBeenCalled();
+  });
+
+  it('pressing x toggles selection of the focused row', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
+          sort="title"
+          selectedIds={new Set()}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    await screen.findByRole('table');
+    // Focus row 1, then press x to select it.
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'j' });
+    });
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'x' });
+    });
+    expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([1]));
+  });
+
+  it('pressing Space toggles selection of the focused row', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
+          sort="title"
+          selectedIds={new Set()}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    await screen.findByRole('table');
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'j' });
+    });
+    act(() => {
+      fireEvent.keyDown(document.body, { key: ' ' });
+    });
+    expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([1]));
   });
 
   it('renders a tag glyph for each task tag and forwards the tag name on click', async () => {
@@ -518,7 +532,6 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 1, title: 'A', tags: ['backend', 'ops'] })]}
           sort="title"
-          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={() => {}}
@@ -538,7 +551,6 @@ describe('TaskTable', () => {
         <TaskTable
           tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
           sort="title"
-          multiSelectMode={false}
           selectedIds={new Set()}
           onSelectedChange={() => {}}
           onEdit={() => {}}
@@ -568,7 +580,6 @@ describe('TaskTable', () => {
           <TaskTable
             tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
             sort="title"
-            multiSelectMode={false}
             selectedIds={new Set()}
             onSelectedChange={() => {}}
             onEdit={() => {}}
@@ -603,7 +614,6 @@ describe('TaskTable', () => {
           <TaskTable
             tasks={[task({ id: 1, title: 'A' })]}
             sort="title"
-            multiSelectMode={false}
             selectedIds={new Set()}
             onSelectedChange={() => {}}
             onEdit={() => {}}

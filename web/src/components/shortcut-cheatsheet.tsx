@@ -52,7 +52,8 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: 'd', description: 'Toggle done' },
       { keys: 's', description: 'Stage / unstage' },
       { keys: 't', description: 'Edit tags inline' },
-      { keys: '␣', description: 'Toggle multi-select' },
+      { keys: 'x', description: 'Select / deselect focused task' },
+      { keys: '␣', description: 'Same — Space also works' },
     ],
   },
 ];
