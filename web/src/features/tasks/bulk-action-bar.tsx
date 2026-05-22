@@ -32,7 +32,23 @@ import {
 import { cn } from '@/lib/utils';
 import type { UseSelectionResult } from './use-selection';
 
-export interface BulkActionBarProps {
+/**
+ * Controlled-pair for a confirm dialog. The bar treats the dialog as
+ * controlled only when BOTH the value and the setter are provided. Passing
+ * exactly one is a foot-gun — we'd read from the prop but write to the
+ * no-op internal setter, resulting in a partially-controlled dialog that
+ * never closes. Modeling each pair as a discriminated union surfaces the
+ * mistake at the type level; we also warn at runtime in dev (see below).
+ */
+type DeleteControl =
+  | { confirmDelete?: undefined; onConfirmDeleteChange?: undefined }
+  | { confirmDelete: boolean; onConfirmDeleteChange: (next: boolean) => void };
+
+type CancelControl =
+  | { confirmCancel?: undefined; onConfirmCancelChange?: undefined }
+  | { confirmCancel: boolean; onConfirmCancelChange: (next: boolean) => void };
+
+type BulkActionBarBaseProps = {
   selection: UseSelectionResult;
   /** Effective filter currently driving the visible list. Used to compute "select all matching · N". */
   filter: TaskListParams;
@@ -44,18 +60,9 @@ export interface BulkActionBarProps {
    * legacy consumers) shouldn't have to provide one.
    */
   tagButtonRef?: RefObject<HTMLButtonElement | null>;
-  /**
-   * Controlled state for the destructive confirm dialogs. Lifted into the
-   * parent so the command palette can trigger them via URL signal from any
-   * page (the palette navigates to /tasks?confirmBulkDelete=1, and
-   * page.tsx flips the flag). Optional: when omitted the bar falls back to
-   * internal useState so unit tests can render it without plumbing.
-   */
-  confirmDelete?: boolean;
-  onConfirmDeleteChange?: (open: boolean) => void;
-  confirmCancel?: boolean;
-  onConfirmCancelChange?: (open: boolean) => void;
-}
+};
+
+export type BulkActionBarProps = BulkActionBarBaseProps & DeleteControl & CancelControl;
 
 // kbd hint styled for the dark (inverted) bar surface.
 const kbdClass =
@@ -99,12 +106,32 @@ export function BulkActionBar({
   const del = useDeleteTask();
   // Fall back to internal state when the parent doesn't control the dialogs
   // (test consumers, future call sites that don't need palette-driven opens).
+  // A dialog is treated as controlled only when BOTH the value and the
+  // setter are provided. Partial control would silently desync (we'd read
+  // from the prop but write to the no-op internal setter, leaving the
+  // dialog stuck open). The discriminated union on the props type
+  // prevents this at compile-time; the dev warning below is a belt-and-
+  // suspenders runtime check for JS callers / loose any.
   const [confirmDeleteLocal, setConfirmDeleteLocal] = useState(false);
   const [confirmCancelLocal, setConfirmCancelLocal] = useState(false);
-  const confirmDelete = confirmDeleteProp ?? confirmDeleteLocal;
-  const setConfirmDelete = onConfirmDeleteChange ?? setConfirmDeleteLocal;
-  const confirmCancel = confirmCancelProp ?? confirmCancelLocal;
-  const setConfirmCancel = onConfirmCancelChange ?? setConfirmCancelLocal;
+  if (process.env.NODE_ENV !== 'production') {
+    if ((confirmDeleteProp === undefined) !== (onConfirmDeleteChange === undefined)) {
+      console.warn(
+        'BulkActionBar: confirmDelete and onConfirmDeleteChange must be passed together (both controlled or both omitted).',
+      );
+    }
+    if ((confirmCancelProp === undefined) !== (onConfirmCancelChange === undefined)) {
+      console.warn(
+        'BulkActionBar: confirmCancel and onConfirmCancelChange must be passed together (both controlled or both omitted).',
+      );
+    }
+  }
+  const isDeleteControlled = confirmDeleteProp !== undefined && onConfirmDeleteChange !== undefined;
+  const isCancelControlled = confirmCancelProp !== undefined && onConfirmCancelChange !== undefined;
+  const confirmDelete = isDeleteControlled ? confirmDeleteProp : confirmDeleteLocal;
+  const setConfirmDelete = isDeleteControlled ? onConfirmDeleteChange : setConfirmDeleteLocal;
+  const confirmCancel = isCancelControlled ? confirmCancelProp : confirmCancelLocal;
+  const setConfirmCancel = isCancelControlled ? onConfirmCancelChange : setConfirmCancelLocal;
 
   // Resolve "all matching" via the same cached query the list view uses —
   // this is a cache hit when `filter` matches the list page's filter.
