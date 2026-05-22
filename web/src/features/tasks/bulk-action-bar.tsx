@@ -54,7 +54,7 @@ export function BulkActionBar({ selectedIds, onClear }: BulkActionBarProps) {
   return (
     <section
       aria-label="Bulk actions"
-      className="sticky bottom-4 z-20 mx-auto flex w-fit items-center gap-2 rounded-full bg-popover px-3 py-2 text-sm shadow-lg ring-1 ring-foreground/10"
+      className="fixed bottom-4 left-1/2 z-20 flex w-fit -translate-x-1/2 items-center gap-2 rounded-full bg-popover px-3 py-2 text-sm shadow-lg ring-1 ring-foreground/10"
     >
       <span className="text-muted-foreground">{ids.length} selected</span>
       <Button size="sm" variant="secondary" onClick={markDone}>
