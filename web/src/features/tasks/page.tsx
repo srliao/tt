@@ -67,6 +67,15 @@ export function TasksPage() {
 
   useNewTaskListener(() => setCreating(true));
 
+  // Guard against a stale `bulkTagOpen=true` if selection is cleared from
+  // outside the editor (e.g. another tab mutating tasks away, programmatic
+  // deselection). The popover already short-circuits to `null` when the
+  // selection is empty, but `shortcutsDisabled` still depends on this flag,
+  // so table shortcuts would silently stay disabled until reopen.
+  useEffect(() => {
+    if (selection.selected.size === 0 && bulkTagOpen) setBulkTagOpen(false);
+  }, [selection.selected.size, bulkTagOpen]);
+
   // The command palette navigates here with `?open=<id>` to request the edit
   // modal. We resolve the id against the unfiltered task list (so it works
   // regardless of the current filters), open the modal, and immediately
