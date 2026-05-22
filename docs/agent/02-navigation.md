@@ -64,6 +64,7 @@ Quick locator tables. When you need to read code, start here.
 | Scripts list + editor + cheatsheets + spawned-tasks panel | `web/src/features/scripts/*` |
 | Runs list + detail + logs table + status pill | `web/src/features/runs/*` |
 | URL-driven filter state for /tasks | `web/src/features/tasks/use-task-list-search.ts` |
+| Active-filter strip (chips above the task table) | `web/src/features/tasks/active-filter-strip.tsx` |
 
 ## Build / dev / tooling
 
