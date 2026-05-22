@@ -2,6 +2,7 @@ package task_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -20,6 +21,29 @@ func newServiceWithStore(t *testing.T) (*task.Impl, *db.Store, context.Context) 
 	t.Helper()
 	store := dbtest.New(t)
 	return task.New(store), store, context.Background()
+}
+
+// insertOKRun records a synthetic OK script_run with the given spawned task
+// ids. Used by the lastSpawn batch tests, which rely on the run row rather
+// than tasks.spawned_by_script_id to define "the latest batch".
+func insertOKRun(t *testing.T, store *db.Store, ctx context.Context, scriptID int64, taskIDs []int64) {
+	t.Helper()
+	insertRun(t, store, ctx, scriptID, "ok", taskIDs)
+}
+
+func insertRun(t *testing.T, store *db.Store, ctx context.Context, scriptID int64, status string, taskIDs []int64) {
+	t.Helper()
+	ids, err := json.Marshal(taskIDs)
+	if err != nil {
+		t.Fatalf("marshal task ids: %v", err)
+	}
+	_, err = store.DB().ExecContext(ctx,
+		`INSERT INTO script_runs (script_id, status, finished_at, spawned_task_ids, trigger)
+		 VALUES (?, ?, datetime('now'), ?, 'manual')`,
+		scriptID, status, string(ids))
+	if err != nil {
+		t.Fatalf("insertRun: %v", err)
+	}
 }
 
 // insertScript inserts a script directly via raw SQL so task tests can use a
@@ -356,44 +380,78 @@ func TestByScript_OnlyReturnsSpawned(t *testing.T) {
 	}
 }
 
-func TestLatestBySpawningScript_ReturnsNewest(t *testing.T) {
+func TestLatestBySpawningScripts_ReturnsLatestBatch(t *testing.T) {
 	t.Parallel()
 	svc, store, ctx := newServiceWithStore(t)
 
 	sid := insertScript(t, store, ctx, "s1")
-	older, err := svc.Create(ctx, task.CreateInput{Title: "older", SpawnedByScriptID: &sid})
-	if err != nil {
-		t.Fatalf("Create(older): %v", err)
-	}
-	// SQLite datetime('now') is second-precision; sleep across a second
-	// boundary so created_at differs.
-	time.Sleep(1100 * time.Millisecond)
-	newer, err := svc.Create(ctx, task.CreateInput{Title: "newer", SpawnedByScriptID: &sid})
-	if err != nil {
-		t.Fatalf("Create(newer): %v", err)
-	}
-	_ = older
 
-	got, err := svc.LatestBySpawningScript(ctx, sid)
+	// First batch: one task. Sleep across a second boundary so the second
+	// run's started_at is strictly newer.
+	first, err := svc.Create(ctx, task.CreateInput{Title: "old", SpawnedByScriptID: &sid})
 	if err != nil {
-		t.Fatalf("LatestBySpawningScript: %v", err)
+		t.Fatalf("Create(old): %v", err)
 	}
-	if got == nil || got.ID != newer.ID {
-		t.Fatalf("got = %+v, want id %d", got, newer.ID)
+	insertOKRun(t, store, ctx, sid, []int64{first.ID})
+	time.Sleep(1100 * time.Millisecond)
+
+	// Second batch: two tasks.
+	a, err := svc.Create(ctx, task.CreateInput{Title: "a", SpawnedByScriptID: &sid})
+	if err != nil {
+		t.Fatalf("Create(a): %v", err)
+	}
+	b, err := svc.Create(ctx, task.CreateInput{Title: "b", SpawnedByScriptID: &sid})
+	if err != nil {
+		t.Fatalf("Create(b): %v", err)
+	}
+	insertOKRun(t, store, ctx, sid, []int64{a.ID, b.ID})
+
+	got, err := svc.LatestBySpawningScripts(ctx, sid)
+	if err != nil {
+		t.Fatalf("LatestBySpawningScripts: %v", err)
+	}
+	if len(got) != 2 || got[0].ID != a.ID || got[1].ID != b.ID {
+		t.Fatalf("got = %+v, want [%d, %d]", got, a.ID, b.ID)
 	}
 }
 
-func TestLatestBySpawningScript_NoMatchReturnsNilNil(t *testing.T) {
+func TestLatestBySpawningScripts_NoRunsReturnsEmpty(t *testing.T) {
 	t.Parallel()
 	svc, store, ctx := newServiceWithStore(t)
 	sid := insertScript(t, store, ctx, "empty")
 
-	got, err := svc.LatestBySpawningScript(ctx, sid)
+	got, err := svc.LatestBySpawningScripts(ctx, sid)
 	if err != nil {
-		t.Fatalf("LatestBySpawningScript: %v", err)
+		t.Fatalf("LatestBySpawningScripts: %v", err)
 	}
-	if got != nil {
-		t.Fatalf("got = %+v, want nil", got)
+	if len(got) != 0 {
+		t.Fatalf("got = %+v, want empty", got)
+	}
+}
+
+func TestLatestBySpawningScripts_IgnoresFailedRuns(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+	sid := insertScript(t, store, ctx, "s")
+
+	good, err := svc.Create(ctx, task.CreateInput{Title: "good", SpawnedByScriptID: &sid})
+	if err != nil {
+		t.Fatalf("Create(good): %v", err)
+	}
+	insertOKRun(t, store, ctx, sid, []int64{good.ID})
+
+	time.Sleep(1100 * time.Millisecond)
+	// A later non-OK run with spawned_task_ids must NOT shadow the prior OK
+	// batch. (In production no rows would ever be persisted on a non-OK run,
+	// but we guard the query against legacy / inconsistent rows.)
+	insertRun(t, store, ctx, sid, "error", []int64{9999})
+
+	got, err := svc.LatestBySpawningScripts(ctx, sid)
+	if err != nil {
+		t.Fatalf("LatestBySpawningScripts: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != good.ID {
+		t.Fatalf("got = %+v, want [%d]", got, good.ID)
 	}
 }
 

@@ -28,8 +28,8 @@ File: `internal/task/service.go`.
 | `ReorderMain` / `ReorderStage` | Compute midpoint; trigger rebalance if neighbors within 1e-9. |
 | `RebalancePriority` / `RebalanceStage` | Wraps a tx, reassigns to `float64(i)` in current ascending order. |
 | `List(FilterSort)` | Dynamic SQL — see [03-data-layer.md](./03-data-layer.md). |
-| `ByScript(scriptID, limit, offset)` | Used by `/scripts/:id/tasks` and runtime `ctx.lastSpawn`. |
-| `LatestBySpawningScript` | Returns `(*Task, nil)` on `sql.ErrNoRows` (NOT an error). |
+| `ByScript(scriptID, limit, offset)` | Used by `/scripts/:id/tasks` and the spawned-tasks panel. |
+| `LatestBySpawningScripts` | Returns the full batch of tasks created by the most recent successful (`status='ok'`) run for the script, ordered by `tasks.id ASC`. Empty slice (not an error) when no such run exists. Powers runtime `ctx.lastSpawns` / `ctx.lastSpawn`. |
 | `SetTagsByID` | Replace-all in a tx. Caller resolves names via `tag.Service.Resolve`. |
 
 **Always set tags via `SetTagsByID` after creating/updating** — `Create`/`Update` themselves do not touch tags.

@@ -164,27 +164,29 @@ func (r *Runner) Run(ctx context.Context, scriptID, runID int64, trigger script.
 
 	queue := newTaskQueue()
 
-	// Resolve lastSpawn ahead of execution so the ctx object is fully
-	// populated before the JS sees it. A nil pointer becomes JS null.
-	lastTask, err := r.tasks.LatestBySpawningScript(ctx, scriptID)
+	// Resolve the last spawn batch ahead of execution so the ctx object is
+	// fully populated before the JS sees it. ctx.lastSpawn is the last entry
+	// (newest task — back-compat with the pre-batch API); ctx.lastSpawns is
+	// the full ordered batch. An empty batch surfaces as JS null / [].
+	lastTasks, err := r.tasks.LatestBySpawningScripts(ctx, scriptID)
 	if err != nil {
 		r.logger.Error("load last spawn", "script_id", scriptID, "err", err)
-		lastTask = nil
+		lastTasks = nil
 	}
 
 	rt := goja.New()
 	logFn := logBindings(r.scripts, runID)
 
 	if err := installCtx(ctxDeps{
-		rt:       rt,
-		now:      now,
-		sc:       sc,
-		trigger:  trigger,
-		state:    stateBuf,
-		queue:    queue,
-		logFn:    logFn,
-		runCtx:   ctx,
-		lastTask: lastTask,
+		rt:        rt,
+		now:       now,
+		sc:        sc,
+		trigger:   trigger,
+		state:     stateBuf,
+		queue:     queue,
+		logFn:     logFn,
+		runCtx:    ctx,
+		lastTasks: lastTasks,
 	}); err != nil {
 		r.failRun(ctx, runID, err.Error())
 		return nil

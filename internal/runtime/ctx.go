@@ -14,15 +14,15 @@ import (
 // passed by value because each Run constructs a fresh one; sharing is never
 // desired.
 type ctxDeps struct {
-	rt       *goja.Runtime
-	now      time.Time
-	sc       script.Script
-	trigger  script.Trigger
-	state    *stateBuffer
-	queue    *taskQueue
-	logFn    func(context.Context, script.LogLevel, string) error
-	runCtx   context.Context
-	lastTask *task.Task
+	rt        *goja.Runtime
+	now       time.Time
+	sc        script.Script
+	trigger   script.Trigger
+	state     *stateBuffer
+	queue     *taskQueue
+	logFn     func(context.Context, script.LogLevel, string) error
+	runCtx    context.Context
+	lastTasks []task.Task
 }
 
 // installCtx builds the ctx object exposed to every userscript. Order of
@@ -83,10 +83,21 @@ func installCtx(d ctxDeps) error {
 		return fmt.Errorf("runtime: set ctx.script: %w", err)
 	}
 
-	// ctx.lastSpawn — pre-computed JSON shape of the most recently spawned
-	// task, or null if the script has never spawned anything.
-	if d.lastTask != nil {
-		if err := ctxObj.Set("lastSpawn", taskToJSObject(*d.lastTask)); err != nil {
+	// ctx.lastSpawns — every task created by the most recent successful run
+	// of this script, ordered by id ASC (insertion order). Empty array if
+	// the script has never spawned anything.
+	//
+	// ctx.lastSpawn keeps the pre-batch contract: the newest task, i.e. the
+	// last entry of lastSpawns, or null when the array is empty.
+	spawnObjs := make([]map[string]any, 0, len(d.lastTasks))
+	for _, t := range d.lastTasks {
+		spawnObjs = append(spawnObjs, taskToJSObject(t))
+	}
+	if err := ctxObj.Set("lastSpawns", spawnObjs); err != nil {
+		return fmt.Errorf("runtime: set ctx.lastSpawns: %w", err)
+	}
+	if n := len(spawnObjs); n > 0 {
+		if err := ctxObj.Set("lastSpawn", spawnObjs[n-1]); err != nil {
 			return fmt.Errorf("runtime: set ctx.lastSpawn: %w", err)
 		}
 	} else {

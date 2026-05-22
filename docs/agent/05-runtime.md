@@ -21,10 +21,12 @@ JS execution engine for userscripts. One run = one fresh `goja.Runtime` + 5s tim
 3. defer SetLastRunAt(now) + PruneRuns(500) — both run regardless of outcome.
 4. Load user_state into stateBuffer (overlay; never mutates persisted blob).
 5. Create taskQueue (in-memory buffer for ctx.queueTask).
-6. Load ctx.lastSpawn = LatestBySpawningScript(scriptID).
+6. Load lastTasks = LatestBySpawningScripts(scriptID) — the entire batch
+   spawned by the most recent successful run, ordered by tasks.id ASC.
 7. goja.New(); installCtx(...) — see ctx.go.
    - Date helpers, ctx.log + console, ctx.state, ctx.queueTask,
-     ctx.script metadata, ctx.lastSpawn.
+     ctx.script metadata, ctx.lastSpawns (array) + ctx.lastSpawn
+     (last element of the array, or null when empty — pre-batch contract).
    - delete this.setTimeout/setInterval/fetch/process/require.
 8. execute(rt, code) under time.AfterFunc(timeout, rt.Interrupt("timeout")).
 9. Switch on status:
@@ -35,6 +37,8 @@ JS execution engine for userscripts. One run = one fresh `goja.Runtime` + 5s tim
 ```
 
 Important: **logs are immediate**, not deferred. `ctx.log` writes through `script.Service.AppendLog` synchronously, so timeouts and errors still leave a post-mortem trail.
+
+`ctx.lastSpawns` derives from `script_runs.spawned_task_ids` (JSON array, written by `FinishRun` on `ok`). The query `ListLatestSpawnedTasksByScript` in `internal/db/queries/tasks.sql` JOINs `tasks` with `json_each(spawned_task_ids)` of the latest `status='ok'` row for the script, so failed/timeout runs are skipped and the batch reflects exactly what the previous successful invocation produced.
 
 ## Effect persistence model
 
@@ -86,7 +90,7 @@ See spec §5 for the full list. Key categories:
 |---|---|
 | Date helpers | `ctx.today/weekday/dayOfMonth/month/year/isFirstOfMonth/isLastOfMonth/isWeekday/daysSince/daysBetween/addDays/formatDate/parseDate` |
 | Script metadata | `ctx.script.{id,name,trigger,lastRunAt}` — `lastRunAt` is a string in `"YYYY-MM-DD HH:MM:SS"` UTC layout |
-| Spawn lookup | `ctx.lastSpawn` — object or `null` |
+| Spawn lookup | `ctx.lastSpawns` — array of task objects from the most recent successful run (ordered by `tasks.id ASC` = insertion order; `[]` when no such run). `ctx.lastSpawn` — last element of that array, or `null` when empty (back-compat with the prior single-task surface). |
 | State | `ctx.state.{get,set,delete,all}` |
 | Logging | `ctx.log(msg)`, `ctx.log.{debug,info,warn,error}`, `console.{log,info,warn,error}` |
 | Mutation | `ctx.queueTask({title, notes?, tags?, due_date?})` |

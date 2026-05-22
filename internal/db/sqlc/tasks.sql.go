@@ -153,31 +153,6 @@ func (q *Queries) GetTaskTags(ctx context.Context, taskID int64) ([]GetTaskTagsR
 	return items, nil
 }
 
-const latestTaskBySpawningScript = `-- name: LatestTaskBySpawningScript :one
-SELECT id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at FROM tasks WHERE spawned_by_script_id = ?
-ORDER BY created_at DESC, id DESC LIMIT 1
-`
-
-func (q *Queries) LatestTaskBySpawningScript(ctx context.Context, spawnedByScriptID *int64) (Task, error) {
-	row := q.db.QueryRowContext(ctx, latestTaskBySpawningScript, spawnedByScriptID)
-	var i Task
-	err := row.Scan(
-		&i.ID,
-		&i.Title,
-		&i.Notes,
-		&i.State,
-		&i.DueDate,
-		&i.Priority,
-		&i.StagedOrder,
-		&i.SpawnedByScriptID,
-		&i.CreatedAt,
-		&i.CompletedAt,
-		&i.CancelledAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
 const listAllPrioritiesAsc = `-- name: ListAllPrioritiesAsc :many
 SELECT id, priority FROM tasks ORDER BY priority ASC, id ASC
 `
@@ -229,6 +204,52 @@ func (q *Queries) ListAllStagedAsc(ctx context.Context) ([]ListAllStagedAscRow, 
 	for rows.Next() {
 		var i ListAllStagedAscRow
 		if err := rows.Scan(&i.ID, &i.StagedOrder); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLatestSpawnedTasksByScript = `-- name: ListLatestSpawnedTasksByScript :many
+SELECT t.id, t.title, t.notes, t.state, t.due_date, t.priority, t.staged_order, t.spawned_by_script_id, t.created_at, t.completed_at, t.cancelled_at, t.updated_at FROM tasks t
+JOIN json_each((
+    SELECT spawned_task_ids FROM script_runs
+    WHERE script_id = ? AND status = 'ok' AND spawned_task_ids != '[]'
+    ORDER BY started_at DESC, id DESC LIMIT 1
+)) j ON t.id = CAST(j.value AS INTEGER)
+ORDER BY t.id ASC
+`
+
+func (q *Queries) ListLatestSpawnedTasksByScript(ctx context.Context, scriptID int64) ([]Task, error) {
+	rows, err := q.db.QueryContext(ctx, listLatestSpawnedTasksByScript, scriptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Task
+	for rows.Next() {
+		var i Task
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Notes,
+			&i.State,
+			&i.DueDate,
+			&i.Priority,
+			&i.StagedOrder,
+			&i.SpawnedByScriptID,
+			&i.CreatedAt,
+			&i.CompletedAt,
+			&i.CancelledAt,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
