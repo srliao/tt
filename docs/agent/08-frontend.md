@@ -73,12 +73,15 @@ Component → useXxx() hook → api<T>('/...') → fetch → ApiError-aware deco
 ```
 routes/tasks.tsx           validateSearch via taskSearchSchema (zod)
 features/tasks/use-task-list-search.ts
-  ├── taskSearchSchema     zod schema (states, tags, due, q, sort, asc, quick)
+  ├── taskSearchSchema     zod schema (states, tags, tagsExclude, tagMode, due, q, sort, asc, quick)
   ├── applyQuickFilter()   translate `quick=overdue` to effective filter
   ├── hasActiveFilters()   for empty-state suppression
+  ├── isStateRestricted()  true when `states` is a strict subset of all states
   └── useTaskListSearch()  returns { search, setSearch(updates) }
                            setSearch strips empty/undefined values
 ```
+
+`<ActiveFilterStrip>` (`features/tasks/active-filter-strip.tsx`) reads the same hook and renders a removable chip per active filter axis above `<TaskTable>`. Hidden when neither `hasActiveFilters` nor `isStateRestricted` is true.
 
 `setSearch({})`-style updates use shallow-merge → cleanup → navigate. Refresh-stable, browser-back works, shareable URL.
 
