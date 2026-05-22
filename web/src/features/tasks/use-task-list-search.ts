@@ -60,9 +60,11 @@ export function applyQuickFilter(search: TaskSearch): TaskListParams {
   // We always send tag_mode when tags are non-empty so the server respects
   // the UI default of "any" — see comments on TaskListParams.tagMode.
   const tagsPresent = search.tags && search.tags.length > 0;
+  const tagsExcludePresent = search.tagsExclude && search.tagsExclude.length > 0;
   const base: TaskListParams = {
     states: search.states && search.states.length > 0 ? search.states : undefined,
     tags: tagsPresent ? search.tags : undefined,
+    tagsExclude: tagsExcludePresent ? search.tagsExclude : undefined,
     tagMode: tagsPresent ? (search.tagMode ?? 'any') : undefined,
     due: search.due,
     q: search.q,
@@ -98,6 +100,7 @@ export function applyQuickFilter(search: TaskSearch): TaskListParams {
   return {
     states: base.states ?? preset.states,
     tags: base.tags,
+    tagsExclude: base.tagsExclude,
     tagMode: base.tagMode,
     due: base.due ?? preset.due,
     q: base.q,
@@ -111,6 +114,7 @@ export function hasActiveFilters(search: TaskSearch): boolean {
   return Boolean(
     (search.states && search.states.length > 0) ||
       (search.tags && search.tags.length > 0) ||
+      (search.tagsExclude && search.tagsExclude.length > 0) ||
       search.due ||
       search.q ||
       search.quick,

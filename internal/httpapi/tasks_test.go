@@ -217,6 +217,39 @@ func TestTasks_ListFilterByTagAND(t *testing.T) {
 	}
 }
 
+func TestTasks_ListFilterByTagsExclude(t *testing.T) {
+	t.Parallel()
+
+	fx := newTestServer(t, nil)
+	ctx := context.Background()
+	plain, err := fx.tasks.Create(ctx, task.CreateInput{Title: "plain"})
+	if err != nil {
+		t.Fatalf("create plain: %v", err)
+	}
+	tagged, err := fx.tasks.Create(ctx, task.CreateInput{Title: "tagged"})
+	if err != nil {
+		t.Fatalf("create tagged: %v", err)
+	}
+	skipIDs, err := fx.tags.Resolve(ctx, []string{"skip"}, true)
+	if err != nil {
+		t.Fatalf("resolve skip: %v", err)
+	}
+	if err := fx.tasks.SetTagsByID(ctx, tagged.ID, skipIDs); err != nil {
+		t.Fatalf("set tags tagged: %v", err)
+	}
+
+	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tags_exclude=skip", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d body = %s", resp.StatusCode, string(body))
+	}
+	tasks := decodeTasks(t, resp)
+	if len(tasks) != 1 || tasks[0].ID != plain.ID {
+		t.Fatalf("tags_exclude result = %+v, want [%d]", tasks, plain.ID)
+	}
+}
+
 func TestTasks_ListInvalidTagMode(t *testing.T) {
 	t.Parallel()
 
