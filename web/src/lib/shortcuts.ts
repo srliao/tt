@@ -78,7 +78,7 @@ export function useGlobalShortcuts(router: AppRouter) {
         return;
       }
 
-      if (key === '?') {
+      if (key === '?' || key === 'h') {
         event.preventDefault();
         window.dispatchEvent(new CustomEvent('tt:toggle-cheatsheet'));
         return;

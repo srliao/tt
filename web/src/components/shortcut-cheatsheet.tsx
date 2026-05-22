@@ -13,14 +13,14 @@ interface Shortcut {
 }
 
 const SHORTCUTS: Shortcut[] = [
-  { keys: 'n', description: 'Create new task (on Tasks page)' },
+  { keys: 'n', description: 'Create new task (auto-staged on Stage page)' },
   { keys: '/', description: 'Focus search' },
   { keys: 'g t', description: 'Go to Tasks' },
   { keys: 'g s', description: 'Go to Stage' },
   { keys: 'g c', description: 'Go to Scripts' },
   { keys: 'g g', description: 'Go to Tags' },
   { keys: 'g r', description: 'Go to Runs' },
-  { keys: '?', description: 'Toggle this cheatsheet' },
+  { keys: 'h / ?', description: 'Toggle this help cheatsheet' },
 ];
 
 export function ShortcutCheatsheet() {
