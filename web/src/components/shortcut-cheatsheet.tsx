@@ -46,14 +46,22 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: 'On a task',
     items: [
       { keys: 'j / k', description: 'Move focus down / up' },
-      { keys: '⇧ j / ⇧ k', description: 'Extend selection range' },
       { keys: '↵', description: 'Edit task' },
       { keys: 'e', description: 'Edit task' },
       { keys: 'd', description: 'Toggle done' },
       { keys: 's', description: 'Stage / unstage' },
       { keys: 't', description: 'Edit tags inline' },
+    ],
+  },
+  {
+    title: 'Selection',
+    items: [
       { keys: 'x', description: 'Select / deselect focused task' },
       { keys: '␣', description: 'Same — Space also works' },
+      { keys: '⇧ j / ⇧ k', description: 'Extend range' },
+      { keys: '⌘ A', description: 'Select all visible' },
+      { keys: '⇧ ⌘ A', description: 'Select all matching the filter' },
+      { keys: 'Esc', description: 'Clear selection' },
     ],
   },
 ];

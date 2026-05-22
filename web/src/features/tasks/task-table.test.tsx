@@ -599,6 +599,122 @@ describe('TaskTable', () => {
     expect(onEditTags).not.toHaveBeenCalled();
   });
 
+  it('⌘A selects every visible row when none are selected', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[
+            task({ id: 1, title: 'A' }),
+            task({ id: 2, title: 'B' }),
+            task({ id: 3, title: 'C' }),
+          ]}
+          sort="title"
+          selectedIds={new Set()}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    await screen.findByRole('table');
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'a', metaKey: true });
+    });
+    expect(onSelectedChange).toHaveBeenCalledWith(new Set([1, 2, 3]));
+  });
+
+  it('a second ⌘A clears the selection when everything visible is already selected', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' }), task({ id: 2, title: 'B' })]}
+          sort="title"
+          selectedIds={new Set([1, 2])}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    await screen.findByRole('table');
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'a', metaKey: true });
+    });
+    expect(onSelectedChange).toHaveBeenLastCalledWith(new Set());
+  });
+
+  it('Ctrl A works the same as ⌘A on Linux/Windows', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' })]}
+          sort="title"
+          selectedIds={new Set()}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    await screen.findByRole('table');
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'a', ctrlKey: true });
+    });
+    expect(onSelectedChange).toHaveBeenCalledWith(new Set([1]));
+  });
+
+  it('⇧⌘A invokes onSelectAllMatching and does not touch onSelectedChange', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectAllMatching = vi.fn();
+    const onSelectedChange = vi.fn();
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A' })]}
+          sort="title"
+          selectedIds={new Set()}
+          onSelectedChange={onSelectedChange}
+          onEdit={() => {}}
+          onSelectAllMatching={onSelectAllMatching}
+        />,
+      ),
+    );
+    await screen.findByRole('table');
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'A', metaKey: true, shiftKey: true });
+    });
+    expect(onSelectAllMatching).toHaveBeenCalledTimes(1);
+    expect(onSelectedChange).not.toHaveBeenCalled();
+  });
+
+  it('⌘A inside an <input> is a no-op for the table (browser default wins)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    const onSelectedChange = vi.fn();
+    render(
+      wrap(
+        <>
+          <input aria-label="search" />
+          <TaskTable
+            tasks={[task({ id: 1, title: 'A' })]}
+            sort="title"
+            selectedIds={new Set()}
+            onSelectedChange={onSelectedChange}
+            onEdit={() => {}}
+          />
+        </>,
+      ),
+    );
+    const input = await screen.findByLabelText('search');
+    act(() => {
+      input.focus();
+      fireEvent.keyDown(input, { key: 'a', metaKey: true });
+    });
+    expect(onSelectedChange).not.toHaveBeenCalled();
+  });
+
   it('keydown is a no-op when an open dialog is present in the DOM', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     const onEditTags = vi.fn();

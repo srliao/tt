@@ -106,14 +106,14 @@ features/tasks/use-task-list-search.ts
 
 - **Page component** in `<feature>/page.tsx`. Reads server state via the resource's `useXxx`. Owns the `editing` modal state at the top so global `n` shortcut can open it.
 - **Table / list** component holds optimistic state for drag-drop. On `useEffect([tasks])`, optimistic gets cleared to the latest server snapshot. Reorder = `setOptimistic(next)` THEN `reorder.mutate(payload)`.
-- **Per-page keyboard shortcuts** scoped to the list container ref. `j/k` for focus row, `⇧j`/`⇧k` for range-select (auto-engages multi-select; anchor resets on plain step / checkbox click / unrelated key — see `rangeSelection` in `task-table.tsx`), `e/Enter` to edit, `s` to stage, `u` to unstage, `d` to toggle done/not-done (no cancelled cycle), `t` to open the inline tag editor (`InlineTagEditor` popover anchored to `[data-tag-cell]`), space to (de)select. See `web/src/features/tasks/task-table.tsx` `useTableShortcuts` and `web/src/features/stage/page.tsx` `useStageShortcuts`.
+- **Per-page keyboard shortcuts** scoped to the list container ref. `j/k` for focus row, `⇧j`/`⇧k` for range-select (auto-engages multi-select; anchor resets on plain step / checkbox click / unrelated key — see `rangeSelection` in `task-table.tsx`), `e/Enter` to edit, `s` to stage, `u` to unstage, `d` to toggle done/not-done (no cancelled cycle), `t` to open the inline tag editor (`InlineTagEditor` popover anchored to `[data-tag-cell]`), `x` / space to (de)select, `Esc` to clear selection, `⌘A` / `Ctrl A` to select all visible (toggle), `⇧⌘A` / `⇧Ctrl A` to select every row matching the current filter (resolved client-side via `computeAllMatchingIds` in `use-task-list-search.ts`). See `web/src/features/tasks/task-table.tsx` `useTableShortcuts` and `web/src/features/stage/page.tsx` `useStageShortcuts`.
 - **Modals** are rendered at the bottom of the page; `open` state is controlled. The same component handles create AND edit by passing `task={editing}` for edit mode.
 
 ### Task / Stage row layout
 
 `web/src/features/tasks/task-row.tsx` and `web/src/features/stage/stage-row.tsx` share an identical left→right column order so the two pages feel symmetrical:
 
-1. Multi-select checkbox (tasks only, gated by `multiSelectMode` prop on `TaskTable`).
+1. Multi-select checkbox (tasks only; always rendered, faded until hover/select — no mode toggle).
 2. Drag handle (tasks: only when `sort=priority`; stage: always).
 3. Done toggle button — aria-pressed, two-state (done ↔ not_done). No cancelled cycle on either page.
 4. Title block (notes / tags / due inline).
@@ -123,7 +123,7 @@ The kebab "…" dropdown is gone from the row. **Destructive / state-change acti
 
 State-toggle helpers exported from the row files: `toggleDoneState` (tasks) and `toggleDone` (stage). Both are pure `TaskState → TaskState`.
 
-Multi-select on `/tasks` is owned by `features/tasks/page.tsx` (`multiSelectMode` local state, button next to "New task"). `<BulkActionBar>` only mounts while the mode is on.
+Multi-select on `/tasks` is always available — selection state lives in `useSelection` (`features/tasks/use-selection.ts`, sessionStorage-backed) and `<BulkActionBar>` mounts whenever `selection.size > 0`. There's no mode toggle.
 
 ## Global keyboard shortcuts
 

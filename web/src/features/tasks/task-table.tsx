@@ -43,6 +43,12 @@ export interface TaskTableProps {
    * the reorder operates only on the visible subset.
    */
   hasFilters?: boolean;
+  /**
+   * Invoked when the user presses ⇧⌘A / ⇧Ctrl A — the page resolves the
+   * full set of ids matching the current filter (including off-screen)
+   * and applies them to the selection. No-op by default.
+   */
+  onSelectAllMatching?: () => void;
 }
 
 /**
@@ -101,6 +107,7 @@ export function TaskTable({
   onEditTags,
   shortcutsDisabled,
   hasFilters,
+  onSelectAllMatching,
 }: TaskTableProps) {
   const showDragHandle = sort === 'priority';
   const setState = useSetTaskState();
@@ -175,6 +182,7 @@ export function TaskTable({
     disabled: shortcutsDisabled,
     onToggleDone: (id, st) => setState.mutate({ id, state: st }),
     onStage: (id) => stage.mutate(id),
+    onSelectAllMatching,
   });
 
   const toggleSelect = (taskId: number, next: boolean) => {
@@ -339,6 +347,12 @@ interface TableShortcutsArgs {
   disabled?: boolean;
   onToggleDone: (id: number, state: ReturnType<typeof toggleDoneState>) => void;
   onStage: (id: number) => void;
+  /**
+   * ⇧⌘A / ⇧Ctrl A target. The hook only fires the callback — the page is
+   * responsible for resolving the matching id set and updating the
+   * selection (see `page.tsx`).
+   */
+  onSelectAllMatching?: () => void;
 }
 
 /**
@@ -384,6 +398,7 @@ function useTableShortcuts({
   disabled,
   onToggleDone,
   onStage,
+  onSelectAllMatching,
 }: TableShortcutsArgs) {
   const anchorRef = useRef<number | null>(null);
 
@@ -408,6 +423,30 @@ function useTableShortcuts({
         return;
       }
       if (tasks.length === 0) return;
+
+      // ⌘A / Ctrl A — select all visible (toggle). ⇧⌘A / ⇧Ctrl A — select
+      // all matching the current filter, including off-screen rows.
+      // Branches before letter shortcuts so the mod-key combo wins over a
+      // bare `a` (no current shortcut uses bare `a`, but be defensive).
+      const isMod = event.metaKey || event.ctrlKey;
+      if (isMod && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        anchorRef.current = null;
+        if (event.shiftKey) {
+          onSelectAllMatching?.();
+        } else {
+          const visibleIds = tasks.map((t) => t.id);
+          const alreadyAll = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+          if (alreadyAll) {
+            onSelectedChange(new Set());
+          } else {
+            const next = new Set(selectedIds);
+            for (const id of visibleIds) next.add(id);
+            onSelectedChange(next);
+          }
+        }
+        return;
+      }
 
       const currentIdx = focusedId != null ? tasks.findIndex((t) => t.id === focusedId) : -1;
 
@@ -517,6 +556,7 @@ function useTableShortcuts({
     onEditTags,
     onToggleDone,
     onStage,
+    onSelectAllMatching,
     disabled,
   ]);
 

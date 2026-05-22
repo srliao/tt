@@ -28,7 +28,12 @@ import { FilterSidebar } from './filter-sidebar';
 import { InlineTagEditor } from './inline-tag-editor';
 import { TaskTable } from './task-table';
 import { useSelection } from './use-selection';
-import { applyQuickFilter, hasActiveFilters, useTaskListSearch } from './use-task-list-search';
+import {
+  applyQuickFilter,
+  computeAllMatchingIds,
+  hasActiveFilters,
+  useTaskListSearch,
+} from './use-task-list-search';
 
 export function TasksPage() {
   const { search, setSearch } = useTaskListSearch();
@@ -99,6 +104,22 @@ export function TasksPage() {
             onEditTags={(t) => setEditingTags(t)}
             shortcutsDisabled={editingTags !== null}
             hasFilters={filtersActive}
+            onSelectAllMatching={() => {
+              // The palette-open feature already loads `useTasks({})`, so this
+              // is normally a free cache hit. If it hasn't resolved yet,
+              // no-op — the user can press the shortcut again after load.
+              const all = allTasks ?? [];
+              if (all.length === 0) return;
+              const ids = computeAllMatchingIds(all, { ...effective, sort });
+              const target = new Set(ids);
+              // Toggle: if the current selection already equals the target
+              // set, clear instead. Mirrors the visible-toggle behaviour of
+              // ⌘A so both shortcuts double as deselectors.
+              const sameSize = target.size === selection.selected.size;
+              const alreadyAll = sameSize && [...target].every((id) => selection.selected.has(id));
+              if (alreadyAll) selection.setAll(new Set());
+              else selection.setAll(target);
+            }}
           />
         )}
       </section>
