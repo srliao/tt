@@ -276,7 +276,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     // Focus a row via plain j, then press t.
     act(() => {
       fireEvent.keyDown(document.body, { key: 'j' });
@@ -303,7 +303,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     act(() => {
       fireEvent.keyDown(document.body, { key: 't' });
     });
@@ -329,7 +329,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     // Focus row 2 (index 1) by pressing j twice.
     act(() => {
       fireEvent.keyDown(document.body, { key: 'j' });
@@ -369,7 +369,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     act(() => {
       fireEvent.keyDown(document.body, { key: 'j' });
     });
@@ -414,7 +414,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     act(() => {
       fireEvent.keyDown(document.body, { key: 'j' }); // focus row 1
     });
@@ -448,7 +448,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     act(() => {
       fireEvent.keyDown(document.body, { key: 'Escape' });
     });
@@ -469,7 +469,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     act(() => {
       fireEvent.keyDown(document.body, { key: 'Escape' });
     });
@@ -490,7 +490,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     // Focus row 1, then press x to select it.
     act(() => {
       fireEvent.keyDown(document.body, { key: 'j' });
@@ -515,7 +515,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     act(() => {
       fireEvent.keyDown(document.body, { key: 'j' });
     });
@@ -558,7 +558,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     // No focus/click on the table — keystroke arrives on document.body.
     act(() => {
       fireEvent.keyDown(document.body, { key: 'j' });
@@ -617,7 +617,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     act(() => {
       fireEvent.keyDown(document.body, { key: 'a', metaKey: true });
     });
@@ -638,7 +638,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     act(() => {
       fireEvent.keyDown(document.body, { key: 'a', metaKey: true });
     });
@@ -659,7 +659,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     act(() => {
       fireEvent.keyDown(document.body, { key: 'a', ctrlKey: true });
     });
@@ -682,7 +682,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    await screen.findByRole('table');
+    await screen.findByRole('list', { name: 'Tasks' });
     act(() => {
       fireEvent.keyDown(document.body, { key: 'A', metaKey: true, shiftKey: true });
     });
@@ -737,7 +737,7 @@ describe('TaskTable', () => {
           />,
         ),
       );
-      await screen.findByRole('table');
+      await screen.findByRole('list', { name: 'Tasks' });
       act(() => {
         fireEvent.keyDown(document.body, { key: 'j' });
       });

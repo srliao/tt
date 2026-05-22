@@ -1,7 +1,7 @@
 /**
- * Renders the list of tasks as a table. Owns:
+ * Renders the list of tasks as a flex-based div list (no <table>). Owns:
  *
- * - column headers + per-row dispatch into TaskRow
+ * - per-row dispatch into TaskRow
  * - keyboard navigation (j/k/enter/e/s/space/d) via `useTableShortcuts`
  * - drag-drop reorder when `sort === 'priority'` (Task 5)
  */
@@ -153,7 +153,7 @@ export function TaskTable({
     [mutateTagFilter],
   );
 
-  const containerRef = useRef<HTMLTableElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [focusedId, setFocusedId] = useState<number | null>(null);
 
   // Keep the focused row in view as j/k walks past the viewport. Uses
@@ -211,27 +211,23 @@ export function TaskTable({
     reorder.mutate(result.payload);
   };
 
-  const tableBody = (
-    <tbody>
-      {visible.map((task) => (
-        <SortableRow
-          key={task.id}
-          enabled={showDragHandle}
-          task={task}
-          focused={task.id === focusedId}
-          selected={selectedIds.has(task.id)}
-          onToggleSelect={(next) => toggleSelect(task.id, next)}
-          showDragHandle={showDragHandle}
-          onEdit={() => onEdit(task)}
-          onToggleDone={() => setState.mutate({ id: task.id, state: toggleDoneState(task.state) })}
-          onStage={() => stage.mutate(task.id)}
-          onUnstage={() => unstage.mutate(task.id)}
-          initialMap={initialMap}
-          onTagClick={onTagClick}
-        />
-      ))}
-    </tbody>
-  );
+  const rows = visible.map((task) => (
+    <SortableRow
+      key={task.id}
+      enabled={showDragHandle}
+      task={task}
+      focused={task.id === focusedId}
+      selected={selectedIds.has(task.id)}
+      onToggleSelect={(next) => toggleSelect(task.id, next)}
+      showDragHandle={showDragHandle}
+      onEdit={() => onEdit(task)}
+      onToggleDone={() => setState.mutate({ id: task.id, state: toggleDoneState(task.state) })}
+      onStage={() => stage.mutate(task.id)}
+      onUnstage={() => unstage.mutate(task.id)}
+      initialMap={initialMap}
+      onTagClick={onTagClick}
+    />
+  ));
 
   return (
     <div className="flex flex-col gap-2">
@@ -240,7 +236,7 @@ export function TaskTable({
       )}
       {focusedId == null && visible.length > 0 && (
         <div
-          className="ml-auto -mb-2 inline-flex items-center gap-1.5 self-end rounded-full border border-dashed border-primary/30 bg-primary/5 px-2.5 py-0.5 text-[11px] font-mono text-primary"
+          className="mb-2 inline-flex items-center gap-1.5 self-end rounded-full border border-dashed border-primary/30 bg-primary/5 px-2.5 py-0.5 text-[11px] font-mono text-primary"
           aria-hidden="true"
         >
           Press <kbd className="font-mono text-[10px]">j</kbd> to navigate
@@ -252,25 +248,16 @@ export function TaskTable({
           strategy={verticalListSortingStrategy}
           disabled={!showDragHandle}
         >
-          <table
+          {/* biome-ignore lint/a11y/useSemanticElements: keeping <div role="list"> because each row is itself a complex div (checkbox + drag + radio + title + tags + due + bookmark) — a <ul>/<li> would just add a structural shell without any semantic gain for keyboard nav */}
+          <div
             ref={containerRef}
             aria-label="Tasks"
-            className="w-full table-fixed text-sm focus-visible:outline-none"
+            role="list"
             data-task-table
+            className="flex w-full flex-col text-sm focus-visible:outline-none"
           >
-            <thead className="text-xs text-muted-foreground">
-              <tr className="border-b">
-                <th className="w-8 px-2 py-2" />
-                {showDragHandle && <th className="w-6 px-1 py-2" />}
-                <th className="w-8 px-2 py-2" />
-                <th className="px-2 py-2 text-left font-medium">Title</th>
-                <th className="w-24 px-2 py-2 text-left font-medium">Tags</th>
-                <th className="w-20 px-2 py-2 text-left font-medium">Due</th>
-                <th className="w-10 px-2 py-2" />
-              </tr>
-            </thead>
-            {tableBody}
-          </table>
+            {rows}
+          </div>
         </SortableContext>
       </DndContext>
     </div>
@@ -343,7 +330,7 @@ function SortableRow({ enabled, ...row }: SortableRowProps) {
 }
 
 interface TableShortcutsArgs {
-  containerRef: React.RefObject<HTMLTableElement | null>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
   tasks: Task[];
   focusedId: number | null;
   setFocusedId: (id: number | null) => void;

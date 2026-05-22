@@ -2,11 +2,12 @@
  * Single task row rendered inside `<TaskTable>`. Kept in its own file so the
  * table can stay focused on layout/keyboard handling.
  *
- * Column order (left → right): multi-select checkbox (always rendered, faded
- * via group-hover/row until the row is selected or hovered), optional drag
- * handle (only when sort=priority), done radio, title (+ notes), tags, due,
- * bookmark on the right that toggles stage/unstage. Edit, delete, and "mark
- * cancelled" live in the edit modal — there's no kebab menu.
+ * Layout (flex div, not a table): a left zone of fixed-width controls
+ * (multi-select checkbox, optional drag handle, done radio), a growable
+ * middle zone with the title + inline tag glyphs (and optional notes below),
+ * and a right zone with the due-date badge followed by the bookmark
+ * stage/unstage button. Edit, delete, and "mark cancelled" live in the edit
+ * modal — there's no kebab menu.
  */
 
 import { format, isPast, parseISO } from 'date-fns';
@@ -102,7 +103,7 @@ function DoneRadio({
   );
 }
 
-export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function TaskRow(
+export const TaskRow = forwardRef<HTMLDivElement, TaskRowProps>(function TaskRow(
   {
     task,
     focused,
@@ -124,7 +125,7 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
   const finished = task.state === 'done' || task.state === 'cancelled';
 
   return (
-    <tr
+    <div
       ref={ref}
       style={style}
       data-task-id={task.id}
@@ -132,19 +133,17 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
       data-selected={selected || undefined}
       data-state={task.state}
       className={cn(
-        'group/row border-b hover:bg-muted/40',
-        // Focus state — distinct from hover. The leading-edge rail is an
-        // inset box-shadow on the first <td>, NOT a `::before` on the <tr>:
-        // applying `position: relative` + `outline` to a <tr> breaks out of
-        // `table-fixed` layout in Chromium (columns collapse to content
-        // widths and text re-wraps). The shadow approach is layout-safe.
+        'group/row flex items-start gap-3 border-b px-3 py-2 transition-colors hover:bg-muted/40',
+        // Focus rail: with no table-fixed constraint, an inset box-shadow on
+        // the row itself is layout-safe (no `position: relative`, no
+        // `outline`, no `::before`).
         'data-focused:bg-primary/12',
-        'data-focused:[&>td:first-child]:shadow-[inset_3px_0_0_0_var(--color-primary)]',
+        'data-focused:shadow-[inset_3px_0_0_0_var(--color-primary)]',
         selected && 'bg-primary/8',
         finished && 'opacity-60',
       )}
     >
-      <td className="px-2 py-2 align-middle">
+      <div className="flex h-5 shrink-0 items-center">
         <Checkbox
           checked={selected}
           onCheckedChange={(c) => onToggleSelect(c === true)}
@@ -156,37 +155,39 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
             selected && 'opacity-100',
           )}
         />
-      </td>
+      </div>
       {showDragHandle && (
-        <td className="px-1 py-2 align-middle">
+        <div className="flex h-5 shrink-0 items-center">
           {dragHandle ?? (
             <span className="inline-flex size-6 items-center justify-center text-muted-foreground">
               <GripVerticalIcon className="size-4" aria-hidden="true" />
             </span>
           )}
-        </td>
+        </div>
       )}
-      <td className="px-2 py-2 align-middle">
+      <div className="flex h-5 shrink-0 items-center">
         <DoneRadio state={task.state} onClick={onToggleDone} title={task.title} />
-      </td>
-      <td className="px-2 py-2 align-middle">
-        <button
-          type="button"
-          className={cn(
-            'text-left text-sm font-medium hover:underline',
-            finished && 'line-through text-muted-foreground',
-          )}
-          onClick={onEdit}
-        >
-          {task.title}
-        </button>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <button
+            type="button"
+            className={cn(
+              'text-left text-sm font-medium hover:underline',
+              finished && 'line-through text-muted-foreground',
+            )}
+            onClick={onEdit}
+          >
+            {task.title}
+          </button>
+          <span data-tag-cell className="inline-flex flex-wrap items-center gap-1">
+            <TagGlyphList tags={task.tags} initialMap={initialMap} onTagClick={onTagClick} />
+          </span>
+        </div>
         {task.notes && <p className="line-clamp-1 text-xs text-muted-foreground">{task.notes}</p>}
-      </td>
-      <td className="px-2 py-2 align-middle">
-        <TagGlyphList tags={task.tags} initialMap={initialMap} onTagClick={onTagClick} />
-      </td>
-      <td className="px-2 py-2 align-middle">{dueBadge(task)}</td>
-      <td className="px-2 py-2 align-middle text-right">
+      </div>
+      <div className="flex h-5 shrink-0 items-center">{dueBadge(task)}</div>
+      <div className="flex h-5 shrink-0 items-center">
         <button
           type="button"
           onClick={() => (staged ? onUnstage() : onStage())}
@@ -201,7 +202,7 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
         >
           <BookmarkIcon className={cn('size-4', staged && 'fill-current')} aria-hidden="true" />
         </button>
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 });
