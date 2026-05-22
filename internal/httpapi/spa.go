@@ -86,7 +86,7 @@ func (h *spaHandler) serveFile(w http.ResponseWriter, r *http.Request, name stri
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil || info.IsDir() {

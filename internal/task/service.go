@@ -393,7 +393,7 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 	if err != nil {
 		return nil, fmt.Errorf("task: list query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var ids []int64
 	for rows.Next() {

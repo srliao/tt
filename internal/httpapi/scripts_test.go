@@ -42,7 +42,7 @@ func TestScripts_CRUD(t *testing.T) {
 			"kind": "daily",
 		},
 	})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("create status = %d body = %s", resp.StatusCode, string(body))
@@ -54,14 +54,14 @@ func TestScripts_CRUD(t *testing.T) {
 
 	// Get
 	resp2 := doJSON(t, http.MethodGet, fmt.Sprintf("%s/api/v1/scripts/%d", fx.server.URL, created.ID), nil)
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("get status = %d", resp2.StatusCode)
 	}
 
 	// List
 	resp3 := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/scripts", nil)
-	defer resp3.Body.Close()
+	defer func() { _ = resp3.Body.Close() }()
 	var listed []script.Script
 	if err := json.NewDecoder(resp3.Body).Decode(&listed); err != nil {
 		t.Fatalf("decode list: %v", err)
@@ -80,7 +80,7 @@ func TestScripts_CRUD(t *testing.T) {
 			"weekday": "monday",
 		},
 	})
-	defer resp4.Body.Close()
+	defer func() { _ = resp4.Body.Close() }()
 	if resp4.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp4.Body)
 		t.Fatalf("patch status = %d body = %s", resp4.StatusCode, string(body))
@@ -95,7 +95,7 @@ func TestScripts_CRUD(t *testing.T) {
 
 	// Delete
 	resp5 := doJSON(t, http.MethodDelete, fmt.Sprintf("%s/api/v1/scripts/%d", fx.server.URL, created.ID), nil)
-	defer resp5.Body.Close()
+	defer func() { _ = resp5.Body.Close() }()
 	if resp5.StatusCode != http.StatusNoContent {
 		t.Fatalf("delete status = %d", resp5.StatusCode)
 	}
@@ -114,7 +114,7 @@ func TestScripts_BadWeekdayRejected(t *testing.T) {
 			"weekday": "fundayday",
 		},
 	})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -144,7 +144,7 @@ func TestScripts_MonthlyDayLast(t *testing.T) {
 			"day":  "last",
 		},
 	})
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d body = %s", resp.StatusCode, string(body))
@@ -170,7 +170,7 @@ func TestScripts_ManualRunDisabledIs409(t *testing.T) {
 	}
 
 	resp := doJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/scripts/%d/run", fx.server.URL, sc.ID), nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusConflict {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, string(body))
@@ -192,7 +192,7 @@ func TestScripts_ManualRunHappyPath(t *testing.T) {
 	}
 
 	resp := doJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/scripts/%d/run", fx.server.URL, sc.ID), nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d body = %s", resp.StatusCode, string(body))
@@ -238,7 +238,7 @@ func TestScripts_ManualRunBusyIs503AndFinishesRun(t *testing.T) {
 	}
 
 	resp := doJSON(t, http.MethodPost, fmt.Sprintf("%s/api/v1/scripts/%d/run", fx.server.URL, sc.ID), nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusServiceUnavailable {
 		body, _ := io.ReadAll(resp.Body)
 		t.Fatalf("status = %d body = %s", resp.StatusCode, string(body))
@@ -273,7 +273,7 @@ func TestScripts_ListRunsByScript(t *testing.T) {
 	}
 
 	resp := doJSON(t, http.MethodGet, fmt.Sprintf("%s/api/v1/scripts/%d/runs", fx.server.URL, sc.ID), nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -309,7 +309,7 @@ func TestScripts_ListTasksByScript(t *testing.T) {
 	}
 
 	resp := doJSON(t, http.MethodGet, fmt.Sprintf("%s/api/v1/scripts/%d/tasks", fx.server.URL, sc.ID), nil)
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
