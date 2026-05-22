@@ -51,7 +51,8 @@ Quick locator tables. When you need to read code, start here.
 | Global layout / top nav / stage badge | `web/src/components/layout.tsx` |
 | Theme provider + toggle | `web/src/components/theme-{provider,toggle}.tsx` |
 | Keyboard shortcut cheatsheet (`?`) | `web/src/components/shortcut-cheatsheet.tsx` |
-| Global keyboard shortcuts (`n`, `/`, `g X`, `?`) | `web/src/lib/shortcuts.ts` |
+| Global keyboard shortcuts (`n`, `g X`, `?`) | `web/src/lib/shortcuts.ts` |
+| Command palette (`/`, ⌘K) — tasks/tags search + nav | `web/src/components/command-palette.tsx` |
 | fetch wrapper + `ApiError` | `web/src/lib/api.ts` |
 | TanStack Query client | `web/src/lib/query.ts` |
 | shadcn/ui primitives | `web/src/components/ui/*.tsx` |
