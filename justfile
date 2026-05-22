@@ -66,3 +66,4 @@ db-gen:
 
 clean:
     rm -rf web/dist web/node_modules ./bin ./.dev-data
+    find internal/web/dist -mindepth 1 -not -name .gitkeep -delete 2>/dev/null || true
