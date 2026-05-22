@@ -301,7 +301,9 @@ func neighborKey(row sqlcgen.Task, useStage bool) (*float64, error) {
 // Filters compose with AND semantics. Tag filtering uses a sub-select that
 // either HAVING-checks the distinct count (TagModeAll, the default — task
 // must carry all N supplied tags) or simply joins on any matching tag
-// (TagModeAny — OR semantics). Sort defaults to priority ASC, id ASC (the
+// (TagModeAny — OR semantics). Tag exclusion (TagExcludeIDs) drops any task
+// that carries at least one of the excluded tag ids and composes with the
+// inclusion clause via AND. Sort defaults to priority ASC, id ASC (the
 // main-list order); Ascending flips non-priority axes only. Limit / Offset
 // are applied verbatim when set (Limit == 0 disables paging).
 func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
@@ -339,6 +341,21 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 			sb.WriteString(") GROUP BY task_id HAVING COUNT(DISTINCT tag_id) = ?)")
 			args = append(args, int64(len(f.TagIDs)))
 		}
+	}
+
+	// Exclusion: drop any task that carries ANY of the excluded tag ids.
+	// This composes with the inclusion filter via AND so a task can survive
+	// inclusion only if it also carries none of the excluded tags.
+	if len(f.TagExcludeIDs) > 0 {
+		sb.WriteString(" AND id NOT IN (SELECT task_id FROM task_tags WHERE tag_id IN (")
+		for i, id := range f.TagExcludeIDs {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("?")
+			args = append(args, id)
+		}
+		sb.WriteString("))")
 	}
 
 	switch f.Due {

@@ -125,6 +125,28 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		tagIDs = ids
 	}
 
+	// tags_exclude is CSV (mirroring how the UI serialises it). Parsed the
+	// same way as `tag` so unknown names surface as 400 with the same
+	// envelope.
+	var tagExcludeIDs []int64
+	if raw := q.Get("tags_exclude"); raw != "" {
+		parts := strings.Split(raw, ",")
+		names := parts[:0]
+		for _, p := range parts {
+			if t := strings.TrimSpace(p); t != "" {
+				names = append(names, t)
+			}
+		}
+		if len(names) > 0 {
+			ids, err := s.tags.Resolve(r.Context(), names, false)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, CodeValidation, err.Error(), nil)
+				return
+			}
+			tagExcludeIDs = ids
+		}
+	}
+
 	tagMode := task.TagMode(q.Get("tag_mode"))
 	if !tagMode.IsValid() {
 		writeError(w, http.StatusBadRequest, CodeValidation, "invalid tag_mode (must be any or all)", map[string]any{"value": string(tagMode)})
@@ -175,15 +197,16 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out, err := s.tasks.List(r.Context(), task.FilterSort{
-		States:    states,
-		TagIDs:    tagIDs,
-		TagMode:   tagMode,
-		Due:       due,
-		Search:    q.Get("q"),
-		Sort:      sortAxis,
-		Ascending: ascending,
-		Limit:     limit,
-		Offset:    offset,
+		States:        states,
+		TagIDs:        tagIDs,
+		TagMode:       tagMode,
+		TagExcludeIDs: tagExcludeIDs,
+		Due:           due,
+		Search:        q.Get("q"),
+		Sort:          sortAxis,
+		Ascending:     ascending,
+		Limit:         limit,
+		Offset:        offset,
 	})
 	if err != nil {
 		writeServiceError(w, err)

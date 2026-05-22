@@ -146,6 +146,24 @@ describe('hasActiveFilters', () => {
     expect(hasActiveFilters({ q: 'x' })).toBe(true);
     expect(hasActiveFilters({ quick: 'overdue' })).toBe(true);
     expect(hasActiveFilters({ tags: ['work'] })).toBe(true);
+    expect(hasActiveFilters({ tagsExclude: ['noise'] })).toBe(true);
     expect(hasActiveFilters({ states: ['done'] })).toBe(true);
+  });
+});
+
+describe('applyQuickFilter (tagsExclude)', () => {
+  it('propagates tagsExclude through to the params', () => {
+    const out = applyQuickFilter({ tagsExclude: ['noise'] });
+    expect(out.tagsExclude).toEqual(['noise']);
+  });
+
+  it('omits tagsExclude when empty', () => {
+    expect(applyQuickFilter({ tagsExclude: [] }).tagsExclude).toBeUndefined();
+  });
+
+  it('preserves tagsExclude alongside a quick preset', () => {
+    const out = applyQuickFilter({ quick: 'overdue', tagsExclude: ['noise'] });
+    expect(out.tagsExclude).toEqual(['noise']);
+    expect(out.due).toBe('overdue');
   });
 });

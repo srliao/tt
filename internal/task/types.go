@@ -129,13 +129,14 @@ type UpdateInput struct {
 
 // FilterSort parameterises List. Zero values disable each filter.
 type FilterSort struct {
-	States    []State  `json:"states"`
-	TagIDs    []int64  `json:"tag_ids"`
-	TagMode   TagMode  `json:"tag_mode"`
-	Due       DueRange `json:"due"`
-	Search    string   `json:"search"`
-	Sort      SortAxis `json:"sort"`
-	Ascending bool     `json:"ascending"`
-	Limit     int      `json:"limit"`
-	Offset    int      `json:"offset"`
+	States        []State  `json:"states"`
+	TagIDs        []int64  `json:"tag_ids"`
+	TagMode       TagMode  `json:"tag_mode"`
+	TagExcludeIDs []int64  `json:"tag_exclude_ids"`
+	Due           DueRange `json:"due"`
+	Search        string   `json:"search"`
+	Sort          SortAxis `json:"sort"`
+	Ascending     bool     `json:"ascending"`
+	Limit         int      `json:"limit"`
+	Offset        int      `json:"offset"`
 }

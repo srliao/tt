@@ -562,6 +562,56 @@ func TestList_FilterByTags_ModeAllAndAny(t *testing.T) {
 	}
 }
 
+func TestList_FilterByTagsExclude(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	plain, err := svc.Create(ctx, task.CreateInput{Title: "plain"})
+	if err != nil {
+		t.Fatalf("Create plain: %v", err)
+	}
+	tagged, err := svc.Create(ctx, task.CreateInput{Title: "tagged"})
+	if err != nil {
+		t.Fatalf("Create tagged: %v", err)
+	}
+	both, err := svc.Create(ctx, task.CreateInput{Title: "both"})
+	if err != nil {
+		t.Fatalf("Create both: %v", err)
+	}
+
+	tagA := insertTag(t, store, ctx, "alpha")
+	tagB := insertTag(t, store, ctx, "bravo")
+
+	if err := svc.SetTagsByID(ctx, tagged.ID, []int64{tagA}); err != nil {
+		t.Fatalf("SetTagsByID tagged: %v", err)
+	}
+	if err := svc.SetTagsByID(ctx, both.ID, []int64{tagA, tagB}); err != nil {
+		t.Fatalf("SetTagsByID both: %v", err)
+	}
+
+	// Exclude alpha → only the plain task survives.
+	got, err := svc.List(ctx, task.FilterSort{TagExcludeIDs: []int64{tagA}})
+	if err != nil {
+		t.Fatalf("List(exclude alpha): %v", err)
+	}
+	if len(got) != 1 || got[0].ID != plain.ID {
+		t.Fatalf("exclude alpha = %+v, want [%d]", got, plain.ID)
+	}
+
+	// Combine inclusion (alpha) with exclusion (bravo): tagged passes,
+	// both is dropped because it carries bravo.
+	got, err = svc.List(ctx, task.FilterSort{
+		TagIDs:        []int64{tagA},
+		TagExcludeIDs: []int64{tagB},
+	})
+	if err != nil {
+		t.Fatalf("List(include alpha exclude bravo): %v", err)
+	}
+	if len(got) != 1 || got[0].ID != tagged.ID {
+		t.Fatalf("include alpha exclude bravo = %+v, want [%d]", got, tagged.ID)
+	}
+}
+
 func TestList_DefaultSortByPriority(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)
