@@ -151,6 +151,7 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
           className={cn(
             'opacity-0 transition-opacity duration-100',
             'group-hover/row:opacity-60 data-[state=checked]:opacity-100',
+            focused && 'opacity-60',
             selected && 'opacity-100',
           )}
         />

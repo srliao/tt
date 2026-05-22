@@ -416,11 +416,11 @@ function useTableShortcuts({
         setFocusedId(tasks[clamped].id);
       };
 
-      // Escape exits multi-select mode and clears the selection. We only
-      // consume the key when there's something to clear, so other Escape
-      // consumers (e.g. closing a popover) keep working when the table
-      // is in its default state. Inputs/textareas were already filtered
-      // above; the `disabled` guard handles the modal-open case.
+      // Escape clears the selection. We only consume the key when there's
+      // something to clear, so other Escape consumers (e.g. closing a
+      // popover) keep working when the table is in its default state.
+      // Inputs/textareas were already filtered above; the `disabled` guard
+      // handles the modal-open case.
       if (event.key === 'Escape') {
         if (selectedIds.size > 0) {
           event.preventDefault();
