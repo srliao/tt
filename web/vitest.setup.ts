@@ -7,3 +7,33 @@ import { afterEach } from 'vitest';
 afterEach(() => {
   cleanup();
 });
+
+// jsdom is missing a few DOM APIs that Radix UI primitives expect to be
+// present (ResizeObserver and Element.scrollIntoView are used internally by
+// the Select primitive). Stub them so tests that mount portalled selects
+// don't crash.
+if (typeof window !== 'undefined') {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  if (!('ResizeObserver' in window)) {
+    // biome-ignore lint/suspicious/noExplicitAny: minimal jsdom polyfill
+    (window as any).ResizeObserver = ResizeObserverStub;
+  }
+  if (typeof Element !== 'undefined' && !('scrollIntoView' in Element.prototype)) {
+    // biome-ignore lint/suspicious/noExplicitAny: minimal jsdom polyfill
+    (Element.prototype as any).scrollIntoView = function scrollIntoView() {};
+  }
+  if (typeof Element !== 'undefined' && !('hasPointerCapture' in Element.prototype)) {
+    // biome-ignore lint/suspicious/noExplicitAny: minimal jsdom polyfill
+    (Element.prototype as any).hasPointerCapture = function hasPointerCapture() {
+      return false;
+    };
+  }
+  if (typeof Element !== 'undefined' && !('releasePointerCapture' in Element.prototype)) {
+    // biome-ignore lint/suspicious/noExplicitAny: minimal jsdom polyfill
+    (Element.prototype as any).releasePointerCapture = function releasePointerCapture() {};
+  }
+}
