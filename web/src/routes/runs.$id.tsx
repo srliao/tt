@@ -1,14 +1,19 @@
 import { createFileRoute } from '@tanstack/react-router';
+import { RunDetailPage } from '@/features/runs/detail-page';
 
-function RunDetailPage() {
+function RouteComponent() {
   const { id } = Route.useParams();
-  return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold">Run #{id} (todo: phase 08e)</h1>
-    </div>
-  );
+  const numericId = Number(id);
+  if (!Number.isFinite(numericId) || numericId <= 0) {
+    return (
+      <section className="mx-auto w-full max-w-5xl px-4 py-4">
+        <p className="text-sm text-destructive">Invalid run id: {id}</p>
+      </section>
+    );
+  }
+  return <RunDetailPage id={numericId} />;
 }
 
 export const Route = createFileRoute('/runs/$id')({
-  component: RunDetailPage,
+  component: RouteComponent,
 });
