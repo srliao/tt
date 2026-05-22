@@ -125,7 +125,7 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
       data-selected={selected || undefined}
       data-state={task.state}
       className={cn(
-        'border-b hover:bg-muted/40 data-[focused]:bg-accent/40',
+        'border-b hover:bg-muted/40 data-focused:bg-accent/40',
         finished && 'opacity-60',
       )}
     >
