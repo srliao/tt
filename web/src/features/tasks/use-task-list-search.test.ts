@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { applyQuickFilter, hasActiveFilters, taskSearchSchema } from './use-task-list-search';
+import {
+  applyQuickFilter,
+  clickModeFromEvent,
+  hasActiveFilters,
+  taskSearchSchema,
+} from './use-task-list-search';
 
 describe('taskSearchSchema', () => {
   it('parses a fully-populated URL search object', () => {
@@ -97,6 +102,38 @@ describe('applyQuickFilter', () => {
     const out = applyQuickFilter({ quick: 'overdue', states: ['done'] });
     expect(out.states).toEqual(['done']);
     expect(out.due).toBe('overdue');
+  });
+});
+
+describe('clickModeFromEvent', () => {
+  function mkEvent(opts: { altKey?: boolean; shiftKey?: boolean } = {}) {
+    return {
+      altKey: !!opts.altKey,
+      shiftKey: !!opts.shiftKey,
+    } as React.MouseEvent;
+  }
+
+  it('returns "replace" for a bare click', () => {
+    expect(clickModeFromEvent(mkEvent())).toBe('replace');
+  });
+
+  it('returns "add" for shift-click', () => {
+    expect(clickModeFromEvent(mkEvent({ shiftKey: true }))).toBe('add');
+  });
+
+  it('returns "exclude" for alt-click', () => {
+    expect(clickModeFromEvent(mkEvent({ altKey: true }))).toBe('exclude');
+  });
+
+  it('prefers exclude when both alt and shift are pressed', () => {
+    expect(clickModeFromEvent(mkEvent({ altKey: true, shiftKey: true }))).toBe('exclude');
+  });
+});
+
+describe('taskSearchSchema (tagsExclude)', () => {
+  it('parses tagsExclude as a string array', () => {
+    const parsed = taskSearchSchema.parse({ tagsExclude: ['noise', 'archived'] });
+    expect(parsed.tagsExclude).toEqual(['noise', 'archived']);
   });
 });
 

@@ -17,10 +17,12 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVerticalIcon } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReorderMain, useSetTaskState, useStageTask, useUnstageTask } from '@/api/tasks';
+import { buildInitialMap } from '@/lib/tag-initials';
 import type { Task, TaskSortAxis } from '@/types/task';
 import { TaskRow, toggleDoneState } from './task-row';
+import { clickModeFromEvent, useTagFilterMutator } from './use-task-list-search';
 
 export interface TaskTableProps {
   tasks: Task[];
@@ -112,6 +114,24 @@ export function TaskTable({
 
   const ids = useMemo(() => visible.map((t) => t.id), [visible]);
 
+  // Compute initials once per render off the union of visible tags. Doing it
+  // here (vs. per-row or off the global tag set) keeps glyphs short when
+  // most of the user's tags are inactive — see Phase 4 spec.
+  const initialMap = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of visible) for (const tag of t.tags) set.add(tag);
+    return buildInitialMap([...set]);
+  }, [visible]);
+
+  const mutateTagFilter = useTagFilterMutator();
+  const onTagClick = useCallback(
+    (name: string, event: MouseEvent) => {
+      event.stopPropagation();
+      mutateTagFilter(name, clickModeFromEvent(event));
+    },
+    [mutateTagFilter],
+  );
+
   const containerRef = useRef<HTMLTableElement>(null);
   const [focusedId, setFocusedId] = useState<number | null>(null);
 
@@ -161,6 +181,8 @@ export function TaskTable({
           onToggleDone={() => setState.mutate({ id: task.id, state: toggleDoneState(task.state) })}
           onStage={() => stage.mutate(task.id)}
           onUnstage={() => unstage.mutate(task.id)}
+          initialMap={initialMap}
+          onTagClick={onTagClick}
         />
       ))}
     </tbody>
@@ -189,7 +211,7 @@ export function TaskTable({
                 {showDragHandle && <th className="w-6 px-1 py-2" />}
                 <th className="w-8 px-2 py-2" />
                 <th className="px-2 py-2 text-left font-medium">Title</th>
-                <th className="w-40 px-2 py-2 text-left font-medium">Tags</th>
+                <th className="w-24 px-2 py-2 text-left font-medium">Tags</th>
                 <th className="w-20 px-2 py-2 text-left font-medium">Due</th>
                 <th className="w-10 px-2 py-2" />
               </tr>
@@ -214,6 +236,8 @@ interface SortableRowProps {
   onToggleDone: () => void;
   onStage: () => void;
   onUnstage: () => void;
+  initialMap: Map<string, string>;
+  onTagClick: (name: string, event: MouseEvent) => void;
 }
 
 /**
@@ -261,6 +285,8 @@ function SortableRow({ enabled, ...row }: SortableRowProps) {
       onToggleDone={row.onToggleDone}
       onStage={row.onStage}
       onUnstage={row.onUnstage}
+      initialMap={row.initialMap}
+      onTagClick={row.onTagClick}
     />
   );
 }

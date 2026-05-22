@@ -1,9 +1,19 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Outlet,
+  RouterProvider,
+} from '@tanstack/react-router';
 import { act, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ThemeProvider } from '@/components/theme-provider';
 import type { Task } from '@/types/task';
 import { computeDragEnd, computeReorderPayload, moveTask, TaskTable } from './task-table';
+import { taskSearchSchema } from './use-task-list-search';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -30,10 +40,31 @@ function task(partial: Partial<Task> & { id: number; title: string }): Task {
 }
 
 function wrap(children: ReactNode) {
+  // TaskTable reads URL search params via `useTaskListSearch`, which needs a
+  // tanstack router context — provide a minimal in-memory router so the
+  // component renders without hitting `useMatch` null guards. ThemeProvider
+  // is required because <TagGlyph> reads `resolvedTheme`.
+  const rootRoute = createRootRoute({ component: () => <Outlet /> });
+  const tasksRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/tasks',
+    validateSearch: (s) => taskSearchSchema.parse(s),
+    component: () => <>{children}</>,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([tasksRoute]),
+    history: createMemoryHistory({ initialEntries: ['/tasks'] }),
+  });
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  return (
+    <ThemeProvider>
+      <QueryClientProvider client={qc}>
+        <RouterProvider router={router as never} />
+      </QueryClientProvider>
+    </ThemeProvider>
+  );
 }
 
 describe('computeDragEnd', () => {
@@ -117,7 +148,7 @@ describe('computeReorderPayload', () => {
 describe('TaskTable', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('renders a drag handle column when sort=priority', () => {
+  it('renders a drag handle column when sort=priority', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     render(
       wrap(
@@ -131,10 +162,10 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    expect(screen.getByRole('button', { name: 'Reorder A' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Reorder A' })).toBeTruthy();
   });
 
-  it('does not render a drag handle when sort=title', () => {
+  it('does not render a drag handle when sort=title', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     render(
       wrap(
@@ -148,10 +179,12 @@ describe('TaskTable', () => {
         />,
       ),
     );
+    // Wait for the row to mount, then assert there is no reorder handle.
+    await screen.findByRole('button', { name: /Mark A as done/ });
     expect(screen.queryByRole('button', { name: 'Reorder A' })).toBeNull();
   });
 
-  it('hides the multi-select checkbox unless multiSelectMode is on', () => {
+  it('hides the multi-select checkbox unless multiSelectMode is on', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     const { rerender } = render(
       wrap(
@@ -165,6 +198,7 @@ describe('TaskTable', () => {
         />,
       ),
     );
+    await screen.findByRole('button', { name: /Mark A as done/ });
     expect(screen.queryByRole('checkbox', { name: 'Select A' })).toBeNull();
 
     rerender(
@@ -179,10 +213,10 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    expect(screen.getByRole('checkbox', { name: 'Select A' })).toBeTruthy();
+    expect(await screen.findByRole('checkbox', { name: 'Select A' })).toBeTruthy();
   });
 
-  it('renders the stage bookmark and done radio for each row', () => {
+  it('renders the stage bookmark and done radio for each row', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     render(
       wrap(
@@ -196,11 +230,11 @@ describe('TaskTable', () => {
         />,
       ),
     );
-    expect(screen.getByRole('button', { name: 'Stage A' })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Stage A' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /Mark A as done/ })).toBeTruthy();
   });
 
-  it('clicking the title invokes onEdit', () => {
+  it('clicking the title invokes onEdit', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     const onEdit = vi.fn();
     render(
@@ -215,9 +249,29 @@ describe('TaskTable', () => {
         />,
       ),
     );
+    const button = await screen.findByRole('button', { name: 'Edit me' });
     act(() => {
-      screen.getByRole('button', { name: 'Edit me' }).click();
+      button.click();
     });
     expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: 7, title: 'Edit me' }));
+  });
+
+  it('renders a tag glyph for each task tag and forwards the tag name on click', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    render(
+      wrap(
+        <TaskTable
+          tasks={[task({ id: 1, title: 'A', tags: ['backend', 'ops'] })]}
+          sort="title"
+          multiSelectMode={false}
+          selectedIds={new Set()}
+          onSelectedChange={() => {}}
+          onEdit={() => {}}
+        />,
+      ),
+    );
+    // Two glyphs render — one per tag — each with the canonical aria label.
+    expect(await screen.findByRole('button', { name: 'Tag backend' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tag ops' })).toBeTruthy();
   });
 });
