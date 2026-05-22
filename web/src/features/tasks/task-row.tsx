@@ -2,11 +2,11 @@
  * Single task row rendered inside `<TaskTable>`. Kept in its own file so the
  * table can stay focused on layout/keyboard handling.
  *
- * Column order (left → right): optional multi-select checkbox (only when
- * `multiSelectMode` is on), optional drag handle (only when sort=priority),
- * done radio, title (+ notes), tags, due, bookmark on the right that toggles
- * stage/unstage. Edit, delete, and "mark cancelled" live in the edit modal —
- * there's no kebab menu.
+ * Column order (left → right): multi-select checkbox (always rendered, faded
+ * via group-hover/row until the row is selected or hovered), optional drag
+ * handle (only when sort=priority), done radio, title (+ notes), tags, due,
+ * bookmark on the right that toggles stage/unstage. Edit, delete, and "mark
+ * cancelled" live in the edit modal — there's no kebab menu.
  */
 
 import { format, isPast, parseISO } from 'date-fns';
@@ -21,8 +21,6 @@ export interface TaskRowProps {
   task: Task;
   /** When true, the row is currently keyboard-focused (j/k navigation). */
   focused?: boolean;
-  /** When true, render the multi-select checkbox column. */
-  multiSelectMode: boolean;
   /** When true, the row is bulk-selected (checkbox checked). */
   selected: boolean;
   onToggleSelect: (next: boolean) => void;
@@ -108,7 +106,6 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
   {
     task,
     focused,
-    multiSelectMode,
     selected,
     onToggleSelect,
     showDragHandle,
@@ -135,23 +132,30 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
       data-selected={selected || undefined}
       data-state={task.state}
       className={cn(
-        'border-b hover:bg-muted/40 data-focused:bg-accent/40',
-        // Row focus rail — `<tr>` doesn't take `position: relative` reliably
-        // across browsers, so we render the 2px accent stripe via an inset
-        // box-shadow on the first cell instead. See `data-focused:[&>td:first-child]:…`.
-        'data-focused:[&>td:first-child]:shadow-[inset_2px_0_0_0_var(--color-primary)]',
+        'group/row relative border-b hover:bg-muted/40',
+        // Focus state — distinct from hover. The leading-edge rail is a
+        // pseudo-element pinned to the row's left edge; the subtle outline
+        // helps the bar stand out against dark backgrounds.
+        'data-focused:bg-primary/12',
+        'data-focused:before:absolute data-focused:before:left-0 data-focused:before:top-1 data-focused:before:bottom-1 data-focused:before:w-[3px] data-focused:before:bg-primary data-focused:before:rounded-r-sm',
+        'data-focused:outline data-focused:outline-1 data-focused:-outline-offset-1 data-focused:outline-primary/25',
+        selected && 'bg-primary/8',
         finished && 'opacity-60',
       )}
     >
-      {multiSelectMode && (
-        <td className="px-2 py-2 align-middle">
-          <Checkbox
-            checked={selected}
-            onCheckedChange={(c) => onToggleSelect(c === true)}
-            aria-label={`Select ${task.title}`}
-          />
-        </td>
-      )}
+      <td className="px-2 py-2 align-middle">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(c) => onToggleSelect(c === true)}
+          aria-label={`Select ${task.title}`}
+          className={cn(
+            'opacity-0 transition-opacity duration-100',
+            'group-hover/row:opacity-60 data-[state=checked]:opacity-100',
+            focused && 'opacity-60',
+            selected && 'opacity-100',
+          )}
+        />
+      </td>
       {showDragHandle && (
         <td className="px-1 py-2 align-middle">
           {dragHandle ?? (

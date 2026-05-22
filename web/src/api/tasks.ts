@@ -133,6 +133,39 @@ export function useUnstageTask() {
   });
 }
 
+export interface BulkTagInput {
+  ids: number[];
+  op: 'add' | 'remove' | 'set';
+  tags: string[];
+}
+
+/**
+ * Bulk-mutate tags across a multi-selection in a single transactional
+ * request. The server returns the updated DTOs for every supplied id, which
+ * we splice into every `['tasks', ...]` cache so list views update without a
+ * refetch. Tag counts can change (auto-create on add/set), so the
+ * `['tags', 'with-counts']` query is invalidated.
+ */
+export function useBulkTag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BulkTagInput) =>
+      api<Task[]>('/tasks/bulk-tag', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (updated) => {
+      // Patch every cached task list (filtered or not) without a refetch.
+      qc.setQueriesData<Task[]>({ queryKey: ['tasks'] }, (prev) => {
+        if (!prev) return prev;
+        const map = new Map(updated.map((t) => [t.id, t] as const));
+        return prev.map((t) => map.get(t.id) ?? t);
+      });
+      void qc.invalidateQueries({ queryKey: ['tags', 'with-counts'] });
+    },
+  });
+}
+
 export interface ReorderInput {
   task_id: number;
   before_id: number | null;

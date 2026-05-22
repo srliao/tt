@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import type { Task } from '@/types/task';
 import {
   applyQuickFilter,
   clickModeFromEvent,
+  computeAllMatchingIds,
   hasActiveFilters,
   isStateRestricted,
+  matchesFilter,
   taskSearchSchema,
 } from './use-task-list-search';
 
@@ -186,5 +189,147 @@ describe('applyQuickFilter (tagsExclude)', () => {
     const out = applyQuickFilter({ quick: 'overdue', tagsExclude: ['noise'] });
     expect(out.tagsExclude).toEqual(['noise']);
     expect(out.due).toBe('overdue');
+  });
+});
+
+function mkTask(partial: Partial<Task> & { id: number }): Task {
+  return {
+    title: '',
+    notes: '',
+    state: 'not_done',
+    due_date: null,
+    priority: 0,
+    staged_order: null,
+    spawned_by_script_id: null,
+    created_at: '2026-05-01T00:00:00Z',
+    completed_at: null,
+    cancelled_at: null,
+    updated_at: '2026-05-01T00:00:00Z',
+    tags: [],
+    ...partial,
+  };
+}
+
+function ymd(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+describe('matchesFilter — states', () => {
+  it('passes when filter.states is unset or empty', () => {
+    expect(matchesFilter(mkTask({ id: 1, state: 'not_done' }), {})).toBe(true);
+    expect(matchesFilter(mkTask({ id: 1, state: 'done' }), { states: [] })).toBe(true);
+  });
+
+  it('keeps tasks whose state is listed', () => {
+    expect(matchesFilter(mkTask({ id: 1, state: 'done' }), { states: ['done', 'cancelled'] })).toBe(
+      true,
+    );
+  });
+
+  it('drops tasks whose state is not listed', () => {
+    expect(matchesFilter(mkTask({ id: 1, state: 'not_done' }), { states: ['done'] })).toBe(false);
+  });
+});
+
+describe('matchesFilter — tagMode any vs all', () => {
+  it('any: matches when at least one filter tag is on the task', () => {
+    const t = mkTask({ id: 1, tags: ['infra', 'urgent'] });
+    expect(matchesFilter(t, { tags: ['infra'], tagMode: 'any' })).toBe(true);
+    expect(matchesFilter(t, { tags: ['infra', 'cleanup'], tagMode: 'any' })).toBe(true);
+    expect(matchesFilter(t, { tags: ['cleanup'], tagMode: 'any' })).toBe(false);
+  });
+
+  it('any is the default when tagMode is unset', () => {
+    const t = mkTask({ id: 1, tags: ['infra'] });
+    expect(matchesFilter(t, { tags: ['infra', 'other'] })).toBe(true);
+  });
+
+  it('all: requires every filter tag to appear', () => {
+    const t = mkTask({ id: 1, tags: ['infra', 'urgent'] });
+    expect(matchesFilter(t, { tags: ['infra', 'urgent'], tagMode: 'all' })).toBe(true);
+    expect(matchesFilter(t, { tags: ['infra', 'missing'], tagMode: 'all' })).toBe(false);
+  });
+});
+
+describe('matchesFilter — tagsExclude', () => {
+  it('drops the task when any excluded tag appears', () => {
+    const t = mkTask({ id: 1, tags: ['infra', 'noise'] });
+    expect(matchesFilter(t, { tagsExclude: ['noise'] })).toBe(false);
+  });
+
+  it('keeps the task when no excluded tag appears', () => {
+    const t = mkTask({ id: 1, tags: ['infra'] });
+    expect(matchesFilter(t, { tagsExclude: ['noise'] })).toBe(true);
+  });
+});
+
+describe('matchesFilter — due', () => {
+  const today = ymd(new Date());
+  const yesterday = ymd(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  const inThreeDays = ymd(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000));
+  const inTenDays = ymd(new Date(Date.now() + 10 * 24 * 60 * 60 * 1000));
+
+  it('overdue: due_date strictly before today AND state !== done', () => {
+    expect(matchesFilter(mkTask({ id: 1, due_date: yesterday }), { due: 'overdue' })).toBe(true);
+    // Same task but completed today → not overdue.
+    expect(
+      matchesFilter(mkTask({ id: 1, due_date: yesterday, state: 'done' }), { due: 'overdue' }),
+    ).toBe(false);
+    // Today is not overdue.
+    expect(matchesFilter(mkTask({ id: 1, due_date: today }), { due: 'overdue' })).toBe(false);
+    // No due_date is not overdue.
+    expect(matchesFilter(mkTask({ id: 1, due_date: null }), { due: 'overdue' })).toBe(false);
+  });
+
+  it('today: due_date equals today', () => {
+    expect(matchesFilter(mkTask({ id: 1, due_date: today }), { due: 'today' })).toBe(true);
+    expect(matchesFilter(mkTask({ id: 1, due_date: yesterday }), { due: 'today' })).toBe(false);
+  });
+
+  it('this_week: due_date within today..today+7', () => {
+    expect(matchesFilter(mkTask({ id: 1, due_date: inThreeDays }), { due: 'this_week' })).toBe(
+      true,
+    );
+    expect(matchesFilter(mkTask({ id: 1, due_date: inTenDays }), { due: 'this_week' })).toBe(false);
+    expect(matchesFilter(mkTask({ id: 1, due_date: yesterday }), { due: 'this_week' })).toBe(false);
+  });
+
+  it('none: matches only tasks with no due_date', () => {
+    expect(matchesFilter(mkTask({ id: 1, due_date: null }), { due: 'none' })).toBe(true);
+    expect(matchesFilter(mkTask({ id: 1, due_date: today }), { due: 'none' })).toBe(false);
+  });
+});
+
+describe('matchesFilter — q', () => {
+  it('matches substrings in the title case-insensitively', () => {
+    const t = mkTask({ id: 1, title: 'Ship the docs', notes: '' });
+    expect(matchesFilter(t, { q: 'ship' })).toBe(true);
+    expect(matchesFilter(t, { q: 'DOCS' })).toBe(true);
+    expect(matchesFilter(t, { q: 'nope' })).toBe(false);
+  });
+
+  it('matches substrings in notes case-insensitively', () => {
+    const t = mkTask({ id: 1, title: 'A', notes: 'Followup: rotate keys' });
+    expect(matchesFilter(t, { q: 'rotate' })).toBe(true);
+    expect(matchesFilter(t, { q: 'ROTATE' })).toBe(true);
+  });
+});
+
+describe('computeAllMatchingIds', () => {
+  it('returns the ids of every task satisfying the filter', () => {
+    const tasks = [
+      mkTask({ id: 1, state: 'not_done', tags: ['infra'] }),
+      mkTask({ id: 2, state: 'done', tags: ['infra'] }),
+      mkTask({ id: 3, state: 'not_done', tags: ['other'] }),
+    ];
+    expect(computeAllMatchingIds(tasks, { states: ['not_done'], tags: ['infra'] })).toEqual([1]);
+  });
+
+  it('returns every id when the filter is empty', () => {
+    const tasks = [mkTask({ id: 1 }), mkTask({ id: 2 })];
+    expect(computeAllMatchingIds(tasks, {})).toEqual([1, 2]);
   });
 });

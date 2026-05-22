@@ -17,7 +17,7 @@
 import { useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTagsWithCounts } from '@/api/tags';
-import { useTasks } from '@/api/tasks';
+import { useSetTaskState, useStageTask, useTasks } from '@/api/tasks';
 import {
   CommandDialog,
   CommandEmpty,
@@ -28,6 +28,7 @@ import {
   CommandSeparator,
 } from '@/components/ui/command';
 import { TagChip } from '@/components/ui/tag-chip';
+import { useSelection } from '@/features/tasks/use-selection';
 
 const NAV: ReadonlyArray<{
   label: string;
@@ -57,6 +58,16 @@ export function CommandPalette() {
   // what the palette should search.
   const { data: tasks = [] } = useTasks({});
   const { data: tags = [] } = useTagsWithCounts();
+
+  // Selection state is global (sessionStorage-backed). The palette reads it so
+  // the Bulk group can drive multi-task actions from any page (e.g. /stage,
+  // /runs) — handing destructive flows back to /tasks via URL signals
+  // (?openBulkTagEditor=1 / ?confirmBulkDelete=1 / ?confirmBulkCancel=1) to
+  // avoid duplicating the editor/confirm dialogs here.
+  const selection = useSelection(tasks);
+  const selectedCount = selection.selected.size;
+  const setState = useSetTaskState();
+  const stage = useStageTask();
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -142,6 +153,53 @@ export function CommandPalette() {
     [navigate],
   );
 
+  // Bulk action handlers. Navigate first (so the URL is settled before the
+  // dialog/page commits) then close the palette. The /tasks page consumes
+  // the URL signal in a useEffect and clears it.
+  const openBulkTagEditor = useCallback(() => {
+    void navigate({
+      to: '/tasks',
+      search: (prev) => ({ ...(prev as Record<string, unknown>), openBulkTagEditor: 1 }),
+    });
+    setOpen(false);
+  }, [navigate]);
+
+  const stageAll = useCallback(() => {
+    for (const id of selection.selected) stage.mutate(id);
+    selection.clear();
+    setOpen(false);
+  }, [selection, stage]);
+
+  const markDoneAll = useCallback(() => {
+    for (const id of selection.selected) setState.mutate({ id, state: 'done' });
+    selection.clear();
+    setOpen(false);
+  }, [selection, setState]);
+
+  const requestBulkCancel = useCallback(() => {
+    // Route the confirm dialog to /tasks via URL signal — the dialog already
+    // names the off-screen count from Phase 4, so we reuse it instead of
+    // duplicating the AlertDialog inside the palette.
+    void navigate({
+      to: '/tasks',
+      search: (prev) => ({ ...(prev as Record<string, unknown>), confirmBulkCancel: 1 }),
+    });
+    setOpen(false);
+  }, [navigate]);
+
+  const requestBulkDelete = useCallback(() => {
+    void navigate({
+      to: '/tasks',
+      search: (prev) => ({ ...(prev as Record<string, unknown>), confirmBulkDelete: 1 }),
+    });
+    setOpen(false);
+  }, [navigate]);
+
+  const clearSelection = useCallback(() => {
+    selection.clear();
+    setOpen(false);
+  }, [selection]);
+
   return (
     <CommandDialog
       open={open}
@@ -162,6 +220,42 @@ export function CommandPalette() {
       />
       <CommandList>
         <CommandEmpty>No matches.</CommandEmpty>
+
+        {selectedCount > 0 && (
+          <>
+            <CommandGroup heading={`Bulk · ${selectedCount} tasks selected`}>
+              <CommandItem value={`__bulk-tag-${selectedCount}`} onSelect={openBulkTagEditor}>
+                <span className="text-primary">+</span>
+                <span>Tag {selectedCount} tasks…</span>
+                <span className="ml-auto font-mono text-xs text-muted-foreground">t</span>
+              </CommandItem>
+              <CommandItem value={`__bulk-stage-${selectedCount}`} onSelect={stageAll}>
+                <span className="text-muted-foreground">★</span>
+                <span>Stage {selectedCount} tasks</span>
+                <span className="ml-auto font-mono text-xs text-muted-foreground">s</span>
+              </CommandItem>
+              <CommandItem value={`__bulk-done-${selectedCount}`} onSelect={markDoneAll}>
+                <span className="text-muted-foreground">✓</span>
+                <span>Mark {selectedCount} tasks done</span>
+                <span className="ml-auto font-mono text-xs text-muted-foreground">d</span>
+              </CommandItem>
+              <CommandItem value={`__bulk-cancel-${selectedCount}`} onSelect={requestBulkCancel}>
+                <span className="text-muted-foreground">✕</span>
+                <span>Cancel {selectedCount} tasks…</span>
+              </CommandItem>
+              <CommandItem value={`__bulk-delete-${selectedCount}`} onSelect={requestBulkDelete}>
+                <span className="text-destructive">🗑</span>
+                <span>Delete {selectedCount} tasks…</span>
+              </CommandItem>
+              <CommandItem value={`__bulk-clear-${selectedCount}`} onSelect={clearSelection}>
+                <span className="text-muted-foreground">✕</span>
+                <span>Clear selection</span>
+                <span className="ml-auto font-mono text-xs text-muted-foreground">Esc</span>
+              </CommandItem>
+            </CommandGroup>
+            <CommandSeparator />
+          </>
+        )}
 
         {q && (
           <>

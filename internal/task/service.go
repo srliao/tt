@@ -47,6 +47,7 @@ type Service interface {
 
 	// Tags
 	SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error
+	BulkTag(ctx context.Context, in BulkTagInput) ([]Task, error)
 }
 
 // Impl is the concrete Service backed by a *db.Store. It is safe for
@@ -749,6 +750,110 @@ func (s *Impl) SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) er
 		return fmt.Errorf("task: set tags commit: %w", err)
 	}
 	return nil
+}
+
+// BulkTag applies a single tag mutation (add/remove/set) across many tasks
+// inside one transaction so the request either fully succeeds or leaves the
+// task_tags table untouched. The caller resolves tag names to ids before
+// invoking; tag-id list semantics differ per op:
+//
+//   - add: each (taskID, tagID) is INSERT OR IGNORE-d, so re-adding an
+//     already-attached tag is a no-op.
+//   - remove: tag ids that aren't attached are silently dropped (the DELETE
+//     simply matches zero rows).
+//   - set: each task's tag set is wiped first, then the supplied tag ids are
+//     inserted. Passing an empty slice clears all tags on the selection.
+//
+// IDs must be non-empty and Op must be a valid BulkTagOp. For add, TagIDs
+// must be non-empty (rejecting this distinguishes a typo from a deliberate
+// "clear" — Set with empty TagIDs is the explicit clear-all pathway). For
+// remove, empty TagIDs is allowed and is a silent no-op: the HTTP handler
+// resolves tag names via ResolveExisting, which drops unknown names, so an
+// all-unknown payload arrives here as an empty slice. The handler still
+// rejects an empty raw request body ("tags is required") at the boundary.
+//
+// The returned slice carries the reloaded task DTOs for every supplied id in
+// the same order, so React Query can patch its cache without a refetch.
+func (s *Impl) BulkTag(ctx context.Context, in BulkTagInput) ([]Task, error) {
+	if len(in.IDs) == 0 {
+		return nil, errors.New("task: ids is required")
+	}
+	if !in.Op.IsValid() {
+		return nil, fmt.Errorf("task: invalid bulk tag op %q", in.Op)
+	}
+	if in.Op == BulkTagOpAdd && len(in.TagIDs) == 0 {
+		return nil, errors.New("task: tags is required")
+	}
+
+	tx, err := s.store.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("task: bulk tag begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	qtx := s.q.WithTx(tx)
+
+	switch in.Op {
+	case BulkTagOpAdd:
+		for _, taskID := range in.IDs {
+			for _, tagID := range in.TagIDs {
+				if err := qtx.AddTaskTag(ctx, sqlcgen.AddTaskTagParams{
+					TaskID: taskID,
+					TagID:  tagID,
+				}); err != nil {
+					return nil, fmt.Errorf("task: bulk add tag task=%d tag=%d: %w", taskID, tagID, err)
+				}
+			}
+		}
+	case BulkTagOpRemove:
+		// Skip the DELETE entirely when no resolvable tag ids were supplied
+		// (e.g. caller passed only unknown tag names). Without this guard the
+		// slice-based query would emit `tag_id IN (NULL)` and match nothing,
+		// which is harmless but wastes a round-trip per task.
+		if len(in.TagIDs) > 0 {
+			for _, taskID := range in.IDs {
+				if err := qtx.DeleteTaskTagsForTask(ctx, sqlcgen.DeleteTaskTagsForTaskParams{
+					TaskID: taskID,
+					TagIds: in.TagIDs,
+				}); err != nil {
+					return nil, fmt.Errorf("task: bulk remove tags task=%d: %w", taskID, err)
+				}
+			}
+		}
+	case BulkTagOpSet:
+		for _, taskID := range in.IDs {
+			if err := qtx.ReplaceTaskTags(ctx, taskID); err != nil {
+				return nil, fmt.Errorf("task: bulk set replace task=%d: %w", taskID, err)
+			}
+			for _, tagID := range in.TagIDs {
+				if err := qtx.AddTaskTag(ctx, sqlcgen.AddTaskTagParams{
+					TaskID: taskID,
+					TagID:  tagID,
+				}); err != nil {
+					return nil, fmt.Errorf("task: bulk set add task=%d tag=%d: %w", taskID, tagID, err)
+				}
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("task: bulk tag commit: %w", err)
+	}
+
+	// Reload the affected rows in the order the caller supplied so the
+	// response mirrors the request.
+	out := make([]Task, 0, len(in.IDs))
+	for _, id := range in.IDs {
+		row, err := s.q.GetTask(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("task: bulk tag reload %d: %w", id, err)
+		}
+		tags, err := s.loadTags(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rowToTask(row, tags))
+	}
+	return out, nil
 }
 
 // Compile-time assertion that Impl satisfies the Service interface.

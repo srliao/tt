@@ -35,7 +35,8 @@ Migrations are embedded via `internal/db/migrations/embed.go`. They run on every
 - Generated code lives in `internal/db/sqlc/` — **do not edit by hand**. Always re-run `just db-gen`.
 - Config: `emit_pointers_for_null_types: true` → nullable columns map to `*string` / `*float64` / `*int64`.
 - `RETURNING *` is used everywhere a row is needed back after a write.
-- Use `s.q.WithTx(tx)` to bind queries inside a transaction (see `RebalancePriority`, `SetTagsByID`).
+- Use `s.q.WithTx(tx)` to bind queries inside a transaction (see `RebalancePriority`, `SetTagsByID`, `BulkTag`).
+- Multi-task tag mutations go through `task.Impl.BulkTag` (one tx for the whole selection). Handler in `internal/httpapi/tasks.go:handleBulkTag` resolves names → ids (autoCreate for add/set, `ResolveExisting` for remove so unknown names are silently ignored), service operates on ids only. The slice-based `DeleteTaskTagsForTask` query uses `sqlc.slice('tag_ids')` for the remove path. Service validation requires non-empty `TagIDs` only for `add`; `remove` with empty `TagIDs` is a silent no-op (the all-unknown case, returns 200 with unchanged tasks), and `set` with empty `TagIDs` is the explicit clear-all pathway. The handler still rejects an empty raw `tags` array at the boundary.
 
 ## When dynamic SQL is needed
 

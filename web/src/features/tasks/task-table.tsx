@@ -27,10 +27,6 @@ import { clickModeFromEvent, useTagFilterMutator } from './use-task-list-search'
 export interface TaskTableProps {
   tasks: Task[];
   sort: TaskSortAxis;
-  /** When true, render the multi-select checkbox column. */
-  multiSelectMode: boolean;
-  /** Called when a shortcut wants to flip multi-select on (e.g. shift-j). */
-  onMultiSelectModeChange?: (next: boolean) => void;
   selectedIds: Set<number>;
   onSelectedChange: (next: Set<number>) => void;
   onEdit: (task: Task) => void;
@@ -47,6 +43,18 @@ export interface TaskTableProps {
    * the reorder operates only on the visible subset.
    */
   hasFilters?: boolean;
+  /**
+   * Invoked when the user presses ⇧⌘A / ⇧Ctrl A — the page resolves the
+   * full set of ids matching the current filter (including off-screen)
+   * and applies them to the selection. No-op by default.
+   */
+  onSelectAllMatching?: () => void;
+  /**
+   * Invoked when `t` is pressed while ≥1 task is selected — opens the bulk
+   * tag editor. When no selection, the keyboard handler falls back to
+   * `onEditTags` for the focused row.
+   */
+  onOpenBulkTagEditor?: () => void;
 }
 
 /**
@@ -99,14 +107,14 @@ export function computeDragEnd(
 export function TaskTable({
   tasks,
   sort,
-  multiSelectMode,
-  onMultiSelectModeChange,
   selectedIds,
   onSelectedChange,
   onEdit,
   onEditTags,
   shortcutsDisabled,
   hasFilters,
+  onSelectAllMatching,
+  onOpenBulkTagEditor,
 }: TaskTableProps) {
   const showDragHandle = sort === 'priority';
   const setState = useSetTaskState();
@@ -148,6 +156,27 @@ export function TaskTable({
   const containerRef = useRef<HTMLTableElement>(null);
   const [focusedId, setFocusedId] = useState<number | null>(null);
 
+  // Keep the focused row in view as j/k walks past the viewport. Uses
+  // window.scrollBy (not Element.scrollIntoView, per repo convention) and
+  // an instant behavior — smooth scrolling on every step feels laggy when
+  // holding the key down.
+  useEffect(() => {
+    if (focusedId == null) return;
+    const row = document.querySelector<HTMLElement>(`[data-task-id="${focusedId}"]`);
+    if (!row) return;
+    const rect = row.getBoundingClientRect();
+    const topPad = 80; // top nav + active filter strip
+    const botPad = 80; // bulk action bar margin
+    if (rect.top < topPad) {
+      window.scrollBy({ top: rect.top - topPad, behavior: 'instant' });
+    } else if (rect.bottom > window.innerHeight - botPad) {
+      window.scrollBy({
+        top: rect.bottom - (window.innerHeight - botPad),
+        behavior: 'instant',
+      });
+    }
+  }, [focusedId]);
+
   useTableShortcuts({
     containerRef,
     tasks: visible,
@@ -157,11 +186,11 @@ export function TaskTable({
     onSelectedChange,
     onEdit,
     onEditTags,
-    onMultiSelectModeChange,
-    multiSelectMode,
     disabled: shortcutsDisabled,
     onToggleDone: (id, st) => setState.mutate({ id, state: st }),
     onStage: (id) => stage.mutate(id),
+    onSelectAllMatching,
+    onOpenBulkTagEditor,
   });
 
   const toggleSelect = (taskId: number, next: boolean) => {
@@ -190,7 +219,6 @@ export function TaskTable({
           enabled={showDragHandle}
           task={task}
           focused={task.id === focusedId}
-          multiSelectMode={multiSelectMode}
           selected={selectedIds.has(task.id)}
           onToggleSelect={(next) => toggleSelect(task.id, next)}
           showDragHandle={showDragHandle}
@@ -210,6 +238,14 @@ export function TaskTable({
       {showDragHandle && hasFilters && (
         <p className="text-xs text-muted-foreground">Filtered view — hidden tasks unchanged.</p>
       )}
+      {focusedId == null && visible.length > 0 && (
+        <div
+          className="ml-auto -mb-2 inline-flex items-center gap-1.5 self-end rounded-full border border-dashed border-primary/30 bg-primary/5 px-2.5 py-0.5 text-[11px] font-mono text-primary"
+          aria-hidden="true"
+        >
+          Press <kbd className="font-mono text-[10px]">j</kbd> to navigate
+        </div>
+      )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext
           items={ids}
@@ -224,7 +260,7 @@ export function TaskTable({
           >
             <thead className="text-xs text-muted-foreground">
               <tr className="border-b">
-                {multiSelectMode && <th className="w-8 px-2 py-2" />}
+                <th className="w-8 px-2 py-2" />
                 {showDragHandle && <th className="w-6 px-1 py-2" />}
                 <th className="w-8 px-2 py-2" />
                 <th className="px-2 py-2 text-left font-medium">Title</th>
@@ -245,7 +281,6 @@ interface SortableRowProps {
   enabled: boolean;
   task: Task;
   focused: boolean;
-  multiSelectMode: boolean;
   selected: boolean;
   onToggleSelect: (next: boolean) => void;
   showDragHandle: boolean;
@@ -281,7 +316,6 @@ function SortableRow({ enabled, ...row }: SortableRowProps) {
       style={style}
       task={row.task}
       focused={row.focused}
-      multiSelectMode={row.multiSelectMode}
       selected={row.selected}
       onToggleSelect={row.onToggleSelect}
       showDragHandle={row.showDragHandle}
@@ -317,13 +351,22 @@ interface TableShortcutsArgs {
   onSelectedChange: (next: Set<number>) => void;
   onEdit: (task: Task) => void;
   onEditTags?: (task: Task) => void;
-  /** Multi-select mode auto-engages when the user starts a ⇧j/⇧k range. */
-  multiSelectMode?: boolean;
-  onMultiSelectModeChange?: (next: boolean) => void;
   /** When true, swallow no keys. Used while the inline tag editor is open. */
   disabled?: boolean;
   onToggleDone: (id: number, state: ReturnType<typeof toggleDoneState>) => void;
   onStage: (id: number) => void;
+  /**
+   * ⇧⌘A / ⇧Ctrl A target. The hook only fires the callback — the page is
+   * responsible for resolving the matching id set and updating the
+   * selection (see `page.tsx`).
+   */
+  onSelectAllMatching?: () => void;
+  /**
+   * Invoked from the `t` keybind when ≥1 task is selected. Page wires this
+   * to opening the bulk tag editor; the single-task `onEditTags` branch
+   * runs only when nothing is selected.
+   */
+  onOpenBulkTagEditor?: () => void;
 }
 
 /**
@@ -366,33 +409,59 @@ function useTableShortcuts({
   onSelectedChange,
   onEdit,
   onEditTags,
-  multiSelectMode,
-  onMultiSelectModeChange,
   disabled,
   onToggleDone,
   onStage,
+  onSelectAllMatching,
+  onOpenBulkTagEditor,
 }: TableShortcutsArgs) {
   const anchorRef = useRef<number | null>(null);
-  const multiSelectModeRef = useRef(multiSelectMode);
-  multiSelectModeRef.current = multiSelectMode;
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
     const handler = (event: KeyboardEvent) => {
       if (disabled) return;
+      // Don't hijack keys when the user is typing.
+      const target = event.target as HTMLElement | null;
       if (
-        !containerRef.current?.contains(event.target as Node) &&
-        event.target !== containerRef.current
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable
       ) {
         return;
       }
-      const target = event.target as HTMLElement | null;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      // Defer to any open Radix dialog/popover — they own keys while visible.
+      if (
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
+        )
+      ) {
         return;
       }
       if (tasks.length === 0) return;
+
+      // ⌘A / Ctrl A — select all visible (toggle). ⇧⌘A / ⇧Ctrl A — select
+      // all matching the current filter, including off-screen rows.
+      // Branches before letter shortcuts so the mod-key combo wins over a
+      // bare `a` (no current shortcut uses bare `a`, but be defensive).
+      const isMod = event.metaKey || event.ctrlKey;
+      if (isMod && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        anchorRef.current = null;
+        if (event.shiftKey) {
+          onSelectAllMatching?.();
+        } else {
+          const visibleIds = tasks.map((t) => t.id);
+          const alreadyAll = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+          if (alreadyAll) {
+            onSelectedChange(new Set());
+          } else {
+            const next = new Set(selectedIds);
+            for (const id of visibleIds) next.add(id);
+            onSelectedChange(next);
+          }
+        }
+        return;
+      }
 
       const currentIdx = focusedId != null ? tasks.findIndex((t) => t.id === focusedId) : -1;
 
@@ -401,18 +470,17 @@ function useTableShortcuts({
         setFocusedId(tasks[clamped].id);
       };
 
-      // Escape exits multi-select mode and clears the selection. We only
-      // consume the key when there's something to clear, so other Escape
-      // consumers (e.g. closing a popover) keep working when the table
-      // is in its default state. Inputs/textareas were already filtered
-      // above; the `disabled` guard handles the modal-open case.
+      // Escape clears the selection. We only consume the key when there's
+      // something to clear, so other Escape consumers (e.g. closing a
+      // popover) keep working when the table is in its default state.
+      // Inputs/textareas were already filtered above; the `disabled` guard
+      // handles the modal-open case.
       if (event.key === 'Escape') {
-        if (multiSelectModeRef.current || selectedIds.size > 0) {
+        if (selectedIds.size > 0) {
           event.preventDefault();
           event.stopPropagation();
           anchorRef.current = null;
-          if (selectedIds.size > 0) onSelectedChange(new Set());
-          if (multiSelectModeRef.current) onMultiSelectModeChange?.(false);
+          onSelectedChange(new Set());
         }
         return;
       }
@@ -429,9 +497,6 @@ function useTableShortcuts({
           return;
         }
         if (anchorRef.current == null) anchorRef.current = focusedId;
-        if (!multiSelectModeRef.current) {
-          onMultiSelectModeChange?.(true);
-        }
         const nextIdx = Math.max(
           0,
           Math.min(tasks.length - 1, event.key === 'J' ? currentIdx + 1 : currentIdx - 1),
@@ -452,6 +517,16 @@ function useTableShortcuts({
         event.preventDefault();
         anchorRef.current = null;
         setIdx(currentIdx === -1 ? 0 : currentIdx - 1);
+        return;
+      }
+      // `t` with an active selection opens the bulk tag editor — works even
+      // when no row is focused (the bulk bar's "Tag…" button is the visible
+      // affordance). Single-task editing falls through to the focusedTask
+      // branch below.
+      if (event.key === 't' && selectedIds.size > 0 && onOpenBulkTagEditor) {
+        event.preventDefault();
+        anchorRef.current = null;
+        onOpenBulkTagEditor();
         return;
       }
       if (focusedId == null) {
@@ -481,7 +556,7 @@ function useTableShortcuts({
         event.preventDefault();
         anchorRef.current = null;
         onEditTags(focusedTask);
-      } else if (event.key === ' ') {
+      } else if (event.key === ' ' || event.key === 'x') {
         event.preventDefault();
         anchorRef.current = null;
         const copy = new Set(selectedIds);
@@ -494,10 +569,9 @@ function useTableShortcuts({
       }
     };
 
-    el.addEventListener('keydown', handler);
-    return () => el.removeEventListener('keydown', handler);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [
-    containerRef,
     tasks,
     focusedId,
     setFocusedId,
@@ -505,9 +579,10 @@ function useTableShortcuts({
     onSelectedChange,
     onEdit,
     onEditTags,
-    onMultiSelectModeChange,
     onToggleDone,
     onStage,
+    onSelectAllMatching,
+    onOpenBulkTagEditor,
     disabled,
   ]);
 
