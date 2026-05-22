@@ -76,7 +76,7 @@ features/tasks/use-task-list-search.ts
   ├── taskSearchSchema     zod schema (states, tags, tagsExclude, tagMode, due, q, sort, asc, quick)
   ├── applyQuickFilter()   translate `quick=overdue` to effective filter
   ├── hasActiveFilters()   for empty-state suppression
-  ├── isStateRestricted()  true when `states` is a strict subset of all states
+  ├── isStateRestricted()  true when `states` hides any canonical state — default view (unset/empty) counts as restricted (mirrors not_done-only behavior)
   └── useTaskListSearch()  returns { search, setSearch(updates) }
                            setSearch strips empty/undefined values
 ```

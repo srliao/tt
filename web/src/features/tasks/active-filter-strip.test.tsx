@@ -47,12 +47,28 @@ function renderStrip(initial = '/tasks') {
 }
 
 describe('ActiveFilterStrip', () => {
-  it('renders nothing when no filters are active and states is unset', async () => {
+  it('renders the "Open only · include done?" pill on a fresh /tasks visit', async () => {
+    // Default view (states unset) is filtered to not_done — the strip mounts
+    // with the include-done affordance so first-time users can discover the
+    // hidden states. No other chips should appear.
     const { container } = renderStrip('/tasks');
-    // Wait one tick so the router resolves; the component should still render
-    // nothing because no filter axis is set.
+    await screen.findByRole('button', { name: 'Open only · include done?' });
+    expect(container.querySelector('[data-slot="active-filter-strip"]')).not.toBeNull();
+    expect(container.querySelector('[data-slot="filter-chip"]')).toBeNull();
+  });
+
+  it('hides the include-done pill once all three states are explicitly selected', async () => {
+    const { router } = renderStrip('/tasks');
+    await act(async () => {
+      await router.navigate({
+        to: '/tasks',
+        search: { states: ['not_done', 'done', 'cancelled'] },
+      });
+    });
+    // The strip itself still mounts (states is a non-empty filter axis), but
+    // the "Open only" affordance is gone because nothing is hidden.
     await waitFor(() => {
-      expect(container.querySelector('[data-slot="active-filter-strip"]')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Open only · include done?' })).toBeNull();
     });
   });
 
