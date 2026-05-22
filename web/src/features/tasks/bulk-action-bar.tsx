@@ -44,6 +44,17 @@ export interface BulkActionBarProps {
    * legacy consumers) shouldn't have to provide one.
    */
   tagButtonRef?: RefObject<HTMLButtonElement | null>;
+  /**
+   * Controlled state for the destructive confirm dialogs. Lifted into the
+   * parent so the command palette can trigger them via URL signal from any
+   * page (the palette navigates to /tasks?confirmBulkDelete=1, and
+   * page.tsx flips the flag). Optional: when omitted the bar falls back to
+   * internal useState so unit tests can render it without plumbing.
+   */
+  confirmDelete?: boolean;
+  onConfirmDeleteChange?: (open: boolean) => void;
+  confirmCancel?: boolean;
+  onConfirmCancelChange?: (open: boolean) => void;
 }
 
 // kbd hint styled for the dark (inverted) bar surface.
@@ -78,12 +89,22 @@ export function BulkActionBar({
   filter,
   onOpenTagEditor,
   tagButtonRef,
+  confirmDelete: confirmDeleteProp,
+  onConfirmDeleteChange,
+  confirmCancel: confirmCancelProp,
+  onConfirmCancelChange,
 }: BulkActionBarProps) {
   const setState = useSetTaskState();
   const stage = useStageTask();
   const del = useDeleteTask();
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [confirmCancel, setConfirmCancel] = useState(false);
+  // Fall back to internal state when the parent doesn't control the dialogs
+  // (test consumers, future call sites that don't need palette-driven opens).
+  const [confirmDeleteLocal, setConfirmDeleteLocal] = useState(false);
+  const [confirmCancelLocal, setConfirmCancelLocal] = useState(false);
+  const confirmDelete = confirmDeleteProp ?? confirmDeleteLocal;
+  const setConfirmDelete = onConfirmDeleteChange ?? setConfirmDeleteLocal;
+  const confirmCancel = confirmCancelProp ?? confirmCancelLocal;
+  const setConfirmCancel = onConfirmCancelChange ?? setConfirmCancelLocal;
 
   // Resolve "all matching" via the same cached query the list view uses —
   // this is a cache hit when `filter` matches the list page's filter.
