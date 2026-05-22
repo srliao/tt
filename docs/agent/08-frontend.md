@@ -27,7 +27,8 @@ web/src/
 │   ├── ui/                 shadcn primitives (button, dialog, input, table, …)
 │   ├── layout.tsx          top nav + stage badge + theme; wraps every route
 │   ├── theme-{provider,toggle}.tsx
-│   └── shortcut-cheatsheet.tsx  rendered by `?`
+│   ├── shortcut-cheatsheet.tsx  rendered by `?`
+│   └── command-palette.tsx      rendered by `/` or ⌘K (cmdk)
 ├── features/               one folder per top-level page; deeper subcomponents inside
 │   ├── tasks/
 │   ├── stage/
@@ -37,7 +38,7 @@ web/src/
 ├── lib/
 │   ├── api.ts              fetch wrapper + ApiError + envelope decoding
 │   ├── query.ts            QueryClient (30s staleTime, retry: 1)
-│   ├── shortcuts.ts        global keyboard handler (n, /, gX, ?)
+│   ├── shortcuts.ts        global keyboard handler (n, gX, ?) — `/` and ⌘K owned by command-palette.tsx
 │   └── utils.ts            cn() etc.
 ├── routes/                 file-based TanStack routes
 ├── types/                  hand-written mirrors of Go DTOs
@@ -128,11 +129,25 @@ Multi-select on `/tasks` is owned by `features/tasks/page.tsx` (`multiSelectMode
 | Key | Action |
 |---|---|
 | `n` | Dispatch `tt:new-task` event (any add-modal-aware page listens) |
-| `/` | Focus the search input (navigate to /tasks first if needed) |
 | `g t/s/c/g/r` | Go to Tasks / Stage / Scripts / Tags / Runs (chord, 1s leader timeout) |
 | `?` | Toggle cheatsheet (dispatch `tt:toggle-cheatsheet`) |
 
 Shortcuts are **suppressed when an editable element has focus** (`<input>`, `<textarea>`, `<select>`, contenteditable).
+
+### Command palette (`/` and ⌘K)
+
+`web/src/components/command-palette.tsx` owns `/` and ⌘K via its own
+`document` keydown listener (installed in `AppLayout`, not in
+`useGlobalShortcuts`). It uses the `cmdk`-backed primitives in
+`web/src/components/ui/command.tsx` and searches the full unfiltered
+task set (`useTasks({})`) plus tag list (`useTagsWithCounts()`).
+
+Selecting a task dispatches `tt:open-task` with `{ id }`;
+`features/tasks/page.tsx` listens for it (mirrors `useNewTaskListener`)
+and opens the edit modal. ⌘↵ inside the palette applies the typed query
+as `?q=` and navigates to `/tasks`. The `?q=` URL contract is unchanged
+— the sidebar `<SearchField>` was removed but the schema and
+server-side filter still apply when the param is present.
 
 ## Drag-drop reorder
 
