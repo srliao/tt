@@ -104,7 +104,13 @@ export function TasksPage() {
       </section>
 
       {selection.selected.size > 0 && (
-        <BulkActionBar selectedIds={selection.selected} onClear={() => selection.clear()} />
+        <BulkActionBar
+          selection={selection}
+          filter={{ ...effective, sort }}
+          onOpenTagEditor={() => {
+            // Phase 6 wires this to <BulkTagEditor>. No-op for now.
+          }}
+        />
       )}
 
       <AddTaskModal open={creating} onOpenChange={setCreating} />
