@@ -145,6 +145,9 @@ export interface BulkTagInput {
  * only way to mutate tags client-side is PATCH /tasks/:id with the full
  * tags list. We fetch each task, compute the new tag list, and PATCH it.
  * Slow (2N round-trips for N tasks) but functionally complete.
+ *
+ * NOTE: partial-failure window — earlier PATCHes commit before a later one
+ * rejects. Phase 7 replaces this with a single-transaction endpoint.
  */
 export function useBulkTag() {
   const qc = useQueryClient();
