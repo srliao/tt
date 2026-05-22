@@ -120,6 +120,7 @@ export function CommandPalette() {
         search: (prev) => ({
           ...(prev as Record<string, unknown>),
           tags: [name],
+          tagsExclude: undefined,
         }),
       });
       setOpen(false);
