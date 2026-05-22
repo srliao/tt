@@ -490,6 +490,195 @@ func TestSetTagsByID_ReplacesPreviousSet(t *testing.T) {
 	}
 }
 
+func TestBulkTag_AddAttachesEveryTagToEveryTask(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	t1, _ := svc.Create(ctx, task.CreateInput{Title: "t1"})
+	t2, _ := svc.Create(ctx, task.CreateInput{Title: "t2"})
+	t3, _ := svc.Create(ctx, task.CreateInput{Title: "t3"})
+	tagA := insertTag(t, store, ctx, "alpha")
+	tagB := insertTag(t, store, ctx, "bravo")
+
+	out, err := svc.BulkTag(ctx, task.BulkTagInput{
+		IDs:    []int64{t1.ID, t2.ID, t3.ID},
+		Op:     task.BulkTagOpAdd,
+		TagIDs: []int64{tagA, tagB},
+	})
+	if err != nil {
+		t.Fatalf("BulkTag add: %v", err)
+	}
+	if len(out) != 3 {
+		t.Fatalf("len(out) = %d, want 3", len(out))
+	}
+	for _, got := range out {
+		if !equalStringSets(got.Tags, []string{"alpha", "bravo"}) {
+			t.Fatalf("task %d tags = %v, want [alpha bravo]", got.ID, got.Tags)
+		}
+	}
+}
+
+func TestBulkTag_AddIsIdempotent(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	t1, _ := svc.Create(ctx, task.CreateInput{Title: "t1"})
+	tagA := insertTag(t, store, ctx, "alpha")
+	tagB := insertTag(t, store, ctx, "bravo")
+
+	// Pre-seed task t1 with tagA so the add-loop sees an existing row.
+	if err := svc.SetTagsByID(ctx, t1.ID, []int64{tagA}); err != nil {
+		t.Fatalf("SetTagsByID: %v", err)
+	}
+
+	out, err := svc.BulkTag(ctx, task.BulkTagInput{
+		IDs:    []int64{t1.ID},
+		Op:     task.BulkTagOpAdd,
+		TagIDs: []int64{tagA, tagB},
+	})
+	if err != nil {
+		t.Fatalf("BulkTag add (idempotent): %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("len(out) = %d, want 1", len(out))
+	}
+	if !equalStringSets(out[0].Tags, []string{"alpha", "bravo"}) {
+		t.Fatalf("tags = %v, want [alpha bravo]", out[0].Tags)
+	}
+}
+
+func TestBulkTag_RemoveDetachesOnlySpecifiedTags(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	t1, _ := svc.Create(ctx, task.CreateInput{Title: "t1"})
+	t2, _ := svc.Create(ctx, task.CreateInput{Title: "t2"})
+	tagA := insertTag(t, store, ctx, "alpha")
+	tagB := insertTag(t, store, ctx, "bravo")
+	tagC := insertTag(t, store, ctx, "charlie")
+
+	if err := svc.SetTagsByID(ctx, t1.ID, []int64{tagA, tagB, tagC}); err != nil {
+		t.Fatalf("seed t1: %v", err)
+	}
+	if err := svc.SetTagsByID(ctx, t2.ID, []int64{tagB}); err != nil {
+		t.Fatalf("seed t2: %v", err)
+	}
+
+	out, err := svc.BulkTag(ctx, task.BulkTagInput{
+		IDs:    []int64{t1.ID, t2.ID},
+		Op:     task.BulkTagOpRemove,
+		TagIDs: []int64{tagA, tagB},
+	})
+	if err != nil {
+		t.Fatalf("BulkTag remove: %v", err)
+	}
+	if !equalStringSets(out[0].Tags, []string{"charlie"}) {
+		t.Fatalf("t1 tags = %v, want [charlie]", out[0].Tags)
+	}
+	if len(out[1].Tags) != 0 {
+		t.Fatalf("t2 tags = %v, want []", out[1].Tags)
+	}
+}
+
+func TestBulkTag_RemoveWithEmptyTagIDsIsNoOp(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	// Validation in BulkTag rejects empty TagIDs for remove, so the only way
+	// to hit the no-op branch is via the HTTP handler (ResolveExisting may
+	// return nil after dropping unknown names). Exercise the service-level
+	// guard here too.
+	t1, _ := svc.Create(ctx, task.CreateInput{Title: "t1"})
+	tagA := insertTag(t, store, ctx, "alpha")
+	if err := svc.SetTagsByID(ctx, t1.ID, []int64{tagA}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	_, err := svc.BulkTag(ctx, task.BulkTagInput{
+		IDs:    []int64{t1.ID},
+		Op:     task.BulkTagOpRemove,
+		TagIDs: nil,
+	})
+	if err == nil {
+		t.Fatalf("expected validation error for remove with empty TagIDs")
+	}
+}
+
+func TestBulkTag_SetReplacesPreviousTags(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	t1, _ := svc.Create(ctx, task.CreateInput{Title: "t1"})
+	t2, _ := svc.Create(ctx, task.CreateInput{Title: "t2"})
+	tagA := insertTag(t, store, ctx, "alpha")
+	tagB := insertTag(t, store, ctx, "bravo")
+	tagC := insertTag(t, store, ctx, "charlie")
+
+	if err := svc.SetTagsByID(ctx, t1.ID, []int64{tagA, tagB}); err != nil {
+		t.Fatalf("seed t1: %v", err)
+	}
+	if err := svc.SetTagsByID(ctx, t2.ID, []int64{tagA}); err != nil {
+		t.Fatalf("seed t2: %v", err)
+	}
+
+	out, err := svc.BulkTag(ctx, task.BulkTagInput{
+		IDs:    []int64{t1.ID, t2.ID},
+		Op:     task.BulkTagOpSet,
+		TagIDs: []int64{tagC},
+	})
+	if err != nil {
+		t.Fatalf("BulkTag set: %v", err)
+	}
+	for _, got := range out {
+		if !equalStringSets(got.Tags, []string{"charlie"}) {
+			t.Fatalf("task %d tags = %v, want [charlie]", got.ID, got.Tags)
+		}
+	}
+}
+
+func TestBulkTag_SetWithEmptyTagIDsClearsAll(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	t1, _ := svc.Create(ctx, task.CreateInput{Title: "t1"})
+	tagA := insertTag(t, store, ctx, "alpha")
+	if err := svc.SetTagsByID(ctx, t1.ID, []int64{tagA}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	out, err := svc.BulkTag(ctx, task.BulkTagInput{
+		IDs:    []int64{t1.ID},
+		Op:     task.BulkTagOpSet,
+		TagIDs: nil,
+	})
+	if err != nil {
+		t.Fatalf("BulkTag set (clear): %v", err)
+	}
+	if len(out[0].Tags) != 0 {
+		t.Fatalf("tags = %v, want []", out[0].Tags)
+	}
+}
+
+func TestBulkTag_ValidationErrors(t *testing.T) {
+	t.Parallel()
+	svc, _, ctx := newServiceWithStore(t)
+
+	if _, err := svc.BulkTag(ctx, task.BulkTagInput{
+		IDs: nil, Op: task.BulkTagOpAdd, TagIDs: []int64{1},
+	}); err == nil {
+		t.Fatalf("expected error for empty IDs")
+	}
+	if _, err := svc.BulkTag(ctx, task.BulkTagInput{
+		IDs: []int64{1}, Op: task.BulkTagOp("nope"), TagIDs: []int64{1},
+	}); err == nil {
+		t.Fatalf("expected error for invalid Op")
+	}
+	if _, err := svc.BulkTag(ctx, task.BulkTagInput{
+		IDs: []int64{1}, Op: task.BulkTagOpAdd, TagIDs: nil,
+	}); err == nil {
+		t.Fatalf("expected error for empty TagIDs on add")
+	}
+}
+
 func equalStringSets(got, want []string) bool {
 	if len(got) != len(want) {
 		return false

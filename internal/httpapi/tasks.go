@@ -19,6 +19,7 @@ func (s *Server) mountTaskRoutes(r chi.Router) {
 		r.Get("/", s.handleListTasks)
 		r.Post("/", s.handleCreateTask)
 		r.Post("/reorder", s.handleReorderMain)
+		r.Post("/bulk-tag", s.handleBulkTag)
 		r.Get("/{id}", s.handleGetTask)
 		r.Patch("/{id}", s.handleUpdateTask)
 		r.Delete("/{id}", s.handleDeleteTask)
@@ -369,6 +370,77 @@ func (s *Server) handleReorderMain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
+}
+
+// bulkTagBody is the inbound JSON shape for POST /tasks/bulk-tag. Tag name
+// resolution happens in the handler so the task service operates on plain
+// numeric tag ids; see handleBulkTag for the validation and resolution rules.
+type bulkTagBody struct {
+	IDs  []int64  `json:"ids"`
+	Op   string   `json:"op"`
+	Tags []string `json:"tags"`
+}
+
+// handleBulkTag applies a tag mutation across many tasks in a single
+// transaction. The supported ops are "add", "remove", and "set" (see
+// task.BulkTagOp). Tag names are resolved into ids here so the service stays
+// IO-free against the tag store; add/set autoCreate missing names while
+// remove silently ignores unknowns (removing a tag a task doesn't carry
+// should never be an error).
+//
+// Validation:
+//   - ids must be non-empty
+//   - op must be add|remove|set
+//   - tags must be non-empty for add/remove; empty is allowed for set
+//     (the explicit "clear all tags" pathway)
+//
+// Response is the full updated task DTOs in the request order so the React
+// Query cache can be patched in place without a follow-up refetch.
+func (s *Server) handleBulkTag(w http.ResponseWriter, r *http.Request) {
+	var body bulkTagBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, CodeValidation, "invalid JSON body", nil)
+		return
+	}
+	if len(body.IDs) == 0 {
+		writeError(w, http.StatusBadRequest, CodeValidation, "ids is required", nil)
+		return
+	}
+	op := task.ParseBulkTagOp(body.Op)
+	if !op.IsValid() {
+		writeError(w, http.StatusBadRequest, CodeValidation, "op must be add|remove|set", map[string]any{"value": body.Op})
+		return
+	}
+	if (op == task.BulkTagOpAdd || op == task.BulkTagOpRemove) && len(body.Tags) == 0 {
+		writeError(w, http.StatusBadRequest, CodeValidation, "tags is required", nil)
+		return
+	}
+
+	var tagIDs []int64
+	var err error
+	switch op {
+	case task.BulkTagOpAdd, task.BulkTagOpSet:
+		tagIDs, err = s.tags.Resolve(r.Context(), body.Tags, true)
+	case task.BulkTagOpRemove:
+		// Remove tolerates unknown tag names — removing a tag that doesn't
+		// exist anywhere is a no-op, not an error.
+		tagIDs, err = s.tags.ResolveExisting(r.Context(), body.Tags)
+	}
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
+	out, err := s.tasks.BulkTag(r.Context(), task.BulkTagInput{
+		IDs:    body.IDs,
+		Op:     op,
+		TagIDs: tagIDs,
+	})
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // parsePathID extracts the {id} URL param and returns (id, true) on success.

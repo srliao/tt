@@ -157,13 +157,12 @@ describe('<BulkTagEditor>', () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       calls.push({ url, init });
-      if (url.startsWith('/api/v1/tasks/') && !init?.method) {
-        // GET /tasks/:id — returns the task with no tags so the diff is clean.
-        const id = Number(url.split('/').pop());
-        return Promise.resolve(jsonResponse(task({ id, tags: [] })));
-      }
-      if (init?.method === 'PATCH') {
-        return Promise.resolve(jsonResponse({}));
+      if (url === '/api/v1/tasks/bulk-tag' && init?.method === 'POST') {
+        const body = JSON.parse(init.body as string) as {
+          ids: number[];
+          tags: string[];
+        };
+        return Promise.resolve(jsonResponse(body.ids.map((id) => task({ id, tags: body.tags }))));
       }
       return Promise.resolve(jsonResponse([]));
     });
@@ -197,17 +196,19 @@ describe('<BulkTagEditor>', () => {
       fireEvent.keyDown(popover, { key: 'Enter', metaKey: true });
     });
 
-    // Wait for the mutation chain to finish.
+    // One bulk-tag POST carries every id + the staged tag list.
     await waitFor(() => {
-      const patchCalls = calls.filter((c) => c.init?.method === 'PATCH');
-      expect(patchCalls.length).toBe(2);
+      const bulkCalls = calls.filter(
+        (c) => c.url === '/api/v1/tasks/bulk-tag' && c.init?.method === 'POST',
+      );
+      expect(bulkCalls.length).toBe(1);
     });
 
-    const patchCalls = calls.filter((c) => c.init?.method === 'PATCH');
-    const patchedIds = patchCalls.map((c) => Number(c.url.split('/').pop()));
-    expect(patchedIds.sort()).toEqual([10, 11]);
-    const body = JSON.parse(patchCalls[0].init?.body as string);
-    expect(body.tags).toContain('newtag');
+    const bulk = calls.find((c) => c.url === '/api/v1/tasks/bulk-tag');
+    const body = JSON.parse(bulk?.init?.body as string);
+    expect(body.ids.sort()).toEqual([10, 11]);
+    expect(body.op).toBe('add');
+    expect(body.tags).toEqual(['newtag']);
 
     // Editor closed via onOpenChange(false).
     await waitFor(() => {
@@ -283,19 +284,14 @@ describe('<BulkTagEditor>', () => {
   });
 
   it('Set + empty staged + confirm = clear-all-tags', async () => {
-    // GET /tasks/:id returns the task with its current tags; PATCH records
-    // the next tags payload. Set mode with empty staged + confirm should
-    // call mutate with op:'set', tags:[] so every task ends up tagless.
+    // Set mode with empty staged + confirm should call the bulk endpoint
+    // with op:'set', tags:[] so every selected task ends up tagless.
     const calls: { url: string; init?: RequestInit }[] = [];
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
       calls.push({ url, init });
-      if (url.startsWith('/api/v1/tasks/') && !init?.method) {
-        const id = Number(url.split('/').pop());
-        // Give each task a tag so we can prove they were cleared.
-        return Promise.resolve(jsonResponse(task({ id, tags: ['legacy'] })));
-      }
-      if (init?.method === 'PATCH') {
-        return Promise.resolve(jsonResponse({}));
+      if (url === '/api/v1/tasks/bulk-tag' && init?.method === 'POST') {
+        const body = JSON.parse(init.body as string) as { ids: number[] };
+        return Promise.resolve(jsonResponse(body.ids.map((id) => task({ id, tags: [] }))));
       }
       return Promise.resolve(jsonResponse([{ name: 'legacy', count: 2 }]));
     });
@@ -341,19 +337,17 @@ describe('<BulkTagEditor>', () => {
     });
 
     await waitFor(() => {
-      const patchCalls = calls.filter((c) => c.init?.method === 'PATCH');
-      expect(patchCalls.length).toBe(2);
+      const bulkCalls = calls.filter(
+        (c) => c.url === '/api/v1/tasks/bulk-tag' && c.init?.method === 'POST',
+      );
+      expect(bulkCalls.length).toBe(1);
     });
 
-    const patchCalls = calls.filter((c) => c.init?.method === 'PATCH');
-    const patchedIds = patchCalls.map((c) => Number(c.url.split('/').pop()));
-    expect(patchedIds.sort()).toEqual([20, 21]);
-    // Each PATCH body should carry tags:[] — the bulk-tag op 'set' with
-    // staged=[] is the clear-all-tags pathway.
-    for (const c of patchCalls) {
-      const body = JSON.parse(c.init?.body as string);
-      expect(body.tags).toEqual([]);
-    }
+    const bulk = calls.find((c) => c.url === '/api/v1/tasks/bulk-tag');
+    const body = JSON.parse(bulk?.init?.body as string);
+    expect(body.ids.sort()).toEqual([20, 21]);
+    expect(body.op).toBe('set');
+    expect(body.tags).toEqual([]);
 
     await waitFor(() => {
       const lastCall = onOpenChange.mock.calls[onOpenChange.mock.calls.length - 1];
@@ -362,16 +356,12 @@ describe('<BulkTagEditor>', () => {
   });
 
   it('error path keeps editor open and staged chips intact, then Esc closes', async () => {
-    // GET succeeds (so the mutation enters the PATCH phase), PATCH rejects.
-    // After the failed Apply, the popover must remain mounted, the staged
-    // chip must still be visible, and an error message must render.
+    // bulk-tag rejects with a 500 envelope. After the failed Apply the
+    // popover must remain mounted, the staged chip still visible, and an
+    // error message must render.
     const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
-      if (url.startsWith('/api/v1/tasks/') && !init?.method) {
-        const id = Number(url.split('/').pop());
-        return Promise.resolve(jsonResponse(task({ id, tags: [] })));
-      }
-      if (init?.method === 'PATCH') {
-        return Promise.resolve(jsonResponse({ error: { message: 'boom' } }, 500));
+      if (url === '/api/v1/tasks/bulk-tag' && init?.method === 'POST') {
+        return Promise.resolve(jsonResponse({ error: { code: 'internal', message: 'boom' } }, 500));
       }
       return Promise.resolve(jsonResponse([]));
     });

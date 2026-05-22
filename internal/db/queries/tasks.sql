@@ -73,3 +73,6 @@ INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?);
 
 -- name: ReplaceTaskTags :exec
 DELETE FROM task_tags WHERE task_id = ?;
+
+-- name: DeleteTaskTagsForTask :exec
+DELETE FROM task_tags WHERE task_id = ? AND tag_id IN (sqlc.slice('tag_ids'));
