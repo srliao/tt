@@ -12,7 +12,7 @@ Step-by-step trails for typical modifications. Use these as scaffolding — adap
 6. **Service methods**: if the field is mutable, update `Update` (or add a setter). Use input normalization (e.g., trimming, validation) before the SQL call.
 7. **HTTP types**: update `taskBody` in `internal/httpapi/tasks.go` and the create/update handlers.
 8. **Frontend types**: mirror in `web/src/types/task.ts`.
-9. **Frontend forms/displays**: `web/src/features/tasks/add-task-modal.tsx`, `task-row.tsx`, etc.
+9. **Frontend forms/displays**: `web/src/features/tasks/edit-task-modal.tsx` (full edit surface), `web/src/features/tasks/add-task-modal.tsx` (title-only create modal triggered by `n` / "+ New task"), `task-row.tsx`, etc.
 10. **Tests**: extend `internal/task/service_test.go`, `internal/httpapi/tasks_test.go`, frontend `task-table.test.tsx`.
 
 ## Add a new ctx method to userscripts

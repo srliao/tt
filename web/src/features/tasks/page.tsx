@@ -3,7 +3,10 @@
  *
  * - `FilterSidebar` (URL-driven filters/search) — left column.
  * - `TaskTable` (data display + dnd-kit reorder + j/k shortcuts) — right column.
- * - `AddTaskModal` (controlled here so the global `n` shortcut can open it).
+ * - `AddTaskModal` (title-only create modal; opened by the header button or
+ *   the global `n` shortcut).
+ * - `EditTaskModal` (full edit surface; opened by clicking a task title or
+ *   pressing `e`).
  * - `BulkActionBar` (sticky footer that appears when ≥1 row is selected).
  *
  * The empty state per spec §6 only shows when (a) the server returned zero
@@ -19,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import type { Task } from '@/types/task';
 import { AddTaskModal, useNewTaskListener } from './add-task-modal';
 import { BulkActionBar } from './bulk-action-bar';
+import { EditTaskModal } from './edit-task-modal';
 import { FilterSidebar } from './filter-sidebar';
 import { TaskTable } from './task-table';
 import { applyQuickFilter, hasActiveFilters, useTaskListSearch } from './use-task-list-search';
@@ -32,11 +36,11 @@ export function TasksPage() {
 
   const { data: tasks = [], isLoading } = useTasks({ ...effective, sort });
 
-  const [modalOpen, setModalOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  useNewTaskListener(() => setModalOpen(true));
+  useNewTaskListener(() => setCreating(true));
 
   const filtersActive = hasActiveFilters(search);
   const showEmpty = !isLoading && tasks.length === 0 && !filtersActive;
@@ -47,13 +51,13 @@ export function TasksPage() {
       <section className="flex-1 px-4 py-4">
         <header className="mb-3 flex items-center justify-between">
           <h1 className="font-heading text-xl font-medium">Tasks</h1>
-          <Button size="sm" onClick={() => setModalOpen(true)}>
+          <Button size="sm" onClick={() => setCreating(true)}>
             <PlusIcon /> New task
           </Button>
         </header>
 
         {showEmpty ? (
-          <EmptyState onCreate={() => setModalOpen(true)} />
+          <EmptyState onCreate={() => setCreating(true)} />
         ) : (
           <TaskTable
             tasks={tasks}
@@ -68,14 +72,13 @@ export function TasksPage() {
 
       <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} />
 
-      <AddTaskModal open={modalOpen} onOpenChange={setModalOpen} />
+      <AddTaskModal open={creating} onOpenChange={setCreating} />
 
-      <AddTaskModal
-        open={!!editing}
+      <EditTaskModal
+        task={editing}
         onOpenChange={(next) => {
           if (!next) setEditing(null);
         }}
-        task={editing}
       />
     </div>
   );
