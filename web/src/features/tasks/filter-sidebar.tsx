@@ -1,15 +1,15 @@
 /**
  * Left sidebar on the /tasks page: quick filters, state checkboxes, tag
- * multi-select, due-range select, debounced search input.
+ * multi-select, due-range select.
  *
  * All UI state lives in the URL via `useTaskListSearch()` so refreshes and
- * shared links stay stable. The only locally-held value is the debounced
- * search input — we keep it as React state until 300ms after the last edit,
- * then push to the URL.
+ * shared links stay stable. As of Phase 5, the in-sidebar search field is
+ * gone — text search is performed via the global command palette (`/` or
+ * `⌘K`). The `?q=` URL contract is unchanged so deep links keep working.
  */
 
-import { CheckIcon, SearchIcon } from 'lucide-react';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { CheckIcon } from 'lucide-react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { useTagsWithCounts } from '@/api/tags';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -66,31 +66,11 @@ function isStateRestricted(search: TaskSearch): boolean {
 
 export function FilterSidebar() {
   const { search, setSearch } = useTaskListSearch();
-  const [searchInput, setSearchInput] = useState(search.q ?? '');
-
-  // Keep the local input in sync when the URL is mutated externally
-  // (e.g. quick-filter click). Compare against the URL value, not the
-  // previous local value, so we only overwrite when the URL changed.
-  useEffect(() => {
-    setSearchInput(search.q ?? '');
-  }, [search.q]);
-
-  // Debounced push to URL.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const current = search.q ?? '';
-      if (searchInput !== current) {
-        setSearch({ q: searchInput || undefined });
-      }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [searchInput, search.q, setSearch]);
 
   return (
     <aside className="flex w-60 shrink-0 flex-col gap-4 p-4 text-sm">
-      <SearchField value={searchInput} onChange={setSearchInput} />
       {isStateRestricted(search) && (
-        <p className="-mt-2 text-xs text-muted-foreground">Searching open tasks only.</p>
+        <p className="text-xs text-muted-foreground">Searching open tasks only.</p>
       )}
 
       <Section title="Quick filters">
@@ -168,26 +148,6 @@ function Section({ title, children }: { title: ReactNode; children: ReactNode })
     <div className="flex flex-col gap-2">
       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h2>
       {children}
-    </div>
-  );
-}
-
-function SearchField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="relative">
-      <SearchIcon
-        className="pointer-events-none absolute top-1/2 left-2 size-4 -translate-y-1/2 text-muted-foreground"
-        aria-hidden="true"
-      />
-      <Input
-        type="search"
-        data-search-input
-        placeholder="Search tasks…"
-        aria-label="Search tasks"
-        className="pl-8"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-      />
     </div>
   );
 }

@@ -16,7 +16,7 @@
 
 import { Link } from '@tanstack/react-router';
 import { CheckSquareIcon, PlusIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTasks } from '@/api/tasks';
 import { Button } from '@/components/ui/button';
 import type { Task } from '@/types/task';
@@ -42,6 +42,20 @@ export function TasksPage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
   useNewTaskListener(() => setCreating(true));
+
+  // The global command palette dispatches `tt:open-task` with a task id when
+  // the user picks a task result. We open the edit modal for that task if
+  // it's in the currently-loaded list. Mirrors `useNewTaskListener` above.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const id = (event as CustomEvent<{ id: number }>).detail?.id;
+      if (typeof id !== 'number') return;
+      const target = tasks.find((t) => t.id === id);
+      if (target) setEditing(target);
+    };
+    window.addEventListener('tt:open-task', handler);
+    return () => window.removeEventListener('tt:open-task', handler);
+  }, [tasks]);
 
   const filtersActive = hasActiveFilters(search);
   const showEmpty = !isLoading && tasks.length === 0 && !filtersActive;

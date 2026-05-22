@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { Separator } from '@/components/ui/separator';
 import { api } from '@/lib/api';
+import { CommandPalette } from './command-palette';
 import { ShortcutCheatsheet } from './shortcut-cheatsheet';
 import { ThemeProvider } from './theme-provider';
 import { ThemeToggle } from './theme-toggle';
@@ -80,6 +81,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
         <TopNav />
         <main className="mx-auto max-w-6xl">{children}</main>
         <ShortcutCheatsheet />
+        <CommandPalette />
       </div>
     </ThemeProvider>
   );
