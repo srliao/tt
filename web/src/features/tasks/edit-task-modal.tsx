@@ -10,9 +10,9 @@
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Trash2Icon, XCircleIcon } from 'lucide-react';
+import { Trash2Icon } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { useDeleteTask, useSetTaskState, useUpdateTask } from '@/api/tasks';
 import {
@@ -35,14 +35,28 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { Task, TaskUpdateInput } from '@/types/task';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import type { Task, TaskState, TaskUpdateInput } from '@/types/task';
 
 const schema = z.object({
   title: z.string().trim().min(1, 'Title is required'),
   notes: z.string().optional(),
+  state: z.enum(['not_done', 'done', 'cancelled']),
   due_date: z.string().optional(),
   tags: z.string().optional(),
 });
+
+const STATE_OPTIONS: Array<{ value: TaskState; label: string }> = [
+  { value: 'not_done', label: 'Not done' },
+  { value: 'done', label: 'Done' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
 
 type FormValues = z.infer<typeof schema>;
 
@@ -53,10 +67,11 @@ export interface EditTaskModalProps {
 }
 
 function taskToFormValues(task: Task | null): FormValues {
-  if (!task) return { title: '', notes: '', due_date: '', tags: '' };
+  if (!task) return { title: '', notes: '', state: 'not_done', due_date: '', tags: '' };
   return {
     title: task.title,
     notes: task.notes ?? '',
+    state: task.state,
     due_date: task.due_date ?? '',
     tags: (task.tags ?? []).join(', '),
   };
@@ -72,7 +87,8 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
     register,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting },
+    control,
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: taskToFormValues(task),
@@ -82,7 +98,7 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
     if (open) {
       reset(taskToFormValues(task));
     } else {
-      reset({ title: '', notes: '', due_date: '', tags: '' });
+      reset({ title: '', notes: '', state: 'not_done', due_date: '', tags: '' });
       setConfirmDelete(false);
     }
   }, [open, task, reset]);
@@ -102,6 +118,9 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
       tags,
     };
     await updateTask.mutateAsync({ id: task.id, input });
+    if (values.state !== task.state) {
+      await setState.mutateAsync({ id: task.id, state: values.state });
+    }
     onOpenChange(false);
   });
 
@@ -113,13 +132,6 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
     }
   };
 
-  const cancelled = task?.state === 'cancelled';
-  const onToggleCancelled = () => {
-    if (!task) return;
-    setState.mutate({ id: task.id, state: cancelled ? 'not_done' : 'cancelled' });
-    onOpenChange(false);
-  };
-
   const onDelete = () => {
     if (!task) return;
     deleteTask.mutate(task.id);
@@ -129,11 +141,11 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Edit task</DialogTitle>
         </DialogHeader>
-        <form className="flex flex-col gap-3" onSubmit={onSubmit} onKeyDown={onKeyDown}>
+        <form className="flex flex-col gap-4" onSubmit={onSubmit} onKeyDown={onKeyDown}>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="edit-task-title">Title</Label>
             <Input id="edit-task-title" autoFocus {...register('title')} />
@@ -147,38 +159,49 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
             <Label htmlFor="edit-task-notes">Notes</Label>
             <textarea
               id="edit-task-notes"
-              rows={3}
-              className="min-h-16 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+              rows={8}
+              className="min-h-40 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
               {...register('notes')}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-1.5">
+              <Label htmlFor="edit-task-state">State</Label>
+              <Controller
+                control={control}
+                name="state"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <SelectTrigger id="edit-task-state" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATE_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="edit-task-due">Due date</Label>
               <Input id="edit-task-due" type="date" {...register('due_date')} />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="edit-task-tags">Tags</Label>
-              <Input id="edit-task-tags" placeholder="comma,separated" {...register('tags')} />
-            </div>
           </div>
-          <DialogFooter className="flex-wrap sm:justify-between">
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={onToggleCancelled}>
-                <XCircleIcon /> {cancelled ? 'Un-cancel' : 'Mark cancelled'}
-              </Button>
-              <Button type="button" variant="destructive" onClick={() => setConfirmDelete(true)}>
-                <Trash2Icon /> Delete
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                Save changes
-              </Button>
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-task-tags">Tags</Label>
+            <Input id="edit-task-tags" placeholder="comma,separated" {...register('tags')} />
+          </div>
+          <DialogFooter className="sm:justify-between">
+            <Button type="button" variant="destructive" onClick={() => setConfirmDelete(true)}>
+              <Trash2Icon /> Delete
+            </Button>
+            <Button type="submit" disabled={isSubmitting || !isDirty}>
+              Save changes
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
