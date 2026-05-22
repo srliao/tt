@@ -4,17 +4,17 @@
  * typed query as a `?q=` filter via `⌘↵`, and provides a Go-to list for
  * the five top-level pages.
  *
- * Selecting a task opens its edit modal on the /tasks page via the
- * `tt:open-task` custom event (mirrors `tt:new-task`). If the user is on
- * another page (e.g. /runs), we navigate to /tasks first and dispatch the
- * event on the next tick so the listener is mounted.
+ * Selecting a task navigates to `/tasks?open=<id>`. The /tasks page watches
+ * that search-param and opens the edit modal. This avoids the race that the
+ * previous CustomEvent-based mechanism had: under concurrent rendering the
+ * listener may not be installed by the time a dispatched event fires.
  *
  * The palette installs its own keydown listener. The legacy `/` →
  * focus-search handler in `useGlobalShortcuts` has been removed; this
  * component now owns that key.
  */
 
-import { useNavigate, useRouter } from '@tanstack/react-router';
+import { useNavigate } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTagsWithCounts } from '@/api/tags';
 import { useTasks } from '@/api/tasks';
@@ -52,7 +52,6 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
-  const router = useRouter();
 
   // Empty params ⇒ the server returns the full unfiltered list, which is
   // what the palette should search.
@@ -130,23 +129,16 @@ export function CommandPalette() {
 
   const openTask = useCallback(
     (id: number) => {
-      const dispatch = () => {
-        window.dispatchEvent(new CustomEvent('tt:open-task', { detail: { id } }));
-      };
-      const onTasks = router.state.location.pathname === '/tasks';
-      if (onTasks) {
-        dispatch();
-        setOpen(false);
-        return;
-      }
-      // Navigate to /tasks first, then dispatch on the next tick so the page's
-      // listener is mounted.
-      void navigate({ to: '/tasks' }).then(() => {
-        setTimeout(dispatch, 0);
+      // Encode the request as a URL search-param signal. The /tasks page
+      // watches `search.open`, opens the edit modal, and clears the field.
+      // Race-free: the URL is settled before the page commits.
+      void navigate({
+        to: '/tasks',
+        search: (prev) => ({ ...(prev as Record<string, unknown>), open: id }),
       });
       setOpen(false);
     },
-    [navigate, router],
+    [navigate],
   );
 
   return (

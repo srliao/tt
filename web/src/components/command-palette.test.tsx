@@ -188,6 +188,32 @@ describe('CommandPalette', () => {
     });
   });
 
+  it('selecting a task navigates to /tasks with ?open=<id>', async () => {
+    const { router } = renderPalette({ tasks: [{ id: 42, title: 'Alpha task' }] }, '/stage');
+
+    await waitForMount();
+    await act(async () => {
+      dispatchKey(document.body, { key: '/' });
+    });
+    const input = await screen.findByPlaceholderText(/Search tasks, tags/);
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'Alpha' } });
+    });
+
+    // The task result is rendered as a CommandItem (role="option"). Match by
+    // accessible name so we don't trip on the highlight() wrapper splitting
+    // the title across <mark> and surrounding text nodes.
+    const taskItem = await screen.findByRole('option', { name: /Alpha task/i });
+    await act(async () => {
+      fireEvent.click(taskItem);
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/tasks');
+      expect(router.state.location.search).toMatchObject({ open: 42 });
+    });
+  });
+
   it('selecting a tag navigates to /tasks with that tag filter', async () => {
     const { router } = renderPalette(
       {
