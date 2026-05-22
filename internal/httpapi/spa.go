@@ -11,6 +11,10 @@ import (
 // NewSPAHandler returns an http.Handler that serves the SPA bundle from
 // assets, falling back to index.html for client-side routes per spec §7.
 //
+// In production, assets is the fs.FS returned by web.Dist() — an fs.Sub of
+// the embed.FS produced by //go:embed all:dist. In tests, an fstest.MapFS
+// rooted the same way (no leading "dist/" prefix) is interchangeable.
+//
 // Behavior:
 //   - GET /assets/<anything> reads the file from assets and serves it with
 //     Cache-Control: public, max-age=31536000, immutable (the bundle's
@@ -21,8 +25,8 @@ import (
 //   - If the requested asset path is missing, returns 404 with the standard
 //     error envelope so callers can distinguish "SPA not built" from a real
 //     server error.
-//   - If assets is nil (phase 06 placeholder before embedding lands) every
-//     request returns 404 with the envelope.
+//   - If assets is nil every request returns 404 with the envelope (used as
+//     a safety net; cmd/tt always passes a non-nil fs.FS in production).
 func NewSPAHandler(assets fs.FS) http.Handler {
 	if assets == nil {
 		return http.HandlerFunc(spaNotFound)

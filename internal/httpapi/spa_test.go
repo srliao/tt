@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -106,6 +107,62 @@ func TestSPA_SPAFallbackServesIndex(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if string(body) != "spa root" {
 		t.Fatalf("body = %q", string(body))
+	}
+}
+
+// TestSPA_FSSubMirrorsEmbed exercises the same shape cmd/tt uses in prod:
+// the //go:embed directive produces a tree rooted at "dist/", which web.Dist
+// strips via fs.Sub. The handler should not care about the original prefix.
+func TestSPA_FSSubMirrorsEmbed(t *testing.T) {
+	t.Parallel()
+
+	raw := fstest.MapFS{
+		"dist/index.html":         {Data: []byte("embedded idx")},
+		"dist/assets/app-xyz.js":  {Data: []byte("embedded js")},
+		"dist/assets/app-xyz.css": {Data: []byte("embedded css")},
+	}
+	sub, err := fs.Sub(raw, "dist")
+	if err != nil {
+		t.Fatalf("fs.Sub: %v", err)
+	}
+
+	ts := httptest.NewServer(httpapi.NewSPAHandler(sub))
+	defer ts.Close()
+
+	cases := []struct {
+		path        string
+		wantStatus  int
+		wantBody    string
+		wantCache   string
+		contentType string
+	}{
+		{"/", http.StatusOK, "embedded idx", "no-cache", "text/html"},
+		{"/some/deep/route", http.StatusOK, "embedded idx", "no-cache", "text/html"},
+		{"/assets/app-xyz.js", http.StatusOK, "embedded js", "public, max-age=31536000, immutable", "application/javascript"},
+		{"/assets/app-xyz.css", http.StatusOK, "embedded css", "public, max-age=31536000, immutable", "text/css"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.path, func(t *testing.T) {
+			resp, err := http.Get(ts.URL + tc.path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", tc.path, err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.wantStatus {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, tc.wantStatus)
+			}
+			if got := resp.Header.Get("Cache-Control"); got != tc.wantCache {
+				t.Fatalf("cache-control = %q, want %q", got, tc.wantCache)
+			}
+			if got := resp.Header.Get("Content-Type"); len(got) < len(tc.contentType) || got[:len(tc.contentType)] != tc.contentType {
+				t.Fatalf("content-type = %q, want prefix %q", got, tc.contentType)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			if string(body) != tc.wantBody {
+				t.Fatalf("body = %q, want %q", string(body), tc.wantBody)
+			}
+		})
 	}
 }
 
