@@ -30,6 +30,7 @@ describe('applyQuickFilter', () => {
     expect(applyQuickFilter({ states: ['done'] })).toEqual({
       states: ['done'],
       tags: undefined,
+      tagMode: undefined,
       due: undefined,
       q: undefined,
       sort: undefined,
@@ -41,11 +42,27 @@ describe('applyQuickFilter', () => {
     expect(applyQuickFilter({})).toEqual({
       states: ['not_done'],
       tags: undefined,
+      tagMode: undefined,
       due: undefined,
       q: undefined,
       sort: undefined,
       asc: undefined,
     });
+  });
+
+  it('sends tag_mode=any whenever tags are non-empty and no mode was set', () => {
+    const out = applyQuickFilter({ tags: ['work'] });
+    expect(out.tags).toEqual(['work']);
+    expect(out.tagMode).toBe('any');
+  });
+
+  it('passes through an explicit tagMode=all', () => {
+    const out = applyQuickFilter({ tags: ['work', 'urgent'], tagMode: 'all' });
+    expect(out.tagMode).toBe('all');
+  });
+
+  it('omits tag_mode when no tags are selected', () => {
+    expect(applyQuickFilter({ tagMode: 'all' }).tagMode).toBeUndefined();
   });
 
   it('expands the "overdue" preset', () => {

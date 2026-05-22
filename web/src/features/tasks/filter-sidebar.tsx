@@ -8,14 +8,11 @@
  * then push to the URL.
  */
 
-import { ChevronDownIcon, SearchIcon, XIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useTags } from '@/api/tags';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { CheckIcon, SearchIcon } from 'lucide-react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useTagsWithCounts } from '@/api/tags';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -24,10 +21,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { TagChip } from '@/components/ui/tag-chip';
+import { cn } from '@/lib/utils';
 import type { TaskDueRange, TaskState } from '@/types/task';
 import {
   QUICK_FILTERS,
   type QuickFilter,
+  type TagMode,
   type TaskSearch,
   useTaskListSearch,
 } from './use-task-list-search';
@@ -121,8 +121,18 @@ export function FilterSidebar() {
 
       <Separator />
 
-      <Section title="Tags">
-        <TagMultiSelect
+      <Section
+        title={
+          <div className="flex items-center justify-between gap-2">
+            <span>Tags</span>
+            <TagModeToggle
+              value={search.tagMode ?? 'any'}
+              onChange={(m) => setSearch({ tagMode: m === 'any' ? undefined : m })}
+            />
+          </div>
+        }
+      >
+        <TagInlineList
           value={search.tags ?? []}
           onChange={(tags) => setSearch({ tags: tags.length ? tags : undefined })}
         />
@@ -153,7 +163,7 @@ export function FilterSidebar() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: ReactNode; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
       <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{title}</h2>
@@ -215,80 +225,150 @@ function StateCheckboxes({
   );
 }
 
-function TagMultiSelect({
+/**
+ * Inline 2-state pill switch for the tag any/all toggle. The user-facing
+ * default is `any`; only `all` is written to the URL by the caller, but the
+ * component itself always shows a non-null value so the active mode is
+ * obvious at a glance.
+ */
+function TagModeToggle({ value, onChange }: { value: TagMode; onChange: (next: TagMode) => void }) {
+  return (
+    <fieldset
+      aria-label="Tag match mode"
+      className="inline-flex items-center rounded-md border bg-background p-0.5 text-[10px] font-medium tracking-wide uppercase"
+    >
+      {(['any', 'all'] as const).map((m) => {
+        const active = value === m;
+        return (
+          <button
+            key={m}
+            type="button"
+            data-tag-mode={m}
+            data-active={active || undefined}
+            aria-pressed={active}
+            onClick={() => {
+              if (!active) onChange(m);
+            }}
+            className={cn(
+              'rounded px-1.5 py-0.5 transition-colors',
+              active
+                ? 'bg-accent text-accent-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {m}
+          </button>
+        );
+      })}
+    </fieldset>
+  );
+}
+
+/**
+ * Inline tag list — always visible, no popover. Selected chips are pinned
+ * at the top so the user can scan + remove them quickly, with the full
+ * tag inventory (and per-tag counts) below. A search-in-list input appears
+ * once the inventory grows past 8 entries.
+ */
+function TagInlineList({
   value,
   onChange,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
 }) {
-  const { data: tags } = useTags();
-  const [open, setOpen] = useState(false);
-  const toggle = (name: string, checked: boolean) => {
+  const { data: tags } = useTagsWithCounts();
+  const [query, setQuery] = useState('');
+
+  const allTags = tags ?? [];
+  const selected = useMemo(() => new Set(value), [value]);
+
+  const toggle = (name: string) => {
     const set = new Set(value);
-    if (checked) set.add(name);
-    else set.delete(name);
+    if (set.has(name)) set.delete(name);
+    else set.add(name);
     onChange(Array.from(set));
   };
 
+  const removeTag = (name: string) => {
+    if (!selected.has(name)) return;
+    onChange(value.filter((v) => v !== name));
+  };
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return allTags;
+    return allTags.filter((t) => t.name.toLowerCase().includes(q));
+  }, [allTags, query]);
+
+  const showSearch = allTags.length > 8;
+
   return (
     <div className="flex flex-col gap-2">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button variant="outline" className="w-full justify-between" type="button">
-            <span className="truncate text-left">
-              {value.length === 0
-                ? 'Any tag'
-                : value.length === 1
-                  ? value[0]
-                  : `${value.length} selected`}
-            </span>
-            <ChevronDownIcon className="opacity-60" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-60 p-2" align="start">
-          <div className="max-h-64 overflow-y-auto">
-            {(tags ?? []).length === 0 && (
-              <p className="px-2 py-1 text-xs text-muted-foreground">No tags yet.</p>
-            )}
-            {(tags ?? []).map((t) => {
-              const id = `tag-${t.id}`;
-              return (
-                <div
-                  key={t.id}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-sm hover:bg-accent"
-                >
-                  <Checkbox
-                    id={id}
-                    checked={value.includes(t.name)}
-                    onCheckedChange={(c) => toggle(t.name, c === true)}
-                  />
-                  <label htmlFor={id} className="cursor-pointer">
-                    {t.name}
-                  </label>
-                </div>
-              );
-            })}
-          </div>
-        </PopoverContent>
-      </Popover>
       {value.length > 0 && (
-        <div className="flex flex-wrap gap-1">
+        <div
+          data-testid="selected-tag-chips"
+          className="flex flex-wrap gap-1 rounded-md border bg-background p-1.5"
+        >
           {value.map((name) => (
-            <Badge key={name} variant="secondary" className="gap-0.5 pr-1">
-              {name}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Remove tag ${name}`}
-                onClick={() => toggle(name, false)}
-              >
-                <XIcon />
-              </Button>
-            </Badge>
+            <TagChip key={name} name={name} variant="outline" onRemove={() => removeTag(name)} />
           ))}
         </div>
+      )}
+
+      {showSearch && (
+        <Input
+          type="search"
+          aria-label="Filter tag list"
+          placeholder="Filter tags…"
+          className="h-7 text-xs"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      )}
+
+      {allTags.length === 0 ? (
+        <p className="px-1 text-xs text-muted-foreground">No tags yet.</p>
+      ) : filtered.length === 0 ? (
+        <p className="px-1 text-xs text-muted-foreground">No tags match.</p>
+      ) : (
+        <ul className="flex max-h-[40vh] flex-col gap-px overflow-y-auto">
+          {filtered.map((t) => {
+            const isSelected = selected.has(t.name);
+            return (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  data-tag-name={t.name}
+                  data-selected={isSelected || undefined}
+                  aria-pressed={isSelected}
+                  aria-label={`${isSelected ? 'Unselect' : 'Select'} tag ${t.name} (${t.count} task${t.count === 1 ? '' : 's'})`}
+                  onClick={() => toggle(t.name)}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left text-sm',
+                    'hover:bg-accent hover:text-accent-foreground',
+                    'data-[selected]:bg-accent/60',
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    data-checked={isSelected || undefined}
+                    className={cn(
+                      'flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input',
+                      'data-[checked]:border-primary data-[checked]:bg-primary data-[checked]:text-primary-foreground',
+                    )}
+                  >
+                    {isSelected && <CheckIcon className="size-3" />}
+                  </span>
+                  <TagChip name={t.name} variant="outline" size="sm" />
+                  <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+                    {t.count}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

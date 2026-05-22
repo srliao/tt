@@ -125,6 +125,12 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		tagIDs = ids
 	}
 
+	tagMode := task.TagMode(q.Get("tag_mode"))
+	if !tagMode.IsValid() {
+		writeError(w, http.StatusBadRequest, CodeValidation, "invalid tag_mode (must be any or all)", map[string]any{"value": string(tagMode)})
+		return
+	}
+
 	due := task.DueRange(q.Get("due"))
 	switch due {
 	case task.DueAny, task.DueOverdue, task.DueToday, task.DueThisWeek, task.DueNone:
@@ -171,6 +177,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	out, err := s.tasks.List(r.Context(), task.FilterSort{
 		States:    states,
 		TagIDs:    tagIDs,
+		TagMode:   tagMode,
 		Due:       due,
 		Search:    q.Get("q"),
 		Sort:      sortAxis,

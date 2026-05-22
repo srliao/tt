@@ -21,6 +21,12 @@ export interface TaskListParams {
   states?: TaskState[];
   /** Tag names (server resolves to IDs). */
   tags?: string[];
+  /**
+   * How multiple tag filters combine on the server. The backend defaults to
+   * `all` when the field is unset, so the UI sends `any` explicitly whenever
+   * `tags` is non-empty (the UI default is `any` — see filter sidebar).
+   */
+  tagMode?: 'any' | 'all';
   due?: TaskDueRange;
   q?: string;
   sort?: TaskSortAxis;
@@ -33,6 +39,9 @@ export function buildTaskListQuery(params: TaskListParams): string {
   const sp = new URLSearchParams();
   for (const s of params.states ?? []) sp.append('state', s);
   for (const t of params.tags ?? []) sp.append('tag', t);
+  if (params.tagMode && (params.tags?.length ?? 0) > 0) {
+    sp.set('tag_mode', params.tagMode);
+  }
   if (params.due) sp.set('due', params.due);
   if (params.q) sp.set('q', params.q);
   if (params.sort) sp.set('sort', params.sort);
