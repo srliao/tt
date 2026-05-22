@@ -10,6 +10,7 @@ import {
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ThemeProvider } from '@/components/theme-provider';
+import { __resetSelectionStoreForTests } from '@/features/tasks/use-selection';
 import { taskSearchSchema } from '@/features/tasks/use-task-list-search';
 import { CommandPalette } from './command-palette';
 
@@ -106,9 +107,11 @@ function dispatchKey(target: EventTarget, init: KeyboardEventInit) {
 describe('CommandPalette', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    // Selection is sessionStorage-backed; wipe between tests so Bulk-group
-    // state from one test doesn't leak into another.
+    // Selection is sessionStorage-backed AND has a module-level store
+    // cache; wipe both between tests so Bulk-group state from one test
+    // doesn't leak into another.
     sessionStorage.clear();
+    __resetSelectionStoreForTests();
   });
 
   // The palette attaches its keydown listener inside a useEffect, so we have
@@ -262,6 +265,7 @@ describe('CommandPalette', () => {
 
     it('renders the Bulk group with the correct count when selection > 0', async () => {
       sessionStorage.setItem('tt:selection', JSON.stringify([1, 2, 3, 4, 5]));
+      __resetSelectionStoreForTests();
       renderPalette({
         tasks: [
           { id: 1, title: 'Alpha' },
@@ -284,6 +288,7 @@ describe('CommandPalette', () => {
 
     it('clicking "Tag N tasks…" navigates with openBulkTagEditor=1', async () => {
       sessionStorage.setItem('tt:selection', JSON.stringify([1, 2, 3, 4, 5]));
+      __resetSelectionStoreForTests();
       const { router } = renderPalette(
         {
           tasks: [
@@ -313,6 +318,7 @@ describe('CommandPalette', () => {
 
     it('clicking "Stage N tasks" fires a stage mutation per id and closes the palette', async () => {
       sessionStorage.setItem('tt:selection', JSON.stringify([1, 2, 3, 4, 5]));
+      __resetSelectionStoreForTests();
       // Use a tracking fetch mock so we can assert POSTs to /stage.
       const stageCalls: number[] = [];
       vi.stubGlobal(
@@ -409,6 +415,7 @@ describe('CommandPalette', () => {
 
     it('clicking "Clear selection" empties selection and closes the palette', async () => {
       sessionStorage.setItem('tt:selection', JSON.stringify([1, 2]));
+      __resetSelectionStoreForTests();
       renderPalette({
         tasks: [
           { id: 1, title: 'Alpha' },

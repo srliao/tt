@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Task } from '@/types/task';
-import { useSelection } from './use-selection';
+import { __resetSelectionStoreForTests, useSelection } from './use-selection';
 
 function mkTask(id: number): Task {
   return {
@@ -18,7 +18,10 @@ function mkTask(id: number): Task {
   } as Task;
 }
 
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => {
+  sessionStorage.clear();
+  __resetSelectionStoreForTests();
+});
 
 describe('useSelection', () => {
   it('starts empty when sessionStorage is empty', () => {
@@ -81,6 +84,8 @@ describe('useSelection', () => {
 
   it('hydrates from sessionStorage on mount', () => {
     sessionStorage.setItem('tt:selection', JSON.stringify([1, 2]));
+    // Module store cached its `current` at first import; ask it to re-read.
+    __resetSelectionStoreForTests();
     const { result } = renderHook(() => useSelection([]));
     expect([...result.current.selected].sort()).toEqual([1, 2]);
   });
@@ -95,12 +100,14 @@ describe('useSelection', () => {
 
   it('survives corrupted sessionStorage without throwing', () => {
     sessionStorage.setItem('tt:selection', 'not-json{');
+    __resetSelectionStoreForTests();
     const { result } = renderHook(() => useSelection([]));
     expect(result.current.selected.size).toBe(0);
   });
 
   it('ignores non-array JSON payloads', () => {
     sessionStorage.setItem('tt:selection', JSON.stringify({ a: 1 }));
+    __resetSelectionStoreForTests();
     const { result } = renderHook(() => useSelection([]));
     expect(result.current.selected.size).toBe(0);
   });
@@ -123,6 +130,7 @@ describe('useSelection', () => {
 
   it('computes visibleCount and offScreenCount against the visible task list', () => {
     sessionStorage.setItem('tt:selection', JSON.stringify([1, 2, 3]));
+    __resetSelectionStoreForTests();
     const { result } = renderHook(() => useSelection([mkTask(1), mkTask(4)]));
     expect(result.current.visibleCount).toBe(1);
     expect(result.current.offScreenCount).toBe(2);
@@ -133,5 +141,35 @@ describe('useSelection', () => {
     act(() => result.current.add([1, 2]));
     expect(result.current.visibleCount).toBe(2);
     expect(result.current.offScreenCount).toBe(0);
+  });
+
+  // Regression: prior to the Phase 8 follow-up, each useSelection caller
+  // owned its own `useState` and only wrote-through to sessionStorage —
+  // mutations from the command palette never propagated to the task page's
+  // <BulkActionBar>. The module-level store + useSyncExternalStore makes
+  // every consumer observe the same snapshot.
+  it('mutation via one instance is observed by another', () => {
+    const a = renderHook(() => useSelection([]));
+    const b = renderHook(() => useSelection([]));
+    act(() => a.result.current.add([10, 20]));
+    expect([...b.result.current.selected].sort((x, y) => x - y)).toEqual([10, 20]);
+  });
+
+  it('clear via one instance empties the other', () => {
+    const a = renderHook(() => useSelection([]));
+    const b = renderHook(() => useSelection([]));
+    act(() => a.result.current.add([1, 2, 3]));
+    expect(b.result.current.selected.size).toBe(3);
+    act(() => a.result.current.clear());
+    expect(b.result.current.selected.size).toBe(0);
+  });
+
+  it('setAll via one instance replaces the other', () => {
+    const a = renderHook(() => useSelection([]));
+    const b = renderHook(() => useSelection([]));
+    act(() => a.result.current.add([1, 2, 3]));
+    act(() => b.result.current.setAll([99]));
+    expect([...a.result.current.selected]).toEqual([99]);
+    expect([...b.result.current.selected]).toEqual([99]);
   });
 });
