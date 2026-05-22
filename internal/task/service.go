@@ -338,11 +338,11 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 	case DueAny:
 		// no-op
 	case DueOverdue:
-		sb.WriteString(" AND due_date IS NOT NULL AND date(due_date) < date('now')")
+		sb.WriteString(" AND due_date IS NOT NULL AND date(due_date) < date('now', 'localtime')")
 	case DueToday:
-		sb.WriteString(" AND due_date IS NOT NULL AND date(due_date) = date('now')")
+		sb.WriteString(" AND due_date IS NOT NULL AND date(due_date) = date('now', 'localtime')")
 	case DueThisWeek:
-		sb.WriteString(" AND due_date IS NOT NULL AND date(due_date) BETWEEN date('now') AND date('now', '+7 days')")
+		sb.WriteString(" AND due_date IS NOT NULL AND date(due_date) BETWEEN date('now', 'localtime') AND date('now', 'localtime', '+7 days')")
 	case DueNone:
 		sb.WriteString(" AND due_date IS NULL")
 	}
