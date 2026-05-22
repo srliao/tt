@@ -26,6 +26,22 @@ type tagBody struct {
 }
 
 func (s *Server) handleListTags(w http.ResponseWriter, r *http.Request) {
+	// ?counts=1 switches to the heavier listing that aggregates task counts.
+	// We keep the default cheap (no join) so callers that only need names —
+	// the resolver, the legacy filter chips — stay fast.
+	if r.URL.Query().Get("counts") == "1" {
+		rows, err := s.tags.ListWithCounts(r.Context())
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		if rows == nil {
+			rows = []tag.TagWithCount{}
+		}
+		writeJSON(w, http.StatusOK, rows)
+		return
+	}
+
 	tags, err := s.tags.List(r.Context())
 	if err != nil {
 		writeServiceError(w, err)
