@@ -49,6 +49,12 @@ export interface TaskTableProps {
    * and applies them to the selection. No-op by default.
    */
   onSelectAllMatching?: () => void;
+  /**
+   * Invoked when `t` is pressed while ≥1 task is selected — opens the bulk
+   * tag editor. When no selection, the keyboard handler falls back to
+   * `onEditTags` for the focused row.
+   */
+  onOpenBulkTagEditor?: () => void;
 }
 
 /**
@@ -108,6 +114,7 @@ export function TaskTable({
   shortcutsDisabled,
   hasFilters,
   onSelectAllMatching,
+  onOpenBulkTagEditor,
 }: TaskTableProps) {
   const showDragHandle = sort === 'priority';
   const setState = useSetTaskState();
@@ -183,6 +190,7 @@ export function TaskTable({
     onToggleDone: (id, st) => setState.mutate({ id, state: st }),
     onStage: (id) => stage.mutate(id),
     onSelectAllMatching,
+    onOpenBulkTagEditor,
   });
 
   const toggleSelect = (taskId: number, next: boolean) => {
@@ -353,6 +361,12 @@ interface TableShortcutsArgs {
    * selection (see `page.tsx`).
    */
   onSelectAllMatching?: () => void;
+  /**
+   * Invoked from the `t` keybind when ≥1 task is selected. Page wires this
+   * to opening the bulk tag editor; the single-task `onEditTags` branch
+   * runs only when nothing is selected.
+   */
+  onOpenBulkTagEditor?: () => void;
 }
 
 /**
@@ -399,6 +413,7 @@ function useTableShortcuts({
   onToggleDone,
   onStage,
   onSelectAllMatching,
+  onOpenBulkTagEditor,
 }: TableShortcutsArgs) {
   const anchorRef = useRef<number | null>(null);
 
@@ -504,6 +519,16 @@ function useTableShortcuts({
         setIdx(currentIdx === -1 ? 0 : currentIdx - 1);
         return;
       }
+      // `t` with an active selection opens the bulk tag editor — works even
+      // when no row is focused (the bulk bar's "Tag…" button is the visible
+      // affordance). Single-task editing falls through to the focusedTask
+      // branch below.
+      if (event.key === 't' && selectedIds.size > 0 && onOpenBulkTagEditor) {
+        event.preventDefault();
+        anchorRef.current = null;
+        onOpenBulkTagEditor();
+        return;
+      }
       if (focusedId == null) {
         anchorRef.current = null;
         return;
@@ -557,6 +582,7 @@ function useTableShortcuts({
     onToggleDone,
     onStage,
     onSelectAllMatching,
+    onOpenBulkTagEditor,
     disabled,
   ]);
 

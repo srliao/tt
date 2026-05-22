@@ -50,7 +50,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: 'e', description: 'Edit task' },
       { keys: 'd', description: 'Toggle done' },
       { keys: 's', description: 'Stage / unstage' },
-      { keys: 't', description: 'Edit tags inline' },
+      { keys: 't', description: 'Edit tags inline (single) or bulk-tag (selection)' },
     ],
   },
   {
