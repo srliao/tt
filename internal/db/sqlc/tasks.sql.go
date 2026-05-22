@@ -7,6 +7,7 @@ package sqlcgen
 
 import (
 	"context"
+	"strings"
 )
 
 const addTaskTag = `-- name: AddTaskTag :exec
@@ -91,6 +92,31 @@ DELETE FROM tasks WHERE id = ?
 
 func (q *Queries) DeleteTask(ctx context.Context, id int64) error {
 	_, err := q.db.ExecContext(ctx, deleteTask, id)
+	return err
+}
+
+const deleteTaskTagsForTask = `-- name: DeleteTaskTagsForTask :exec
+DELETE FROM task_tags WHERE task_id = ? AND tag_id IN (/*SLICE:tag_ids*/?)
+`
+
+type DeleteTaskTagsForTaskParams struct {
+	TaskID int64   `json:"task_id"`
+	TagIds []int64 `json:"tag_ids"`
+}
+
+func (q *Queries) DeleteTaskTagsForTask(ctx context.Context, arg DeleteTaskTagsForTaskParams) error {
+	query := deleteTaskTagsForTask
+	var queryParams []interface{}
+	queryParams = append(queryParams, arg.TaskID)
+	if len(arg.TagIds) > 0 {
+		for _, v := range arg.TagIds {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:tag_ids*/?", strings.Repeat(",?", len(arg.TagIds))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:tag_ids*/?", "NULL", 1)
+	}
+	_, err := q.db.ExecContext(ctx, query, queryParams...)
 	return err
 }
 

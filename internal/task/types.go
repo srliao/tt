@@ -127,6 +127,52 @@ type UpdateInput struct {
 	Tags    []string `json:"tags"`
 }
 
+// BulkTagOp identifies the kind of mutation requested by a bulk tag call.
+// The HTTP layer parses the request "op" string via ParseBulkTagOp.
+type BulkTagOp string
+
+const (
+	// BulkTagOpAdd attaches the supplied tag ids to each task. Idempotent —
+	// re-adding an existing tag is a no-op courtesy of INSERT OR IGNORE.
+	BulkTagOpAdd BulkTagOp = "add"
+	// BulkTagOpRemove detaches the supplied tag ids from each task. Tag ids
+	// not currently attached are silently ignored.
+	BulkTagOpRemove BulkTagOp = "remove"
+	// BulkTagOpSet replaces each task's tag set wholesale with the supplied
+	// tag ids. Passing an empty slice clears all tags.
+	BulkTagOpSet BulkTagOp = "set"
+)
+
+// IsValid reports whether o is one of the recognized BulkTagOp constants.
+func (o BulkTagOp) IsValid() bool {
+	switch o {
+	case BulkTagOpAdd, BulkTagOpRemove, BulkTagOpSet:
+		return true
+	}
+	return false
+}
+
+// ParseBulkTagOp turns a string ("add"|"remove"|"set") into a BulkTagOp.
+// Unknown values return the empty BulkTagOp (which fails IsValid) so the
+// caller can branch on a single validation check.
+func ParseBulkTagOp(s string) BulkTagOp {
+	op := BulkTagOp(s)
+	if !op.IsValid() {
+		return ""
+	}
+	return op
+}
+
+// BulkTagInput parameterises Service.BulkTag. IDs and TagIDs are pre-resolved
+// by the caller (the HTTP layer turns tag names into ids); the service
+// operates strictly on numeric ids so it has no dependency on the tag
+// service.
+type BulkTagInput struct {
+	IDs    []int64
+	Op     BulkTagOp
+	TagIDs []int64
+}
+
 // FilterSort parameterises List. Zero values disable each filter.
 type FilterSort struct {
 	States        []State  `json:"states"`

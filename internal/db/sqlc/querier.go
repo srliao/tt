@@ -22,6 +22,7 @@ type Querier interface {
 	DeleteScript(ctx context.Context, id int64) error
 	DeleteTag(ctx context.Context, id int64) error
 	DeleteTask(ctx context.Context, id int64) error
+	DeleteTaskTagsForTask(ctx context.Context, arg DeleteTaskTagsForTaskParams) error
 	FinishScriptRun(ctx context.Context, arg FinishScriptRunParams) error
 	GetScript(ctx context.Context, id int64) (Script, error)
 	GetScriptRun(ctx context.Context, id int64) (ScriptRun, error)

@@ -31,6 +31,7 @@ type TaskService interface {
 	ReorderStage(ctx context.Context, id int64, beforeID, afterID *int64) (task.Task, error)
 	ByScript(ctx context.Context, scriptID int64, limit, offset int) ([]task.Task, error)
 	SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error
+	BulkTag(ctx context.Context, in task.BulkTagInput) ([]task.Task, error)
 }
 
 // TagService is the narrow consumer-side interface for tags. The HTTP layer
@@ -43,6 +44,7 @@ type TagService interface {
 	List(ctx context.Context) ([]tag.Tag, error)
 	ListWithCounts(ctx context.Context) ([]tag.TagWithCount, error)
 	Resolve(ctx context.Context, names []string, autoCreate bool) ([]int64, error)
+	ResolveExisting(ctx context.Context, names []string) ([]int64, error)
 }
 
 // ScriptService is the narrow consumer-side interface for scripts. Includes

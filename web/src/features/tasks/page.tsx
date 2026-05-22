@@ -15,19 +15,26 @@
  */
 
 import { Link } from '@tanstack/react-router';
-import { CheckSquareIcon, PlusIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { PlusIcon } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTasks } from '@/api/tasks';
 import { Button } from '@/components/ui/button';
 import type { Task } from '@/types/task';
 import { ActiveFilterStrip } from './active-filter-strip';
 import { AddTaskModal, useNewTaskListener } from './add-task-modal';
 import { BulkActionBar } from './bulk-action-bar';
+import { BulkTagEditor } from './bulk-tag-editor';
 import { EditTaskModal } from './edit-task-modal';
 import { FilterSidebar } from './filter-sidebar';
 import { InlineTagEditor } from './inline-tag-editor';
 import { TaskTable } from './task-table';
-import { applyQuickFilter, hasActiveFilters, useTaskListSearch } from './use-task-list-search';
+import { useSelection } from './use-selection';
+import {
+  applyQuickFilter,
+  computeAllMatchingIds,
+  hasActiveFilters,
+  useTaskListSearch,
+} from './use-task-list-search';
 
 export function TasksPage() {
   const { search, setSearch } = useTaskListSearch();
@@ -46,10 +53,32 @@ export function TasksPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [editingTags, setEditingTags] = useState<Task | null>(null);
-  const [multiSelectMode, setMultiSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkTagOpen, setBulkTagOpen] = useState(false);
+  // Lifted out of <BulkActionBar> so the command palette can flip them via
+  // URL signals (?confirmBulkDelete=1 / ?confirmBulkCancel=1) from any page.
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [confirmBulkCancel, setConfirmBulkCancel] = useState(false);
+  const tagButtonRef = useRef<HTMLButtonElement | null>(null);
+  const selection = useSelection(tasks);
+
+  // Resolve selected tasks against the full (unfiltered) list so off-screen
+  // selections still surface their tag data in the bulk editor. Falls back to
+  // the visible list while `allTasks` is loading.
+  const selectedTasks = useMemo(() => {
+    const source = allTasks ?? tasks;
+    return source.filter((t) => selection.selected.has(t.id));
+  }, [allTasks, tasks, selection.selected]);
 
   useNewTaskListener(() => setCreating(true));
+
+  // Guard against a stale `bulkTagOpen=true` if selection is cleared from
+  // outside the editor (e.g. another tab mutating tasks away, programmatic
+  // deselection). The popover already short-circuits to `null` when the
+  // selection is empty, but `shortcutsDisabled` still depends on this flag,
+  // so table shortcuts would silently stay disabled until reopen.
+  useEffect(() => {
+    if (selection.selected.size === 0 && bulkTagOpen) setBulkTagOpen(false);
+  }, [selection.selected.size, bulkTagOpen]);
 
   // The command palette navigates here with `?open=<id>` to request the edit
   // modal. We resolve the id against the unfiltered task list (so it works
@@ -69,6 +98,32 @@ export function TasksPage() {
     setSearch({ open: undefined });
   }, [openId, allTasks, allTasksFetched, tasks, setSearch]);
 
+  // Command-palette signals for bulk actions. Each effect opens the relevant
+  // surface only when a selection still exists, then clears the URL flag so
+  // refresh/back doesn't retrigger. If the selection has been emptied between
+  // the palette click and this commit, we still clear the flag — same UX as
+  // a no-op.
+  const openBulkTagSignal = search.openBulkTagEditor;
+  useEffect(() => {
+    if (!openBulkTagSignal) return;
+    if (selection.selected.size > 0) setBulkTagOpen(true);
+    setSearch({ openBulkTagEditor: undefined });
+  }, [openBulkTagSignal, selection.selected.size, setSearch]);
+
+  const confirmBulkDeleteSignal = search.confirmBulkDelete;
+  useEffect(() => {
+    if (!confirmBulkDeleteSignal) return;
+    if (selection.selected.size > 0) setConfirmBulkDelete(true);
+    setSearch({ confirmBulkDelete: undefined });
+  }, [confirmBulkDeleteSignal, selection.selected.size, setSearch]);
+
+  const confirmBulkCancelSignal = search.confirmBulkCancel;
+  useEffect(() => {
+    if (!confirmBulkCancelSignal) return;
+    if (selection.selected.size > 0) setConfirmBulkCancel(true);
+    setSearch({ confirmBulkCancel: undefined });
+  }, [confirmBulkCancelSignal, selection.selected.size, setSearch]);
+
   const filtersActive = hasActiveFilters(search);
   const showEmpty = !isLoading && tasks.length === 0 && !filtersActive;
 
@@ -79,19 +134,6 @@ export function TasksPage() {
         <header className="mb-3 flex items-center justify-between">
           <h1 className="font-heading text-xl font-medium">Tasks</h1>
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant={multiSelectMode ? 'secondary' : 'outline'}
-              aria-pressed={multiSelectMode}
-              onClick={() => {
-                setMultiSelectMode((v) => {
-                  if (v) setSelectedIds(new Set());
-                  return !v;
-                });
-              }}
-            >
-              <CheckSquareIcon /> Multi-select
-            </Button>
             <Button size="sm" onClick={() => setCreating(true)}>
               <PlusIcon /> New task
             </Button>
@@ -106,21 +148,52 @@ export function TasksPage() {
           <TaskTable
             tasks={tasks}
             sort={sort}
-            multiSelectMode={multiSelectMode}
-            onMultiSelectModeChange={setMultiSelectMode}
-            selectedIds={selectedIds}
-            onSelectedChange={setSelectedIds}
+            selectedIds={selection.selected}
+            onSelectedChange={(next) => selection.setAll(next)}
             onEdit={(t) => setEditing(t)}
             onEditTags={(t) => setEditingTags(t)}
-            shortcutsDisabled={editingTags !== null}
+            onOpenBulkTagEditor={() => setBulkTagOpen(true)}
+            shortcutsDisabled={editingTags !== null || bulkTagOpen}
             hasFilters={filtersActive}
+            onSelectAllMatching={() => {
+              // The palette-open feature already loads `useTasks({})`, so this
+              // is normally a free cache hit. If it hasn't resolved yet,
+              // no-op — the user can press the shortcut again after load.
+              const all = allTasks ?? [];
+              if (all.length === 0) return;
+              const ids = computeAllMatchingIds(all, { ...effective, sort });
+              const target = new Set(ids);
+              // Toggle: if the current selection already equals the target
+              // set, clear instead. Mirrors the visible-toggle behaviour of
+              // ⌘A so both shortcuts double as deselectors.
+              const sameSize = target.size === selection.selected.size;
+              const alreadyAll = sameSize && [...target].every((id) => selection.selected.has(id));
+              if (alreadyAll) selection.setAll(new Set());
+              else selection.setAll(target);
+            }}
           />
         )}
       </section>
 
-      {multiSelectMode && (
-        <BulkActionBar selectedIds={selectedIds} onClear={() => setSelectedIds(new Set())} />
+      {selection.selected.size > 0 && (
+        <BulkActionBar
+          selection={selection}
+          filter={{ ...effective, sort }}
+          onOpenTagEditor={() => setBulkTagOpen(true)}
+          tagButtonRef={tagButtonRef}
+          confirmDelete={confirmBulkDelete}
+          onConfirmDeleteChange={setConfirmBulkDelete}
+          confirmCancel={confirmBulkCancel}
+          onConfirmCancelChange={setConfirmBulkCancel}
+        />
       )}
+
+      <BulkTagEditor
+        selectedTasks={selectedTasks}
+        open={bulkTagOpen && selection.selected.size > 0}
+        onOpenChange={setBulkTagOpen}
+        anchorRef={tagButtonRef}
+      />
 
       <AddTaskModal open={creating} onOpenChange={setCreating} />
 

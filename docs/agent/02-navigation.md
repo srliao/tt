@@ -30,6 +30,7 @@ Quick locator tables. When you need to read code, start here.
 | Scheduler ticker / worker / queue | `internal/scheduler/scheduler.go`, `internal/scheduler/worker.go` |
 | HTTP server wiring + consumer interfaces | `internal/httpapi/server.go` |
 | Task handlers + filter parsing + service-error mapper | `internal/httpapi/tasks.go` |
+| `POST /tasks/bulk-tag` handler (multi-task add/remove/set in 1 tx) | `internal/httpapi/tasks.go` → `handleBulkTag` |
 | Stage handlers (reorder, clear, clear-finished) | `internal/httpapi/stage.go` |
 | Tag handlers | `internal/httpapi/tags.go` |
 | Script handlers + manual run | `internal/httpapi/scripts.go` |
@@ -64,7 +65,11 @@ Quick locator tables. When you need to read code, start here.
 | Scripts list + editor + cheatsheets + spawned-tasks panel | `web/src/features/scripts/*` |
 | Runs list + detail + logs table + status pill | `web/src/features/runs/*` |
 | URL-driven filter state for /tasks | `web/src/features/tasks/use-task-list-search.ts` |
+| Client-side filter match + select-all-matching helper | `web/src/features/tasks/use-task-list-search.ts` → `matchesFilter`, `computeAllMatchingIds` |
 | Active-filter strip (chips above the task table) | `web/src/features/tasks/active-filter-strip.tsx` |
+| Persistent task selection (sessionStorage `tt:selection`) | `web/src/features/tasks/use-selection.ts` → `useSelection` (+ `__resetSelectionStoreForTests`, test-only) |
+| Bulk-tag popover (Add / Remove / Set, tri-state) | `web/src/features/tasks/bulk-tag-editor.tsx` → `BulkTagEditor` |
+| Tri-state checkbox indicator used by the bulk-tag editor | `web/src/features/tasks/bulk-tag-editor.tristate.tsx` → `TriStateIndicator` |
 
 ## Build / dev / tooling
 

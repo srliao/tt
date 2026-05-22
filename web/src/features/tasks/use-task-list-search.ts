@@ -12,7 +12,7 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { type MouseEvent, useCallback } from 'react';
 import { z } from 'zod';
 import type { TaskListParams } from '@/api/tasks';
-import type { TaskDueRange, TaskSortAxis, TaskState } from '@/types/task';
+import type { Task, TaskDueRange, TaskSortAxis, TaskState } from '@/types/task';
 
 export const TASK_STATES = ['not_done', 'done', 'cancelled'] as const;
 export const TASK_DUE_RANGES = ['', 'overdue', 'today', 'this_week', 'none'] as const;
@@ -51,6 +51,17 @@ export const taskSearchSchema = z
      * The page clears it after consuming so refresh/back doesn't reopen.
      */
     open: z.coerce.number().optional(),
+    /**
+     * Transient signal used by the command palette to ask the /tasks page to
+     * open the bulk tag editor. The page consumes and clears immediately.
+     * Same race-avoidance rationale as `open`: a URL signal beats a
+     * CustomEvent because the URL is settled before the page commits.
+     */
+    openBulkTagEditor: z.coerce.boolean().optional(),
+    /** Transient signal: open the bulk delete confirm dialog. */
+    confirmBulkDelete: z.coerce.boolean().optional(),
+    /** Transient signal: open the bulk cancel confirm dialog. */
+    confirmBulkCancel: z.coerce.boolean().optional(),
   })
   .partial();
 
@@ -227,4 +238,105 @@ export function useTagFilterMutator() {
     },
     [search, setSearch],
   );
+}
+
+/**
+ * Client-side mirror of the server's task-list predicates, used by the
+ * ⇧⌘A "select all matching" shortcut so the page can resolve an off-screen
+ * selection set without an extra round-trip.
+ *
+ * Mirror semantics — kept aligned with `internal/task/service.go`:
+ *
+ * - `states`: task.state must be in `filter.states` (no-op when unset/empty).
+ * - `tags` + `tagMode='any'` (default): at least one of the filter tags
+ *   appears on the task.
+ * - `tags` + `tagMode='all'`: every filter tag appears on the task.
+ * - `tagsExclude`: no filter tag appears on the task.
+ * - `due`:
+ *     - `'overdue'`  → due_date strictly before today AND state !== 'done'
+ *       (the spec narrows the server predicate so "select all overdue"
+ *       won't grab tasks the user already completed today).
+ *     - `'today'`    → due_date equals today (local).
+ *     - `'this_week'`→ due_date within [today, today + 7 days] (local).
+ *     - `'none'`     → due_date is null.
+ *     - `''`/undef   → no constraint.
+ * - `q`: case-insensitive substring of title OR notes.
+ *
+ * Dates use the user's local timezone (Date constructors), which matches the
+ * server's `date('now', 'localtime')` calls in practice for single-user mode.
+ */
+export function matchesFilter(task: Task, filter: TaskListParams): boolean {
+  if (filter.states && filter.states.length > 0) {
+    if (!filter.states.includes(task.state)) return false;
+  }
+
+  if (filter.tags && filter.tags.length > 0) {
+    const taskTags = new Set(task.tags);
+    const mode = filter.tagMode ?? 'any';
+    if (mode === 'all') {
+      for (const t of filter.tags) if (!taskTags.has(t)) return false;
+    } else {
+      let any = false;
+      for (const t of filter.tags) {
+        if (taskTags.has(t)) {
+          any = true;
+          break;
+        }
+      }
+      if (!any) return false;
+    }
+  }
+
+  if (filter.tagsExclude && filter.tagsExclude.length > 0) {
+    const taskTags = new Set(task.tags);
+    for (const t of filter.tagsExclude) if (taskTags.has(t)) return false;
+  }
+
+  if (filter.due) {
+    if (!matchesDue(task, filter.due)) return false;
+  }
+
+  if (filter.q) {
+    const needle = filter.q.toLowerCase();
+    const hay = `${task.title}\n${task.notes}`.toLowerCase();
+    if (!hay.includes(needle)) return false;
+  }
+
+  return true;
+}
+
+/** Format a Date as `YYYY-MM-DD` in the local timezone. */
+function localDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function matchesDue(task: Task, due: TaskDueRange): boolean {
+  if (due === '') return true;
+  if (due === 'none') return task.due_date == null;
+  if (task.due_date == null) return false;
+  const today = new Date();
+  const todayKey = localDateKey(today);
+  // due_date is YYYY-MM-DD; compare as strings (ISO sort-order safe).
+  if (due === 'today') return task.due_date === todayKey;
+  if (due === 'overdue') return task.due_date < todayKey && task.state !== 'done';
+  if (due === 'this_week') {
+    const plus7 = new Date(today);
+    plus7.setDate(plus7.getDate() + 7);
+    return task.due_date >= todayKey && task.due_date <= localDateKey(plus7);
+  }
+  return true;
+}
+
+/**
+ * Returns the ids of every task in `tasks` that satisfies `filter`. Pure;
+ * exported so the /tasks page can resolve the ⇧⌘A "select all matching"
+ * shortcut without an extra server round-trip.
+ */
+export function computeAllMatchingIds(tasks: Task[], filter: TaskListParams): number[] {
+  const out: number[] = [];
+  for (const t of tasks) if (matchesFilter(t, filter)) out.push(t.id);
+  return out;
 }

@@ -27,6 +27,7 @@ type Service interface {
 	ListWithCounts(ctx context.Context) ([]TagWithCount, error)
 	GetByName(ctx context.Context, name string) (*Tag, error)
 	Resolve(ctx context.Context, names []string, autoCreate bool) ([]int64, error)
+	ResolveExisting(ctx context.Context, names []string) ([]int64, error)
 }
 
 // Impl is the concrete Service backed by a *db.Store.
@@ -184,6 +185,43 @@ func (s *Impl) Resolve(ctx context.Context, names []string, autoCreate bool) ([]
 
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("tag: unknown tags: %s", strings.Join(missing, ", "))
+	}
+	return ids, nil
+}
+
+// ResolveExisting is the silently-tolerant sibling of Resolve: names that
+// don't correspond to an existing tag are dropped rather than producing an
+// error. The result preserves the order of first appearance and is
+// deduplicated.
+//
+// Use this when the caller's semantics treat "tag not found" as a no-op
+// (e.g. the bulk-tag remove path: removing a tag that doesn't exist on any
+// task is functionally identical to a successful remove).
+func (s *Impl) ResolveExisting(ctx context.Context, names []string) ([]int64, error) {
+	seen := make(map[string]struct{}, len(names))
+	unique := make([]string, 0, len(names))
+	for _, raw := range names {
+		n := normalize(raw)
+		if n == "" {
+			continue
+		}
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		seen[n] = struct{}{}
+		unique = append(unique, n)
+	}
+
+	ids := make([]int64, 0, len(unique))
+	for _, n := range unique {
+		existing, err := s.GetByName(ctx, n)
+		if err != nil {
+			return nil, err
+		}
+		if existing == nil {
+			continue
+		}
+		ids = append(ids, existing.ID)
 	}
 	return ids, nil
 }
