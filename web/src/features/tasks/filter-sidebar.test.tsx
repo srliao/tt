@@ -61,12 +61,15 @@ function renderSidebar(initial = '/tasks') {
 describe('FilterSidebar', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('marks the search input with data-search-input', async () => {
+  it('does not render an in-sidebar search field (Phase 5: moved to command palette)', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([])));
     renderSidebar();
-    expect(await screen.findByPlaceholderText('Search tasks…')).toHaveAttribute(
-      'data-search-input',
-    );
+    // The sidebar mounts asynchronously; wait for any quick-filter button so
+    // the absence assertion is meaningful.
+    await screen.findByRole('button', { name: 'Overdue' });
+    expect(screen.queryByPlaceholderText('Search tasks…')).toBeNull();
+    expect(screen.queryByLabelText('Search tasks')).toBeNull();
+    expect(document.querySelector('[data-search-input]')).toBeNull();
   });
 
   it('clicking a quick filter updates the URL search-params', async () => {
