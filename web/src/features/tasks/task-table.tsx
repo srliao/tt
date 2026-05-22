@@ -191,11 +191,11 @@ export function TaskTable({
               <tr className="border-b">
                 <th className="w-8 px-2 py-2 text-left font-medium" />
                 {showDragHandle && <th className="w-6 px-1 py-2" />}
+                <th className="w-10 pl-3 pr-2 py-2" />
                 <th className="px-2 py-2 text-left font-medium">Title</th>
                 <th className="w-20 px-2 py-2 text-left font-medium">State</th>
                 <th className="w-40 px-2 py-2 text-left font-medium">Tags</th>
                 <th className="w-20 px-2 py-2 text-left font-medium">Due</th>
-                <th className="w-16 px-2 py-2 text-left font-medium">Stage</th>
                 <th className="w-8 px-1 py-2" />
               </tr>
             </thead>
