@@ -119,6 +119,23 @@ func TestDateBindings_DaysSince(t *testing.T) {
 	}
 }
 
+// Task fields like completed_at come back as SQLite timestamps
+// ("YYYY-MM-DD HH:MM:SS"). Scripts must be able to pass those directly
+// into daysSince/daysBetween/parseDate without slicing the time portion off.
+func TestDateBindings_AcceptsSqliteTimestamp(t *testing.T) {
+	rt := newRuntimeWithDates(t, fixedNow)
+	if v := runJS(t, rt, `ctx.daysSince("2026-05-19 14:30:00")`).ToInteger(); v != 2 {
+		t.Fatalf("daysSince with SQLite ts = %d, want 2", v)
+	}
+	if v := runJS(t, rt, `ctx.daysBetween("2026-05-21 09:00:00","2026-05-24 23:59:59")`).ToInteger(); v != 3 {
+		t.Fatalf("daysBetween with SQLite ts = %d, want 3", v)
+	}
+	got := runJS(t, rt, `ctx.formatDate(ctx.parseDate("2026-05-21 14:30:00"))`).String()
+	if want := "2026-05-21"; got != want {
+		t.Fatalf("formatDate(parseDate(SQLite ts)) = %q, want %q", got, want)
+	}
+}
+
 func TestDateBindings_DaysBetween(t *testing.T) {
 	rt := newRuntimeWithDates(t, fixedNow)
 	if v := runJS(t, rt, `ctx.daysBetween("2026-05-21","2026-05-24")`).ToInteger(); v != 3 {

@@ -8,9 +8,32 @@ import (
 	"github.com/dop251/goja"
 )
 
-// dateLayout is the YYYY-MM-DD string form used at every ctx-API boundary that
-// accepts or emits a date.
+// dateLayout is the YYYY-MM-DD string form emitted by every ctx-API helper.
 const dateLayout = "2006-01-02"
+
+// acceptedDateLayouts are the formats ctx.* accepts on input. We always emit
+// dateLayout but accept the SQLite timestamp shape (which is what task fields
+// like completed_at carry) and RFC3339 so scripts can pass through ctx field
+// values without slicing the time portion off first.
+var acceptedDateLayouts = []string{
+	dateLayout,
+	"2006-01-02 15:04:05",
+	time.RFC3339,
+}
+
+// parseDateInput parses a user-supplied date in any of acceptedDateLayouts,
+// truncating to the UTC calendar day so day-math is independent of any time
+// component.
+func parseDateInput(s string) (time.Time, error) {
+	trimmed := strings.TrimSpace(s)
+	for _, layout := range acceptedDateLayouts {
+		if t, err := time.Parse(layout, trimmed); err == nil {
+			t = t.UTC()
+			return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid date %q (expected YYYY-MM-DD)", s)
+}
 
 // dateBindings returns the date-helper functions installed under ctx.* per
 // spec §5. The supplied now lets tests inject a deterministic instant;
@@ -54,23 +77,23 @@ func dateBindings(rt *goja.Runtime, now time.Time) map[string]any {
 			return strings.EqualFold(nowUTC.Weekday().String(), name)
 		},
 		"daysSince": func(s string) (int, error) {
-			t, err := time.Parse(dateLayout, strings.TrimSpace(s))
+			t, err := parseDateInput(s)
 			if err != nil {
-				return 0, fmt.Errorf("runtime: daysSince: invalid date %q: %w", s, err)
+				return 0, fmt.Errorf("runtime: daysSince: %w", err)
 			}
-			d := today.Sub(t.UTC()) / (24 * time.Hour)
+			d := today.Sub(t) / (24 * time.Hour)
 			return int(d), nil
 		},
 		"daysBetween": func(a, b string) (int, error) {
-			ta, err := time.Parse(dateLayout, strings.TrimSpace(a))
+			ta, err := parseDateInput(a)
 			if err != nil {
-				return 0, fmt.Errorf("runtime: daysBetween: invalid date %q: %w", a, err)
+				return 0, fmt.Errorf("runtime: daysBetween: %w", err)
 			}
-			tb, err := time.Parse(dateLayout, strings.TrimSpace(b))
+			tb, err := parseDateInput(b)
 			if err != nil {
-				return 0, fmt.Errorf("runtime: daysBetween: invalid date %q: %w", b, err)
+				return 0, fmt.Errorf("runtime: daysBetween: %w", err)
 			}
-			d := tb.UTC().Sub(ta.UTC()) / (24 * time.Hour)
+			d := tb.Sub(ta) / (24 * time.Hour)
 			return int(d), nil
 		},
 		"addDays": func(d goja.Value, n int) (goja.Value, error) {
@@ -88,11 +111,11 @@ func dateBindings(rt *goja.Runtime, now time.Time) map[string]any {
 			return t.UTC().Format(dateLayout), nil
 		},
 		"parseDate": func(s string) (goja.Value, error) {
-			t, err := time.Parse(dateLayout, strings.TrimSpace(s))
+			t, err := parseDateInput(s)
 			if err != nil {
-				return nil, fmt.Errorf("runtime: parseDate: invalid date %q: %w", s, err)
+				return nil, fmt.Errorf("runtime: parseDate: %w", err)
 			}
-			return timeToJSDate(rt, t.UTC())
+			return timeToJSDate(rt, t)
 		},
 	}
 }
@@ -116,9 +139,11 @@ func timeToJSDate(rt *goja.Runtime, t time.Time) (goja.Value, error) {
 }
 
 // jsValueToTime converts a value produced by ctx.parseDate / addDays (a JS
-// Date object or a YYYY-MM-DD string) back into a Go time.Time. Accepting
-// both lets the bindings compose naturally — formatDate(addDays(...)) — even
-// though goja's JS Date round-trips through Export as a time.Time.
+// Date object or a date string) back into a Go time.Time. Accepting both
+// lets the bindings compose naturally — formatDate(addDays(...)) — even
+// though goja's JS Date round-trips through Export as a time.Time. Strings
+// flow through parseDateInput so SQLite timestamp values (completed_at,
+// created_at, etc.) work without manual slicing.
 func jsValueToTime(v goja.Value) (time.Time, error) {
 	if v == nil || goja.IsUndefined(v) || goja.IsNull(v) {
 		return time.Time{}, fmt.Errorf("date value is null/undefined")
@@ -128,11 +153,7 @@ func jsValueToTime(v goja.Value) (time.Time, error) {
 	case time.Time:
 		return x.UTC(), nil
 	case string:
-		t, err := time.Parse(dateLayout, strings.TrimSpace(x))
-		if err != nil {
-			return time.Time{}, fmt.Errorf("invalid date string %q: %w", x, err)
-		}
-		return t.UTC(), nil
+		return parseDateInput(x)
 	}
-	return time.Time{}, fmt.Errorf("expected JS Date or YYYY-MM-DD string, got %T", exp)
+	return time.Time{}, fmt.Errorf("expected JS Date or date string, got %T", exp)
 }
