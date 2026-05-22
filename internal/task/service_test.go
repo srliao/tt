@@ -584,22 +584,27 @@ func TestBulkTag_RemoveWithEmptyTagIDsIsNoOp(t *testing.T) {
 	t.Parallel()
 	svc, store, ctx := newServiceWithStore(t)
 
-	// Validation in BulkTag rejects empty TagIDs for remove, so the only way
-	// to hit the no-op branch is via the HTTP handler (ResolveExisting may
-	// return nil after dropping unknown names). Exercise the service-level
-	// guard here too.
+	// The HTTP handler resolves tag names via ResolveExisting, which silently
+	// drops unknown names. An all-unknown payload arrives here with TagIDs=nil
+	// and must be a no-op: no error, tasks returned unchanged.
 	t1, _ := svc.Create(ctx, task.CreateInput{Title: "t1"})
 	tagA := insertTag(t, store, ctx, "alpha")
 	if err := svc.SetTagsByID(ctx, t1.ID, []int64{tagA}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	_, err := svc.BulkTag(ctx, task.BulkTagInput{
+	out, err := svc.BulkTag(ctx, task.BulkTagInput{
 		IDs:    []int64{t1.ID},
 		Op:     task.BulkTagOpRemove,
 		TagIDs: nil,
 	})
-	if err == nil {
-		t.Fatalf("expected validation error for remove with empty TagIDs")
+	if err != nil {
+		t.Fatalf("BulkTag remove (empty TagIDs): %v", err)
+	}
+	if len(out) != 1 {
+		t.Fatalf("len(out) = %d, want 1", len(out))
+	}
+	if !equalStringSets(out[0].Tags, []string{"alpha"}) {
+		t.Fatalf("tags = %v, want [alpha] (unchanged)", out[0].Tags)
 	}
 }
 

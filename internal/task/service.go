@@ -764,10 +764,13 @@ func (s *Impl) SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) er
 //   - set: each task's tag set is wiped first, then the supplied tag ids are
 //     inserted. Passing an empty slice clears all tags on the selection.
 //
-// IDs must be non-empty and Op must be a valid BulkTagOp. For add/remove
-// TagIDs must be non-empty (rejecting these is what distinguishes a typo from
-// a deliberate "clear" — Set with empty TagIDs is the explicit clear-all
-// pathway).
+// IDs must be non-empty and Op must be a valid BulkTagOp. For add, TagIDs
+// must be non-empty (rejecting this distinguishes a typo from a deliberate
+// "clear" — Set with empty TagIDs is the explicit clear-all pathway). For
+// remove, empty TagIDs is allowed and is a silent no-op: the HTTP handler
+// resolves tag names via ResolveExisting, which drops unknown names, so an
+// all-unknown payload arrives here as an empty slice. The handler still
+// rejects an empty raw request body ("tags is required") at the boundary.
 //
 // The returned slice carries the reloaded task DTOs for every supplied id in
 // the same order, so React Query can patch its cache without a refetch.
@@ -778,7 +781,7 @@ func (s *Impl) BulkTag(ctx context.Context, in BulkTagInput) ([]Task, error) {
 	if !in.Op.IsValid() {
 		return nil, fmt.Errorf("task: invalid bulk tag op %q", in.Op)
 	}
-	if (in.Op == BulkTagOpAdd || in.Op == BulkTagOpRemove) && len(in.TagIDs) == 0 {
+	if in.Op == BulkTagOpAdd && len(in.TagIDs) == 0 {
 		return nil, errors.New("task: tags is required")
 	}
 
