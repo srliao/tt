@@ -28,10 +28,10 @@ Returns `true` when today is the last day of the month.
 Returns `true` when today matches the lowercase weekday name passed in.
 
 ## ctx.daysSince(dateOrString)
-Returns the integer number of days since the given `Date` or `"YYYY-MM-DD"` string (negative if it's in the future).
+Returns the integer number of days since the given `Date` or date string (negative if it's in the future). Strings may be `"YYYY-MM-DD"`, the SQLite timestamp shape `"YYYY-MM-DD HH:MM:SS"` (so `task.completed_at` works directly), or RFC3339.
 
 ## ctx.daysBetween(a, b)
-Returns the integer number of days between two dates or `"YYYY-MM-DD"` strings.
+Returns the integer number of days between two dates. Accepts the same string formats as `daysSince`.
 
 ## ctx.addDays(date, n)
 Returns a new `Date` `n` days after the input.
@@ -39,8 +39,8 @@ Returns a new `Date` `n` days after the input.
 ## ctx.formatDate(date)
 Formats a `Date` as a `"YYYY-MM-DD"` string.
 
-## ctx.parseDate("YYYY-MM-DD")
-Parses a `"YYYY-MM-DD"` string into a `Date`.
+## ctx.parseDate(dateString)
+Parses a `"YYYY-MM-DD"`, `"YYYY-MM-DD HH:MM:SS"`, or RFC3339 string into a `Date`.
 
 ## ctx.script.id
 Numeric id of the running script.
