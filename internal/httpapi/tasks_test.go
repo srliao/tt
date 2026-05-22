@@ -555,6 +555,38 @@ func TestTasks_BulkTagRemoveIgnoresUnknownTagNames(t *testing.T) {
 	}
 }
 
+func TestTasks_BulkTagRemoveAllUnknownTagNamesIsNoOp(t *testing.T) {
+	t.Parallel()
+
+	fx := newTestServer(t, nil)
+	ctx := context.Background()
+	t1, _ := fx.tasks.Create(ctx, task.CreateInput{Title: "t1"})
+	tagIDs, _ := fx.tags.Resolve(ctx, []string{"alpha"}, true)
+	if err := fx.tasks.SetTagsByID(ctx, t1.ID, tagIDs); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	// All tag names unknown — ResolveExisting drops them all so the service
+	// receives TagIDs=[] and must treat it as a silent no-op (200, unchanged).
+	resp := doJSON(t, http.MethodPost, fx.server.URL+"/api/v1/tasks/bulk-tag", map[string]any{
+		"ids":  []int64{t1.ID},
+		"op":   "remove",
+		"tags": []string{"never-existed", "also-never-existed"},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d body = %s", resp.StatusCode, string(body))
+	}
+	out := decodeTasks(t, resp)
+	if len(out) != 1 {
+		t.Fatalf("len(out) = %d, want 1", len(out))
+	}
+	if len(out[0].Tags) != 1 || out[0].Tags[0] != "alpha" {
+		t.Fatalf("tags = %v, want [alpha] (unchanged)", out[0].Tags)
+	}
+}
+
 func TestTasks_BulkTagValidation(t *testing.T) {
 	t.Parallel()
 
