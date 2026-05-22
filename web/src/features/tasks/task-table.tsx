@@ -148,6 +148,27 @@ export function TaskTable({
   const containerRef = useRef<HTMLTableElement>(null);
   const [focusedId, setFocusedId] = useState<number | null>(null);
 
+  // Keep the focused row in view as j/k walks past the viewport. Uses
+  // window.scrollBy (not Element.scrollIntoView, per repo convention) and
+  // an instant behavior — smooth scrolling on every step feels laggy when
+  // holding the key down.
+  useEffect(() => {
+    if (focusedId == null) return;
+    const row = document.querySelector<HTMLElement>(`[data-task-id="${focusedId}"]`);
+    if (!row) return;
+    const rect = row.getBoundingClientRect();
+    const topPad = 80; // top nav + active filter strip
+    const botPad = 80; // bulk action bar margin
+    if (rect.top < topPad) {
+      window.scrollBy({ top: rect.top - topPad, behavior: 'instant' });
+    } else if (rect.bottom > window.innerHeight - botPad) {
+      window.scrollBy({
+        top: rect.bottom - (window.innerHeight - botPad),
+        behavior: 'instant',
+      });
+    }
+  }, [focusedId]);
+
   useTableShortcuts({
     containerRef,
     tasks: visible,
@@ -209,6 +230,14 @@ export function TaskTable({
     <div className="flex flex-col gap-2">
       {showDragHandle && hasFilters && (
         <p className="text-xs text-muted-foreground">Filtered view — hidden tasks unchanged.</p>
+      )}
+      {focusedId == null && visible.length > 0 && (
+        <div
+          className="ml-auto -mb-2 inline-flex items-center gap-1.5 self-end rounded-full border border-dashed border-primary/30 bg-primary/5 px-2.5 py-0.5 text-[11px] font-mono text-primary"
+          aria-hidden="true"
+        >
+          Press <kbd className="font-mono text-[10px]">j</kbd> to navigate
+        </div>
       )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext
@@ -377,19 +406,23 @@ function useTableShortcuts({
   multiSelectModeRef.current = multiSelectMode;
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
     const handler = (event: KeyboardEvent) => {
       if (disabled) return;
+      // Don't hijack keys when the user is typing.
+      const target = event.target as HTMLElement | null;
       if (
-        !containerRef.current?.contains(event.target as Node) &&
-        event.target !== containerRef.current
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable
       ) {
         return;
       }
-      const target = event.target as HTMLElement | null;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      // Defer to any open Radix dialog/popover — they own keys while visible.
+      if (
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
+        )
+      ) {
         return;
       }
       if (tasks.length === 0) return;
@@ -494,10 +527,9 @@ function useTableShortcuts({
       }
     };
 
-    el.addEventListener('keydown', handler);
-    return () => el.removeEventListener('keydown', handler);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [
-    containerRef,
     tasks,
     focusedId,
     setFocusedId,
