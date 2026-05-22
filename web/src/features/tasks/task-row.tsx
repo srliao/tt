@@ -132,13 +132,14 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
       data-selected={selected || undefined}
       data-state={task.state}
       className={cn(
-        'group/row relative border-b hover:bg-muted/40',
-        // Focus state — distinct from hover. The leading-edge rail is a
-        // pseudo-element pinned to the row's left edge; the subtle outline
-        // helps the bar stand out against dark backgrounds.
+        'group/row border-b hover:bg-muted/40',
+        // Focus state — distinct from hover. The leading-edge rail is an
+        // inset box-shadow on the first <td>, NOT a `::before` on the <tr>:
+        // applying `position: relative` + `outline` to a <tr> breaks out of
+        // `table-fixed` layout in Chromium (columns collapse to content
+        // widths and text re-wraps). The shadow approach is layout-safe.
         'data-focused:bg-primary/12',
-        'data-focused:before:absolute data-focused:before:left-0 data-focused:before:top-1 data-focused:before:bottom-1 data-focused:before:w-[3px] data-focused:before:bg-primary data-focused:before:rounded-r-sm',
-        'data-focused:outline data-focused:outline-1 data-focused:-outline-offset-1 data-focused:outline-primary/25',
+        'data-focused:[&>td:first-child]:shadow-[inset_3px_0_0_0_var(--color-primary)]',
         selected && 'bg-primary/8',
         finished && 'opacity-60',
       )}
