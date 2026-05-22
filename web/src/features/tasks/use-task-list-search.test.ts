@@ -37,6 +37,17 @@ describe('applyQuickFilter', () => {
     });
   });
 
+  it('defaults to not_done when no states and no quick preset are set', () => {
+    expect(applyQuickFilter({})).toEqual({
+      states: ['not_done'],
+      tags: undefined,
+      due: undefined,
+      q: undefined,
+      sort: undefined,
+      asc: undefined,
+    });
+  });
+
   it('expands the "overdue" preset', () => {
     expect(applyQuickFilter({ quick: 'overdue' })).toMatchObject({
       states: ['not_done'],

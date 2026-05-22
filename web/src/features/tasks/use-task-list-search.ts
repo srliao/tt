@@ -62,7 +62,11 @@ export function applyQuickFilter(search: TaskSearch): TaskListParams {
     asc: search.asc,
   };
 
-  if (!quick) return base;
+  if (!quick) {
+    // Mirror the sidebar's default-checked "Not done" state so the request
+    // matches what the user sees in the UI.
+    return { ...base, states: base.states ?? ['not_done'] };
+  }
 
   let preset: TaskListParams = {};
   switch (quick) {
