@@ -59,9 +59,14 @@ SELECT id, staged_order FROM tasks WHERE staged_order IS NOT NULL ORDER BY stage
 SELECT * FROM tasks WHERE spawned_by_script_id = ?
 ORDER BY created_at DESC, id DESC;
 
--- name: LatestTaskBySpawningScript :one
-SELECT * FROM tasks WHERE spawned_by_script_id = ?
-ORDER BY created_at DESC, id DESC LIMIT 1;
+-- name: ListLatestSpawnedTasksByScript :many
+SELECT t.* FROM tasks t
+JOIN json_each((
+    SELECT spawned_task_ids FROM script_runs
+    WHERE script_id = ? AND status = 'ok' AND spawned_task_ids != '[]'
+    ORDER BY started_at DESC, id DESC LIMIT 1
+)) j ON t.id = CAST(j.value AS INTEGER)
+ORDER BY t.id ASC;
 
 -- name: AddTaskTag :exec
 INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?);

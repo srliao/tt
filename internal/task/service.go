@@ -2,7 +2,6 @@ package task
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -44,7 +43,7 @@ type Service interface {
 	// Query
 	List(ctx context.Context, f FilterSort) ([]Task, error)
 	ByScript(ctx context.Context, scriptID int64, limit, offset int) ([]Task, error)
-	LatestBySpawningScript(ctx context.Context, scriptID int64) (*Task, error)
+	LatestBySpawningScripts(ctx context.Context, scriptID int64) ([]Task, error)
 
 	// Tags
 	SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error
@@ -676,23 +675,25 @@ func (s *Impl) ByScript(ctx context.Context, scriptID int64, limit, offset int) 
 	return out, nil
 }
 
-// LatestBySpawningScript returns the most recently created task spawned by
-// the given script, or (nil, nil) if the script has no spawned tasks.
-func (s *Impl) LatestBySpawningScript(ctx context.Context, scriptID int64) (*Task, error) {
-	sid := scriptID
-	row, err := s.q.LatestTaskBySpawningScript(ctx, &sid)
+// LatestBySpawningScripts returns the tasks spawned in the most recent
+// successful run of the given script, ordered by id ASC. Returns an empty
+// slice if the script has no successful runs that spawned any tasks. The
+// underlying tasks are looked up via script_runs.spawned_task_ids so deleted
+// rows naturally drop out.
+func (s *Impl) LatestBySpawningScripts(ctx context.Context, scriptID int64) ([]Task, error) {
+	rows, err := s.q.ListLatestSpawnedTasksByScript(ctx, scriptID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
+		return nil, fmt.Errorf("task: latest spawn batch for script %d: %w", scriptID, err)
+	}
+	out := make([]Task, 0, len(rows))
+	for _, r := range rows {
+		tags, err := s.loadTags(ctx, r.ID)
+		if err != nil {
+			return nil, err
 		}
-		return nil, fmt.Errorf("task: latest by script %d: %w", scriptID, err)
+		out = append(out, rowToTask(r, tags))
 	}
-	tags, err := s.loadTags(ctx, row.ID)
-	if err != nil {
-		return nil, err
-	}
-	t := rowToTask(row, tags)
-	return &t, nil
+	return out, nil
 }
 
 // SetTagsByID replaces the full tag set associated with a task. The caller

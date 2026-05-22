@@ -209,6 +209,51 @@ func TestRunner_LastSpawnPopulated(t *testing.T) {
 	}
 }
 
+func TestRunner_LastSpawnsExposesEntireBatch(t *testing.T) {
+	h := newHarness(t)
+	// First run queues three tasks in one batch.
+	sid := h.createScript(`
+		ctx.queueTask({title: "a"});
+		ctx.queueTask({title: "b"});
+		ctx.queueTask({title: "c"});
+	`)
+	rid := h.startRun(sid, script.TriggerManual)
+	if err := h.runner.Run(context.Background(), sid, rid, script.TriggerManual); err != nil {
+		t.Fatalf("first Run: %v", err)
+	}
+
+	// Second run reads ctx.lastSpawns. We log titles + lastSpawn.title so we
+	// can assert both surfaces.
+	if _, err := h.scripts.Update(context.Background(), sid, script.UpdateInput{
+		Name: "test",
+		Code: `
+			ctx.log(ctx.lastSpawns.map(t => t.title).join(","));
+			ctx.log(ctx.lastSpawn.title);
+		`,
+		Enabled:  true,
+		Schedule: script.Schedule{Kind: script.KindEveryTick},
+	}); err != nil {
+		t.Fatalf("update script: %v", err)
+	}
+	rid2 := h.startRun(sid, script.TriggerManual)
+	if err := h.runner.Run(context.Background(), sid, rid2, script.TriggerManual); err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	logs, err := h.scripts.GetLogs(context.Background(), rid2)
+	if err != nil {
+		t.Fatalf("GetLogs: %v", err)
+	}
+	if len(logs) < 2 {
+		t.Fatalf("expected 2 log entries, got %d", len(logs))
+	}
+	if logs[0].Message != "a,b,c" {
+		t.Fatalf("lastSpawns titles = %q, want %q", logs[0].Message, "a,b,c")
+	}
+	if logs[1].Message != "c" {
+		t.Fatalf("lastSpawn.title = %q, want %q (last entry of batch)", logs[1].Message, "c")
+	}
+}
+
 func TestRunner_Timeout(t *testing.T) {
 	h := newHarness(t, runtime.WithTimeout(200*time.Millisecond))
 	sid := h.createScript(`ctx.log("pre-loop"); while(true) {}`)
