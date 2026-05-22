@@ -434,7 +434,7 @@ describe('TaskTable', () => {
     expect(onSelectedChange).toHaveBeenLastCalledWith(new Set([3, 4]));
   });
 
-  it('Escape exits multi-select mode and clears the selection', async () => {
+  it('Escape clears the selection', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
     const onSelectedChange = vi.fn();
     render(
