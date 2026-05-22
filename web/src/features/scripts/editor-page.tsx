@@ -348,7 +348,7 @@ export function ScriptEditorPage({ id }: ScriptEditorPageProps) {
             ) : (
               <span />
             )}
-            <Button type="submit" size="sm" disabled={isSaving || !isDirty}>
+            <Button type="submit" size="sm" disabled={isSaving || (isEdit && !isDirty)}>
               {isEdit ? 'Save changes' : 'Create script'}
             </Button>
           </div>
