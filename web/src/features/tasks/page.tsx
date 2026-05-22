@@ -28,13 +28,18 @@ import { TaskTable } from './task-table';
 import { applyQuickFilter, hasActiveFilters, useTaskListSearch } from './use-task-list-search';
 
 export function TasksPage() {
-  const { search } = useTaskListSearch();
+  const { search, setSearch } = useTaskListSearch();
   const effective = applyQuickFilter(search);
   // Default sort is `priority` so the drag-handle column is visible until the
   // user explicitly picks another sort axis.
   const sort = effective.sort ?? 'priority';
 
   const { data: tasks = [], isLoading } = useTasks({ ...effective, sort });
+  // Unfiltered list used to resolve `?open=<id>` requests from the command
+  // palette. The palette caches this same query key, so this is usually a
+  // free cache hit when arriving from the palette. Falls back to the
+  // filtered list when both are populated.
+  const { data: allTasks, isFetched: allTasksFetched } = useTasks({});
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
@@ -43,19 +48,23 @@ export function TasksPage() {
 
   useNewTaskListener(() => setCreating(true));
 
-  // The global command palette dispatches `tt:open-task` with a task id when
-  // the user picks a task result. We open the edit modal for that task if
-  // it's in the currently-loaded list. Mirrors `useNewTaskListener` above.
+  // The command palette navigates here with `?open=<id>` to request the edit
+  // modal. We resolve the id against the unfiltered task list (so it works
+  // regardless of the current filters), open the modal, and immediately
+  // clear `open` so refresh/back doesn't reopen indefinitely. If the id no
+  // longer exists, silently clear it — best-effort UX, no toast.
+  const openId = search.open;
   useEffect(() => {
-    const handler = (event: Event) => {
-      const id = (event as CustomEvent<{ id: number }>).detail?.id;
-      if (typeof id !== 'number') return;
-      const target = tasks.find((t) => t.id === id);
-      if (target) setEditing(target);
-    };
-    window.addEventListener('tt:open-task', handler);
-    return () => window.removeEventListener('tt:open-task', handler);
-  }, [tasks]);
+    if (typeof openId !== 'number') return;
+    // Wait for the unfiltered list to resolve before deciding the id is
+    // missing — otherwise a fresh page load with `?open=` would clear the
+    // signal before the data arrives.
+    if (!allTasksFetched) return;
+    const target =
+      (allTasks ?? []).find((t) => t.id === openId) ?? tasks.find((t) => t.id === openId);
+    if (target) setEditing(target);
+    setSearch({ open: undefined });
+  }, [openId, allTasks, allTasksFetched, tasks, setSearch]);
 
   const filtersActive = hasActiveFilters(search);
   const showEmpty = !isLoading && tasks.length === 0 && !filtersActive;

@@ -44,6 +44,13 @@ export const taskSearchSchema = z
     sort: z.enum(TASK_SORTS).optional(),
     asc: z.boolean().optional(),
     quick: z.enum(QUICK_FILTERS).optional(),
+    /**
+     * Transient signal used by the command palette to ask the /tasks page to
+     * open the edit modal for a given task id. NOT a filter — it doesn't
+     * affect the task list query and is excluded from `hasActiveFilters`.
+     * The page clears it after consuming so refresh/back doesn't reopen.
+     */
+    open: z.coerce.number().optional(),
   })
   .partial();
 

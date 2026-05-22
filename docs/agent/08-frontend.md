@@ -142,12 +142,20 @@ Shortcuts are **suppressed when an editable element has focus** (`<input>`, `<te
 `web/src/components/ui/command.tsx` and searches the full unfiltered
 task set (`useTasks({})`) plus tag list (`useTagsWithCounts()`).
 
-Selecting a task dispatches `tt:open-task` with `{ id }`;
-`features/tasks/page.tsx` listens for it (mirrors `useNewTaskListener`)
-and opens the edit modal. ⌘↵ inside the palette applies the typed query
-as `?q=` and navigates to `/tasks`. The `?q=` URL contract is unchanged
-— the sidebar `<SearchField>` was removed but the schema and
-server-side filter still apply when the param is present.
+Selecting a task navigates to `/tasks?open=<id>`. The /tasks page watches
+`search.open` (declared in `taskSearchSchema` as `z.coerce.number().optional()`)
+in a `useEffect`, resolves the id against the unfiltered `useTasks({})`
+cache (so it works no matter what filters are active), opens the edit
+modal, and immediately clears `open` via `setSearch({ open: undefined })`
+so refresh/back doesn't reopen the modal. `open` is a transient *signal*,
+not a filter — it is intentionally excluded from `hasActiveFilters()` and
+the server query. Avoids the race the prior `tt:open-task` CustomEvent
+mechanism had under concurrent rendering.
+
+⌘↵ inside the palette applies the typed query as `?q=` and navigates to
+`/tasks`. The `?q=` URL contract is unchanged — the sidebar
+`<SearchField>` was removed but the schema and server-side filter still
+apply when the param is present.
 
 ## Drag-drop reorder
 
