@@ -27,10 +27,6 @@ import { clickModeFromEvent, useTagFilterMutator } from './use-task-list-search'
 export interface TaskTableProps {
   tasks: Task[];
   sort: TaskSortAxis;
-  /** When true, render the multi-select checkbox column. */
-  multiSelectMode: boolean;
-  /** Called when a shortcut wants to flip multi-select on (e.g. shift-j). */
-  onMultiSelectModeChange?: (next: boolean) => void;
   selectedIds: Set<number>;
   onSelectedChange: (next: Set<number>) => void;
   onEdit: (task: Task) => void;
@@ -99,8 +95,6 @@ export function computeDragEnd(
 export function TaskTable({
   tasks,
   sort,
-  multiSelectMode,
-  onMultiSelectModeChange,
   selectedIds,
   onSelectedChange,
   onEdit,
@@ -178,8 +172,6 @@ export function TaskTable({
     onSelectedChange,
     onEdit,
     onEditTags,
-    onMultiSelectModeChange,
-    multiSelectMode,
     disabled: shortcutsDisabled,
     onToggleDone: (id, st) => setState.mutate({ id, state: st }),
     onStage: (id) => stage.mutate(id),
@@ -211,7 +203,6 @@ export function TaskTable({
           enabled={showDragHandle}
           task={task}
           focused={task.id === focusedId}
-          multiSelectMode={multiSelectMode}
           selected={selectedIds.has(task.id)}
           onToggleSelect={(next) => toggleSelect(task.id, next)}
           showDragHandle={showDragHandle}
@@ -253,7 +244,7 @@ export function TaskTable({
           >
             <thead className="text-xs text-muted-foreground">
               <tr className="border-b">
-                {multiSelectMode && <th className="w-8 px-2 py-2" />}
+                <th className="w-8 px-2 py-2" />
                 {showDragHandle && <th className="w-6 px-1 py-2" />}
                 <th className="w-8 px-2 py-2" />
                 <th className="px-2 py-2 text-left font-medium">Title</th>
@@ -274,7 +265,6 @@ interface SortableRowProps {
   enabled: boolean;
   task: Task;
   focused: boolean;
-  multiSelectMode: boolean;
   selected: boolean;
   onToggleSelect: (next: boolean) => void;
   showDragHandle: boolean;
@@ -310,7 +300,6 @@ function SortableRow({ enabled, ...row }: SortableRowProps) {
       style={style}
       task={row.task}
       focused={row.focused}
-      multiSelectMode={row.multiSelectMode}
       selected={row.selected}
       onToggleSelect={row.onToggleSelect}
       showDragHandle={row.showDragHandle}
@@ -346,9 +335,6 @@ interface TableShortcutsArgs {
   onSelectedChange: (next: Set<number>) => void;
   onEdit: (task: Task) => void;
   onEditTags?: (task: Task) => void;
-  /** Multi-select mode auto-engages when the user starts a ⇧j/⇧k range. */
-  multiSelectMode?: boolean;
-  onMultiSelectModeChange?: (next: boolean) => void;
   /** When true, swallow no keys. Used while the inline tag editor is open. */
   disabled?: boolean;
   onToggleDone: (id: number, state: ReturnType<typeof toggleDoneState>) => void;
@@ -395,15 +381,11 @@ function useTableShortcuts({
   onSelectedChange,
   onEdit,
   onEditTags,
-  multiSelectMode,
-  onMultiSelectModeChange,
   disabled,
   onToggleDone,
   onStage,
 }: TableShortcutsArgs) {
   const anchorRef = useRef<number | null>(null);
-  const multiSelectModeRef = useRef(multiSelectMode);
-  multiSelectModeRef.current = multiSelectMode;
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -440,12 +422,11 @@ function useTableShortcuts({
       // is in its default state. Inputs/textareas were already filtered
       // above; the `disabled` guard handles the modal-open case.
       if (event.key === 'Escape') {
-        if (multiSelectModeRef.current || selectedIds.size > 0) {
+        if (selectedIds.size > 0) {
           event.preventDefault();
           event.stopPropagation();
           anchorRef.current = null;
-          if (selectedIds.size > 0) onSelectedChange(new Set());
-          if (multiSelectModeRef.current) onMultiSelectModeChange?.(false);
+          onSelectedChange(new Set());
         }
         return;
       }
@@ -462,9 +443,6 @@ function useTableShortcuts({
           return;
         }
         if (anchorRef.current == null) anchorRef.current = focusedId;
-        if (!multiSelectModeRef.current) {
-          onMultiSelectModeChange?.(true);
-        }
         const nextIdx = Math.max(
           0,
           Math.min(tasks.length - 1, event.key === 'J' ? currentIdx + 1 : currentIdx - 1),
@@ -514,7 +492,7 @@ function useTableShortcuts({
         event.preventDefault();
         anchorRef.current = null;
         onEditTags(focusedTask);
-      } else if (event.key === ' ') {
+      } else if (event.key === ' ' || event.key === 'x') {
         event.preventDefault();
         anchorRef.current = null;
         const copy = new Set(selectedIds);
@@ -537,7 +515,6 @@ function useTableShortcuts({
     onSelectedChange,
     onEdit,
     onEditTags,
-    onMultiSelectModeChange,
     onToggleDone,
     onStage,
     disabled,
