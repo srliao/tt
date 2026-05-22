@@ -16,13 +16,14 @@
 
 import { Link } from '@tanstack/react-router';
 import { PlusIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTasks } from '@/api/tasks';
 import { Button } from '@/components/ui/button';
 import type { Task } from '@/types/task';
 import { ActiveFilterStrip } from './active-filter-strip';
 import { AddTaskModal, useNewTaskListener } from './add-task-modal';
 import { BulkActionBar } from './bulk-action-bar';
+import { BulkTagEditor } from './bulk-tag-editor';
 import { EditTaskModal } from './edit-task-modal';
 import { FilterSidebar } from './filter-sidebar';
 import { InlineTagEditor } from './inline-tag-editor';
@@ -52,7 +53,17 @@ export function TasksPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Task | null>(null);
   const [editingTags, setEditingTags] = useState<Task | null>(null);
+  const [bulkTagOpen, setBulkTagOpen] = useState(false);
+  const tagButtonRef = useRef<HTMLButtonElement | null>(null);
   const selection = useSelection(tasks);
+
+  // Resolve selected tasks against the full (unfiltered) list so off-screen
+  // selections still surface their tag data in the bulk editor. Falls back to
+  // the visible list while `allTasks` is loading.
+  const selectedTasks = useMemo(() => {
+    const source = allTasks ?? tasks;
+    return source.filter((t) => selection.selected.has(t.id));
+  }, [allTasks, tasks, selection.selected]);
 
   useNewTaskListener(() => setCreating(true));
 
@@ -102,7 +113,8 @@ export function TasksPage() {
             onSelectedChange={(next) => selection.setAll(next)}
             onEdit={(t) => setEditing(t)}
             onEditTags={(t) => setEditingTags(t)}
-            shortcutsDisabled={editingTags !== null}
+            onOpenBulkTagEditor={() => setBulkTagOpen(true)}
+            shortcutsDisabled={editingTags !== null || bulkTagOpen}
             hasFilters={filtersActive}
             onSelectAllMatching={() => {
               // The palette-open feature already loads `useTasks({})`, so this
@@ -128,11 +140,17 @@ export function TasksPage() {
         <BulkActionBar
           selection={selection}
           filter={{ ...effective, sort }}
-          onOpenTagEditor={() => {
-            // Phase 6 wires this to <BulkTagEditor>. No-op for now.
-          }}
+          onOpenTagEditor={() => setBulkTagOpen(true)}
+          tagButtonRef={tagButtonRef}
         />
       )}
+
+      <BulkTagEditor
+        selectedTasks={selectedTasks}
+        open={bulkTagOpen && selection.selected.size > 0}
+        onOpenChange={setBulkTagOpen}
+        anchorRef={tagButtonRef}
+      />
 
       <AddTaskModal open={creating} onOpenChange={setCreating} />
 

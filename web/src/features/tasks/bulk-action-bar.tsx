@@ -11,7 +11,7 @@
  * in `page.tsx` / Phase 1.
  */
 
-import { useMemo, useState } from 'react';
+import { type RefObject, useMemo, useState } from 'react';
 import {
   type TaskListParams,
   useDeleteTask,
@@ -38,6 +38,12 @@ export interface BulkActionBarProps {
   filter: TaskListParams;
   /** Called when the user clicks "Tag…" or presses `t`. Phase 6 wires this to <BulkTagEditor>. */
   onOpenTagEditor: () => void;
+  /**
+   * Forwarded to the "Tag…" button so <BulkTagEditor> can anchor its popover
+   * to it. Optional because callers that don't render the editor (tests,
+   * legacy consumers) shouldn't have to provide one.
+   */
+  tagButtonRef?: RefObject<HTMLButtonElement | null>;
 }
 
 // kbd hint styled for the dark (inverted) bar surface.
@@ -67,7 +73,12 @@ const destructiveBtn = cn(
 // Small meta-row action ("Select all matching", "Clear").
 const metaBtn = cn('rounded px-1 hover:underline', focusRing);
 
-export function BulkActionBar({ selection, filter, onOpenTagEditor }: BulkActionBarProps) {
+export function BulkActionBar({
+  selection,
+  filter,
+  onOpenTagEditor,
+  tagButtonRef,
+}: BulkActionBarProps) {
   const setState = useSetTaskState();
   const stage = useStageTask();
   const del = useDeleteTask();
@@ -153,7 +164,7 @@ export function BulkActionBar({ selection, filter, onOpenTagEditor }: BulkAction
       <span className="h-4 w-px bg-background/20" aria-hidden="true" />
 
       {/* Primary action */}
-      <button type="button" onClick={onOpenTagEditor} className={primaryBtn}>
+      <button ref={tagButtonRef} type="button" onClick={onOpenTagEditor} className={primaryBtn}>
         Tag…
         <kbd className={kbdClass}>t</kbd>
       </button>

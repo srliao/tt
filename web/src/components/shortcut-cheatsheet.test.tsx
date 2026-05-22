@@ -77,7 +77,7 @@ describe('<ShortcutCheatsheet>', () => {
   it('renders the inline tag editor and select-all descriptions', () => {
     render(<ShortcutCheatsheet />);
     openCheatsheet();
-    expect(screen.getByText('Edit tags inline')).toBeTruthy();
+    expect(screen.getByText('Edit tags inline (single) or bulk-tag (selection)')).toBeTruthy();
     expect(screen.getByText('Extend range')).toBeTruthy();
     expect(screen.getByText('Select all visible')).toBeTruthy();
     expect(screen.getByText('Select all matching the filter')).toBeTruthy();
