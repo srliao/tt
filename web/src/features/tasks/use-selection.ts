@@ -92,7 +92,10 @@ export function useSelection(visibleTasks: Task[]): UseSelectionResult {
     setSelected(new Set(ids));
   }, []);
 
-  const has = useCallback((id: number) => selected.has(id), [selected]);
+  // `has` is a thin wrapper around selected.has — identity changes every render
+  // once selection mutates. Callers that need stable identity (e.g. React.memo
+  // children) should use selected.has(id) directly instead of plumbing this.
+  const has = (id: number) => selected.has(id);
 
   return { selected, visibleCount, offScreenCount, toggle, add, remove, clear, setAll, has };
 }

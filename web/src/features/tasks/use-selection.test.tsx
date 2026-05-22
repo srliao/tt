@@ -85,6 +85,14 @@ describe('useSelection', () => {
     expect([...result.current.selected].sort()).toEqual([1, 2]);
   });
 
+  it('selection round-trips through unmount and remount', () => {
+    const { result, unmount } = renderHook(() => useSelection([]));
+    act(() => result.current.add([3, 7]));
+    unmount();
+    const { result: result2 } = renderHook(() => useSelection([]));
+    expect([...result2.current.selected].sort((a, b) => a - b)).toEqual([3, 7]);
+  });
+
   it('survives corrupted sessionStorage without throwing', () => {
     sessionStorage.setItem('tt:selection', 'not-json{');
     const { result } = renderHook(() => useSelection([]));
