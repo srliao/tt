@@ -73,7 +73,8 @@ Component → useXxx() hook → api<T>('/...') → fetch → ApiError-aware deco
 ```
 routes/tasks.tsx           validateSearch via taskSearchSchema (zod)
 features/tasks/use-task-list-search.ts
-  ├── taskSearchSchema     zod schema (states, tags, tagsExclude, tagMode, due, q, sort, asc, quick)
+  ├── taskSearchSchema     zod schema (states, tags, tagsExclude, tagMode, due, q, sort, asc, quick,
+  │                          + transient signals: open, openBulkTagEditor, confirmBulkDelete, confirmBulkCancel)
   ├── applyQuickFilter()   translate `quick=overdue` to effective filter
   ├── hasActiveFilters()   for empty-state suppression
   ├── isStateRestricted()  true when `states` hides any canonical state — default view (unset/empty) counts as restricted (mirrors not_done-only behavior)
@@ -159,6 +160,24 @@ mechanism had under concurrent rendering.
 `/tasks`. The `?q=` URL contract is unchanged — the sidebar
 `<SearchField>` was removed but the schema and server-side filter still
 apply when the param is present.
+
+When `useSelection({}).selected.size > 0`, the palette renders a "Bulk · N
+tasks selected" group at the very top (above Tasks / Filter / Tags / Go
+to). Stage and Mark done fire mutations directly (one per id) and close
+the palette. Tag / Cancel / Delete navigate to `/tasks` with a transient
+URL signal — `openBulkTagEditor=1`, `confirmBulkCancel=1`, or
+`confirmBulkDelete=1` (all declared in `taskSearchSchema` as
+`z.coerce.boolean().optional()`). The /tasks `page.tsx` watches each
+signal in a `useEffect`, opens the matching surface (`BulkTagEditor`,
+`AlertDialog` for cancel/delete) only when selection is still non-empty,
+then clears the flag via `setSearch({ <signal>: undefined })`. The
+confirm-dialog open state was lifted out of `BulkActionBar` into
+`page.tsx` so the palette can flip the same piece of state from any page;
+`BulkActionBar` accepts optional controlled `confirmDelete` /
+`confirmCancel` props and falls back to internal `useState` when not
+provided (keeps unit tests that render the bar directly working).
+Pattern rationale matches `search.open` above — URL signal beats
+CustomEvent because the URL is settled before the page commits.
 
 ## Drag-drop reorder
 

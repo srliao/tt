@@ -106,6 +106,9 @@ function dispatchKey(target: EventTarget, init: KeyboardEventInit) {
 describe('CommandPalette', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    // Selection is sessionStorage-backed; wipe between tests so Bulk-group
+    // state from one test doesn't leak into another.
+    sessionStorage.clear();
   });
 
   // The palette attaches its keydown listener inside a useEffect, so we have
@@ -243,6 +246,188 @@ describe('CommandPalette', () => {
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/tasks');
       expect(router.state.location.search).toMatchObject({ tags: ['work'] });
+    });
+  });
+
+  describe('Bulk group', () => {
+    it('does not render the Bulk group when selection is empty', async () => {
+      renderPalette({ tasks: [{ id: 1, title: 'Alpha' }] });
+      await waitForMount();
+      await act(async () => {
+        dispatchKey(document.body, { key: '/' });
+      });
+      await screen.findByPlaceholderText(/Search tasks, tags/);
+      expect(screen.queryByText(/Bulk ·/)).toBeNull();
+    });
+
+    it('renders the Bulk group with the correct count when selection > 0', async () => {
+      sessionStorage.setItem('tt:selection', JSON.stringify([1, 2, 3, 4, 5]));
+      renderPalette({
+        tasks: [
+          { id: 1, title: 'Alpha' },
+          { id: 2, title: 'Beta' },
+          { id: 3, title: 'Gamma' },
+          { id: 4, title: 'Delta' },
+          { id: 5, title: 'Epsilon' },
+        ],
+      });
+      await waitForMount();
+      await act(async () => {
+        dispatchKey(document.body, { key: '/' });
+      });
+      await screen.findByPlaceholderText(/Search tasks, tags/);
+      expect(await screen.findByText(/Bulk · 5 tasks selected/i)).toBeInTheDocument();
+      expect(await screen.findByText(/Tag 5 tasks…/i)).toBeInTheDocument();
+      expect(await screen.findByText(/Stage 5 tasks/i)).toBeInTheDocument();
+      expect(await screen.findByText(/Mark 5 tasks done/i)).toBeInTheDocument();
+    });
+
+    it('clicking "Tag N tasks…" navigates with openBulkTagEditor=1', async () => {
+      sessionStorage.setItem('tt:selection', JSON.stringify([1, 2, 3, 4, 5]));
+      const { router } = renderPalette(
+        {
+          tasks: [
+            { id: 1, title: 'Alpha' },
+            { id: 2, title: 'Beta' },
+            { id: 3, title: 'Gamma' },
+            { id: 4, title: 'Delta' },
+            { id: 5, title: 'Epsilon' },
+          ],
+        },
+        '/stage',
+      );
+      await waitForMount();
+      await act(async () => {
+        dispatchKey(document.body, { key: '/' });
+      });
+      await screen.findByPlaceholderText(/Search tasks, tags/);
+      const tagItem = await screen.findByRole('option', { name: /Tag 5 tasks…/i });
+      await act(async () => {
+        fireEvent.click(tagItem);
+      });
+      await waitFor(() => {
+        expect(router.state.location.pathname).toBe('/tasks');
+        expect(router.state.location.search).toMatchObject({ openBulkTagEditor: true });
+      });
+    });
+
+    it('clicking "Stage N tasks" fires a stage mutation per id and closes the palette', async () => {
+      sessionStorage.setItem('tt:selection', JSON.stringify([1, 2, 3, 4, 5]));
+      // Use a tracking fetch mock so we can assert POSTs to /stage.
+      const stageCalls: number[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url =
+            typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+          const method = init?.method ?? 'GET';
+          if (method === 'POST') {
+            const match = url.match(/\/tasks\/(\d+)\/stage$/);
+            if (match) {
+              stageCalls.push(Number(match[1]));
+              return jsonResponse({
+                id: Number(match[1]),
+                title: `task ${match[1]}`,
+                notes: '',
+                state: 'not_done',
+                due_date: null,
+                priority: 0,
+                staged_order: 1,
+                spawned_by_script_id: null,
+                created_at: '2026-05-01T00:00:00Z',
+                completed_at: null,
+                cancelled_at: null,
+                updated_at: '2026-05-01T00:00:00Z',
+                tags: [],
+              });
+            }
+          }
+          if (url.includes('/tags')) return jsonResponse([]);
+          if (url.includes('/tasks')) {
+            return jsonResponse(
+              [1, 2, 3, 4, 5].map((id) => ({
+                id,
+                title: `task ${id}`,
+                notes: '',
+                state: 'not_done',
+                due_date: null,
+                priority: 0,
+                staged_order: null,
+                spawned_by_script_id: null,
+                created_at: '2026-05-01T00:00:00Z',
+                completed_at: null,
+                cancelled_at: null,
+                updated_at: '2026-05-01T00:00:00Z',
+                tags: [],
+              })),
+            );
+          }
+          return jsonResponse([]);
+        }),
+      );
+
+      // We're already stubbing fetch above; pass empty opts so renderPalette
+      // doesn't overwrite our stub.
+      // renderPalette's first line is vi.stubGlobal('fetch', …) — call it with
+      // tasks: [] and then re-stub to take precedence.
+      const rootRoute = createRootRoute({ component: () => <Outlet /> });
+      const tasksRoute = createRoute({
+        getParentRoute: () => rootRoute,
+        path: '/tasks',
+        validateSearch: (s) => taskSearchSchema.parse(s),
+        component: () => <CommandPalette />,
+      });
+      const router = createRouter({
+        routeTree: rootRoute.addChildren([tasksRoute]),
+        history: createMemoryHistory({ initialEntries: ['/tasks'] }),
+      });
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      render(
+        <ThemeProvider>
+          <QueryClientProvider client={qc}>
+            <RouterProvider router={router as never} />
+          </QueryClientProvider>
+        </ThemeProvider>,
+      );
+      await waitForMount();
+      await act(async () => {
+        dispatchKey(document.body, { key: '/' });
+      });
+      await screen.findByPlaceholderText(/Search tasks, tags/);
+      const stageItem = await screen.findByRole('option', { name: /Stage 5 tasks/i });
+      await act(async () => {
+        fireEvent.click(stageItem);
+      });
+
+      await waitFor(() => {
+        expect(stageCalls.sort()).toEqual([1, 2, 3, 4, 5]);
+      });
+      await waitFor(() => {
+        expect(screen.queryByPlaceholderText(/Search tasks, tags/)).toBeNull();
+      });
+    });
+
+    it('clicking "Clear selection" empties selection and closes the palette', async () => {
+      sessionStorage.setItem('tt:selection', JSON.stringify([1, 2]));
+      renderPalette({
+        tasks: [
+          { id: 1, title: 'Alpha' },
+          { id: 2, title: 'Beta' },
+        ],
+      });
+      await waitForMount();
+      await act(async () => {
+        dispatchKey(document.body, { key: '/' });
+      });
+      await screen.findByPlaceholderText(/Search tasks, tags/);
+      const clearItem = await screen.findByRole('option', { name: /Clear selection/i });
+      await act(async () => {
+        fireEvent.click(clearItem);
+      });
+      await waitFor(() => {
+        expect(screen.queryByPlaceholderText(/Search tasks, tags/)).toBeNull();
+      });
+      expect(sessionStorage.getItem('tt:selection')).toBeNull();
     });
   });
 });

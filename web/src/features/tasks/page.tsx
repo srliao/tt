@@ -54,6 +54,10 @@ export function TasksPage() {
   const [editing, setEditing] = useState<Task | null>(null);
   const [editingTags, setEditingTags] = useState<Task | null>(null);
   const [bulkTagOpen, setBulkTagOpen] = useState(false);
+  // Lifted out of <BulkActionBar> so the command palette can flip them via
+  // URL signals (?confirmBulkDelete=1 / ?confirmBulkCancel=1) from any page.
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [confirmBulkCancel, setConfirmBulkCancel] = useState(false);
   const tagButtonRef = useRef<HTMLButtonElement | null>(null);
   const selection = useSelection(tasks);
 
@@ -93,6 +97,32 @@ export function TasksPage() {
     if (target) setEditing(target);
     setSearch({ open: undefined });
   }, [openId, allTasks, allTasksFetched, tasks, setSearch]);
+
+  // Command-palette signals for bulk actions. Each effect opens the relevant
+  // surface only when a selection still exists, then clears the URL flag so
+  // refresh/back doesn't retrigger. If the selection has been emptied between
+  // the palette click and this commit, we still clear the flag — same UX as
+  // a no-op.
+  const openBulkTagSignal = search.openBulkTagEditor;
+  useEffect(() => {
+    if (!openBulkTagSignal) return;
+    if (selection.selected.size > 0) setBulkTagOpen(true);
+    setSearch({ openBulkTagEditor: undefined });
+  }, [openBulkTagSignal, selection.selected.size, setSearch]);
+
+  const confirmBulkDeleteSignal = search.confirmBulkDelete;
+  useEffect(() => {
+    if (!confirmBulkDeleteSignal) return;
+    if (selection.selected.size > 0) setConfirmBulkDelete(true);
+    setSearch({ confirmBulkDelete: undefined });
+  }, [confirmBulkDeleteSignal, selection.selected.size, setSearch]);
+
+  const confirmBulkCancelSignal = search.confirmBulkCancel;
+  useEffect(() => {
+    if (!confirmBulkCancelSignal) return;
+    if (selection.selected.size > 0) setConfirmBulkCancel(true);
+    setSearch({ confirmBulkCancel: undefined });
+  }, [confirmBulkCancelSignal, selection.selected.size, setSearch]);
 
   const filtersActive = hasActiveFilters(search);
   const showEmpty = !isLoading && tasks.length === 0 && !filtersActive;
@@ -151,6 +181,10 @@ export function TasksPage() {
           filter={{ ...effective, sort }}
           onOpenTagEditor={() => setBulkTagOpen(true)}
           tagButtonRef={tagButtonRef}
+          confirmDelete={confirmBulkDelete}
+          onConfirmDeleteChange={setConfirmBulkDelete}
+          confirmCancel={confirmBulkCancel}
+          onConfirmCancelChange={setConfirmBulkCancel}
         />
       )}
 

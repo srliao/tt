@@ -51,6 +51,17 @@ export const taskSearchSchema = z
      * The page clears it after consuming so refresh/back doesn't reopen.
      */
     open: z.coerce.number().optional(),
+    /**
+     * Transient signal used by the command palette to ask the /tasks page to
+     * open the bulk tag editor. The page consumes and clears immediately.
+     * Same race-avoidance rationale as `open`: a URL signal beats a
+     * CustomEvent because the URL is settled before the page commits.
+     */
+    openBulkTagEditor: z.coerce.boolean().optional(),
+    /** Transient signal: open the bulk delete confirm dialog. */
+    confirmBulkDelete: z.coerce.boolean().optional(),
+    /** Transient signal: open the bulk cancel confirm dialog. */
+    confirmBulkCancel: z.coerce.boolean().optional(),
   })
   .partial();
 
