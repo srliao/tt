@@ -30,6 +30,7 @@ Quick locator tables. When you need to read code, start here.
 | Scheduler ticker / worker / queue | `internal/scheduler/scheduler.go`, `internal/scheduler/worker.go` |
 | HTTP server wiring + consumer interfaces | `internal/httpapi/server.go` |
 | Task handlers + filter parsing + service-error mapper | `internal/httpapi/tasks.go` |
+| `POST /tasks/bulk-tag` handler (multi-task add/remove/set in 1 tx) | `internal/httpapi/tasks.go` → `handleBulkTag` |
 | Stage handlers (reorder, clear, clear-finished) | `internal/httpapi/stage.go` |
 | Tag handlers | `internal/httpapi/tags.go` |
 | Script handlers + manual run | `internal/httpapi/scripts.go` |
