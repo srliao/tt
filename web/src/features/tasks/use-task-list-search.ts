@@ -24,8 +24,10 @@ export const QUICK_FILTERS = [
   'recently-completed',
   'cancelled',
 ] as const;
+export const TAG_MODES = ['any', 'all'] as const;
 
 export type QuickFilter = (typeof QUICK_FILTERS)[number];
+export type TagMode = (typeof TAG_MODES)[number];
 
 /**
  * Zod schema for the /tasks URL search params. Used both by the
@@ -35,6 +37,7 @@ export const taskSearchSchema = z
   .object({
     states: z.array(z.enum(TASK_STATES)).optional(),
     tags: z.array(z.string()).optional(),
+    tagMode: z.enum(TAG_MODES).optional(),
     due: z.enum(TASK_DUE_RANGES).optional(),
     q: z.string().optional(),
     sort: z.enum(TASK_SORTS).optional(),
@@ -53,9 +56,13 @@ export type TaskSearch = z.infer<typeof taskSearchSchema>;
  */
 export function applyQuickFilter(search: TaskSearch): TaskListParams {
   const quick = search.quick;
+  // We always send tag_mode when tags are non-empty so the server respects
+  // the UI default of "any" — see comments on TaskListParams.tagMode.
+  const tagsPresent = search.tags && search.tags.length > 0;
   const base: TaskListParams = {
     states: search.states && search.states.length > 0 ? search.states : undefined,
-    tags: search.tags && search.tags.length > 0 ? search.tags : undefined,
+    tags: tagsPresent ? search.tags : undefined,
+    tagMode: tagsPresent ? (search.tagMode ?? 'any') : undefined,
     due: search.due,
     q: search.q,
     sort: search.sort,
@@ -90,6 +97,7 @@ export function applyQuickFilter(search: TaskSearch): TaskListParams {
   return {
     states: base.states ?? preset.states,
     tags: base.tags,
+    tagMode: base.tagMode,
     due: base.due ?? preset.due,
     q: base.q,
     sort: base.sort ?? preset.sort,

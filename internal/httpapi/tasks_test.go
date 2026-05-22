@@ -195,6 +195,37 @@ func TestTasks_ListFilterByTagAND(t *testing.T) {
 	if len(tasks) != 1 || tasks[0].ID != t1.ID {
 		t.Fatalf("AND filter result = %+v", tasks)
 	}
+
+	// Explicit tag_mode=all matches the default behavior above.
+	respAll := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag=work&tag=urgent&tag_mode=all", nil)
+	defer func() { _ = respAll.Body.Close() }()
+	tasksAll := decodeTasks(t, respAll)
+	if len(tasksAll) != 1 || tasksAll[0].ID != t1.ID {
+		t.Fatalf("tag_mode=all filter result = %+v", tasksAll)
+	}
+
+	// tag_mode=any returns tasks with at least one of the supplied tags.
+	respAny := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag=work&tag=urgent&tag_mode=any", nil)
+	defer func() { _ = respAny.Body.Close() }()
+	tasksAny := decodeTasks(t, respAny)
+	if len(tasksAny) != 2 {
+		t.Fatalf("tag_mode=any filter result = %+v (want 2)", tasksAny)
+	}
+	gotIDs := map[int64]bool{tasksAny[0].ID: true, tasksAny[1].ID: true}
+	if !gotIDs[t1.ID] || !gotIDs[t2.ID] {
+		t.Fatalf("tag_mode=any missing expected ids: got %+v", tasksAny)
+	}
+}
+
+func TestTasks_ListInvalidTagMode(t *testing.T) {
+	t.Parallel()
+
+	fx := newTestServer(t, nil)
+	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag_mode=bogus", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
 }
 
 func TestTasks_ListSearch(t *testing.T) {

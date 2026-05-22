@@ -39,7 +39,9 @@ Migrations are embedded via `internal/db/migrations/embed.go`. They run on every
 
 ## When dynamic SQL is needed
 
-`task.Impl.List` builds the query as a string because the filter shape (states, tags, due range, search, sort axis, asc/desc, limit/offset) is too varied for sqlc to model cleanly. Pattern: build into `strings.Builder`, push args into `[]any`, run via `s.store.DB().QueryContext`, then re-fetch each row through `s.q.GetTask` for typed projection.
+`task.Impl.List` builds the query as a string because the filter shape (states, tags, tag_mode, due range, search, sort axis, asc/desc, limit/offset) is too varied for sqlc to model cleanly. Pattern: build into `strings.Builder`, push args into `[]any`, run via `s.store.DB().QueryContext`, then re-fetch each row through `s.q.GetTask` for typed projection.
+
+Tag filtering branches on `FilterSort.TagMode`: `TagModeAny` (or "") drops the HAVING-count check so a task matches if it carries any of the supplied tag ids; `TagModeAll` (the documented default for back-compat) requires every supplied tag.
 
 Don't replicate this for simple filters — prefer adding a named query.
 

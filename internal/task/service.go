@@ -299,10 +299,11 @@ func neighborKey(row sqlcgen.Task, useStage bool) (*float64, error) {
 // because the filter shape is too varied for sqlc to model.
 //
 // Filters compose with AND semantics. Tag filtering uses a sub-select that
-// HAVING-checks the distinct count, so passing N tag ids requires the task
-// be linked to all N. Sort defaults to priority ASC, id ASC (the main-list
-// order); Ascending flips non-priority axes only. Limit / Offset are
-// applied verbatim when set (Limit == 0 disables paging).
+// either HAVING-checks the distinct count (TagModeAll, the default — task
+// must carry all N supplied tags) or simply joins on any matching tag
+// (TagModeAny — OR semantics). Sort defaults to priority ASC, id ASC (the
+// main-list order); Ascending flips non-priority axes only. Limit / Offset
+// are applied verbatim when set (Limit == 0 disables paging).
 func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 	var sb strings.Builder
 	args := make([]any, 0, 8)
@@ -329,8 +330,15 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 			sb.WriteString("?")
 			args = append(args, id)
 		}
-		sb.WriteString(") GROUP BY task_id HAVING COUNT(DISTINCT tag_id) = ?)")
-		args = append(args, int64(len(f.TagIDs)))
+		// TagModeAny short-circuits the HAVING-count check so a task linked
+		// to any of the supplied tag ids matches. Default ("" or
+		// TagModeAll) preserves the original AND semantics.
+		if f.TagMode == TagModeAny {
+			sb.WriteString("))")
+		} else {
+			sb.WriteString(") GROUP BY task_id HAVING COUNT(DISTINCT tag_id) = ?)")
+			args = append(args, int64(len(f.TagIDs)))
+		}
 	}
 
 	switch f.Due {

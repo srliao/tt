@@ -10,7 +10,7 @@ Files: `internal/httpapi/{server,middleware,errors,spa,health,tasks,stage,tags,s
 GET    /api/v1/health
 GET    /api/v1/version
 
-GET    /api/v1/tasks?state=&tag=&due=&q=&sort=&asc=&limit=&offset=
+GET    /api/v1/tasks?state=&tag=&tag_mode=&due=&q=&sort=&asc=&limit=&offset=
 POST   /api/v1/tasks
 GET    /api/v1/tasks/{id}
 PATCH  /api/v1/tasks/{id}
