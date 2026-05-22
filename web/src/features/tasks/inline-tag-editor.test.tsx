@@ -120,6 +120,50 @@ describe('<InlineTagEditor>', () => {
     expect(body.tags).toEqual([]);
   });
 
+  it('keeps the editor open and surfaces an inline error when PATCH fails', async () => {
+    // Silence the console.error we emit on the failure path.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetchMock = vi.fn().mockImplementation((_url: string, init?: RequestInit) => {
+      if (init?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ error: { message: 'server boom' } }, 500));
+      }
+      return Promise.resolve(jsonResponse([]));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const onClose = vi.fn();
+    renderHarness(task({ id: 12, title: 'Errors', tags: ['old'] }), onClose);
+    const editor = await waitFor(() => {
+      const el = document.querySelector('[data-slot="inline-tag-editor"]');
+      if (!el) throw new Error('editor not mounted');
+      return el as HTMLElement;
+    });
+    const input = editor.querySelector(
+      '[data-slot="tag-combobox-input"]',
+    ) as HTMLInputElement | null;
+    if (!input) throw new Error('input missing');
+    act(() => {
+      input.focus();
+      fireEvent.keyDown(input, { key: 'Backspace' });
+    });
+    act(() => {
+      fireEvent.keyDown(input, { key: 'Escape' });
+    });
+    // PATCH went out…
+    await waitFor(() => {
+      const patchCalls = fetchMock.mock.calls.filter(
+        (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
+      );
+      expect(patchCalls.length).toBeGreaterThanOrEqual(1);
+    });
+    // …but the editor stays open and renders an inline error.
+    await waitFor(() => {
+      expect(document.querySelector('[data-slot="inline-tag-editor-error"]')).not.toBeNull();
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
   it('closing without changes does NOT send a PATCH', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse([]));
     vi.stubGlobal('fetch', fetchMock);

@@ -48,28 +48,42 @@ export function InlineTagEditor({ task, onClose }: InlineTagEditorProps) {
     setAnchorEl(el);
   }, [task]);
 
-  const commitAndClose = useCallback(() => {
+  const [error, setError] = useState<string | null>(null);
+
+  const commitAndClose = useCallback(async () => {
     const original = lastTaskRef.current;
-    if (original) {
-      const next = tagsRef.current;
-      // Skip the network round-trip if nothing changed (also avoids
-      // clobbering a concurrent edit with stale data).
-      const same =
-        next.length === (original.tags?.length ?? 0) &&
-        next.every((t, i) => t === original.tags[i]);
-      if (!same) {
-        updateTask.mutate({
-          id: original.id,
-          input: {
-            title: original.title,
-            notes: original.notes ?? '',
-            due_date: original.due_date,
-            tags: next,
-          },
-        });
-      }
+    if (!original) {
+      onClose();
+      return;
     }
-    onClose();
+    const next = tagsRef.current;
+    // Skip the network round-trip if nothing changed (also avoids
+    // clobbering a concurrent edit with stale data).
+    const same =
+      next.length === (original.tags?.length ?? 0) && next.every((t, i) => t === original.tags[i]);
+    if (same) {
+      onClose();
+      return;
+    }
+    try {
+      await updateTask.mutateAsync({
+        id: original.id,
+        input: {
+          title: original.title,
+          notes: original.notes ?? '',
+          due_date: original.due_date,
+          tags: next,
+        },
+      });
+      setError(null);
+      onClose();
+    } catch (err) {
+      // No global toast surface exists yet — keep the editor open and
+      // render an inline error so the user can retry or hit Escape again
+      // to dismiss without retrying. Better than silently losing the edit.
+      console.error('Failed to save tag edits:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save tags');
+    }
   }, [onClose, updateTask]);
 
   // While open, intercept Escape at the document level (capture phase) so
@@ -82,12 +96,19 @@ export function InlineTagEditor({ task, onClose }: InlineTagEditorProps) {
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
-        commitAndClose();
+        // If an error is showing, a second Escape force-dismisses the
+        // editor (discarding the pending edit) instead of retrying.
+        if (error) {
+          setError(null);
+          onClose();
+          return;
+        }
+        void commitAndClose();
       }
     };
     document.addEventListener('keydown', onKeyDown, { capture: true });
     return () => document.removeEventListener('keydown', onKeyDown, { capture: true });
-  }, [task, commitAndClose]);
+  }, [task, commitAndClose, error, onClose]);
 
   if (!task || !anchorEl) return null;
 
@@ -95,7 +116,7 @@ export function InlineTagEditor({ task, onClose }: InlineTagEditorProps) {
     <Popover
       open
       onOpenChange={(next) => {
-        if (!next) commitAndClose();
+        if (!next) void commitAndClose();
       }}
     >
       <PopoverAnchor virtualRef={{ current: anchorEl }} />
@@ -106,6 +127,15 @@ export function InlineTagEditor({ task, onClose }: InlineTagEditorProps) {
         data-slot="inline-tag-editor"
       >
         <TagCombobox value={tags} onChange={setTags} allowCreate />
+        {error && (
+          <p
+            className="mt-2 text-xs text-destructive"
+            role="alert"
+            data-slot="inline-tag-editor-error"
+          >
+            {error}. Press Escape again to discard.
+          </p>
+        )}
       </PopoverContent>
     </Popover>
   );
