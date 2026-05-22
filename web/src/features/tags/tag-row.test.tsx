@@ -29,7 +29,7 @@ describe('TagRow', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('renders the tag name', () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({})));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse([])));
     render(
       <Wrapper>
         <ul>
@@ -41,9 +41,13 @@ describe('TagRow', () => {
   });
 
   it('clicking Edit shows an input that PATCHes on Enter', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(jsonResponse({ id: 7, name: 'errands', created_at: '' }));
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/v1/tags/7' && init?.method === 'PATCH') {
+        return Promise.resolve(jsonResponse({ id: 7, name: 'errands', created_at: '' }));
+      }
+      // The row also fires /tags?counts=1 for the delete-confirm copy.
+      return Promise.resolve(jsonResponse([]));
+    });
     vi.stubGlobal('fetch', fetchMock);
     render(
       <Wrapper>
@@ -71,12 +75,19 @@ describe('TagRow', () => {
         expect.objectContaining({ method: 'PATCH' }),
       );
     });
-    const call = fetchMock.mock.calls[0];
-    expect(JSON.parse(call[1].body as string)).toEqual({ name: 'errands' });
+    const patchCall = fetchMock.mock.calls.find(
+      ([url, init]) =>
+        url === '/api/v1/tags/7' && (init as RequestInit | undefined)?.method === 'PATCH',
+    );
+    expect(patchCall).toBeTruthy();
+    expect(JSON.parse((patchCall![1] as RequestInit).body as string)).toEqual({ name: 'errands' });
   });
 
   it('pressing Escape cancels the rename without firing a request', async () => {
-    const fetchMock = vi.fn();
+    // The row also fires /tags?counts=1 for the delete-confirm copy — return
+    // an empty list so it resolves cleanly. The assertion below filters out
+    // those reads.
+    const fetchMock = vi.fn((_url: string) => Promise.resolve(jsonResponse([])));
     vi.stubGlobal('fetch', fetchMock);
     render(
       <Wrapper>
@@ -95,12 +106,18 @@ describe('TagRow', () => {
     await act(async () => {
       fireEvent.keyDown(input, { key: 'Escape' });
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    // No write requests (PATCH/DELETE) should have fired — the only call we
+    // tolerate is the count-fetch.
+    const writes = fetchMock.mock.calls.filter(([_url, init]) => {
+      const method = (init as RequestInit | undefined)?.method;
+      return method === 'PATCH' || method === 'DELETE' || method === 'POST';
+    });
+    expect(writes).toHaveLength(0);
     expect(screen.getByText('home')).toBeTruthy();
   });
 
   it('Enter with an empty name shows an inline error and does not call PATCH', async () => {
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn((_url: string) => Promise.resolve(jsonResponse([])));
     vi.stubGlobal('fetch', fetchMock);
     render(
       <Wrapper>
@@ -119,7 +136,11 @@ describe('TagRow', () => {
     await act(async () => {
       fireEvent.keyDown(input, { key: 'Enter' });
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    const writes = fetchMock.mock.calls.filter(([_url, init]) => {
+      const method = (init as RequestInit | undefined)?.method;
+      return method === 'PATCH' || method === 'DELETE' || method === 'POST';
+    });
+    expect(writes).toHaveLength(0);
     expect(await screen.findByRole('alert')).toHaveTextContent('Tag name is required');
   });
 
@@ -127,6 +148,9 @@ describe('TagRow', () => {
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       if (url === '/api/v1/tags/7' && init?.method === 'DELETE') {
         return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      if (url.includes('/tags?counts=1')) {
+        return Promise.resolve(jsonResponse([{ id: 7, name: 'home', created_at: '', count: 3 }]));
       }
       return Promise.resolve(jsonResponse({}));
     });
@@ -150,7 +174,10 @@ describe('TagRow', () => {
       if (!el) throw new Error('dialog body not rendered');
       return el;
     });
-    expect(desc.textContent).toContain('This will remove the tag from any tasks that use it');
+    // Wait for the counts query to land so the copy reflects the real count.
+    await waitFor(() => {
+      expect(desc.textContent).toContain('3 tasks');
+    });
 
     // No DELETE call before the user confirms.
     expect(
@@ -177,6 +204,73 @@ describe('TagRow', () => {
             url === '/api/v1/tags/7' && (init as RequestInit | undefined)?.method === 'DELETE',
         ),
       ).toBeTruthy();
+    });
+  });
+
+  it('delete confirm uses singular wording when exactly one task is tagged', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/tags?counts=1')) {
+          return Promise.resolve(jsonResponse([{ id: 7, name: 'home', created_at: '', count: 1 }]));
+        }
+        return Promise.resolve(jsonResponse({}));
+      }),
+    );
+
+    render(
+      <Wrapper>
+        <ul>
+          <TagRow tag={tag} />
+        </ul>
+      </Wrapper>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete home' }));
+    });
+
+    const desc = await waitFor(() => {
+      const el = document.body.querySelector('[data-slot="alert-dialog-description"]');
+      if (!el) throw new Error('dialog body not rendered');
+      return el;
+    });
+    await waitFor(() => {
+      expect(desc.textContent).toContain('1 task');
+      expect(desc.textContent).not.toContain('1 tasks');
+    });
+  });
+
+  it('delete confirm shows the "no tasks" copy when count is zero', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes('/tags?counts=1')) {
+          return Promise.resolve(jsonResponse([{ id: 7, name: 'home', created_at: '', count: 0 }]));
+        }
+        return Promise.resolve(jsonResponse({}));
+      }),
+    );
+
+    render(
+      <Wrapper>
+        <ul>
+          <TagRow tag={tag} />
+        </ul>
+      </Wrapper>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete home' }));
+    });
+
+    const desc = await waitFor(() => {
+      const el = document.body.querySelector('[data-slot="alert-dialog-description"]');
+      if (!el) throw new Error('dialog body not rendered');
+      return el;
+    });
+    await waitFor(() => {
+      expect(desc.textContent).toContain('No tasks currently use this tag');
     });
   });
 });
