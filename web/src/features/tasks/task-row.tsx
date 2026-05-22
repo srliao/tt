@@ -11,9 +11,9 @@
 
 import { format, isPast, parseISO } from 'date-fns';
 import { AlertTriangleIcon, BookmarkIcon, CheckIcon, GripVerticalIcon } from 'lucide-react';
-import { type CSSProperties, forwardRef, type ReactNode } from 'react';
-import { Badge } from '@/components/ui/badge';
+import { type CSSProperties, forwardRef, type MouseEvent, type ReactNode } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { TagGlyphList } from '@/components/ui/tag-glyph';
 import { cn } from '@/lib/utils';
 import type { Task, TaskState } from '@/types/task';
 
@@ -36,6 +36,14 @@ export interface TaskRowProps {
   onToggleDone: () => void;
   onStage: () => void;
   onUnstage: () => void;
+  /**
+   * Map of tag-name → 1- or 2-letter glyph initial, computed once per table
+   * render off the visible tag set. Passed down so every row gets the same
+   * disambiguation without recomputing.
+   */
+  initialMap: Map<string, string>;
+  /** Click handler for a single tag glyph — usually filters by that tag. */
+  onTagClick: (name: string, event: MouseEvent) => void;
 }
 
 /** Toggle helper: done ↔ not_done. Cancelled becomes done on click. */
@@ -110,6 +118,8 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
     onToggleDone,
     onStage,
     onUnstage,
+    initialMap,
+    onTagClick,
   },
   ref,
 ) {
@@ -164,13 +174,7 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
         {task.notes && <p className="line-clamp-1 text-xs text-muted-foreground">{task.notes}</p>}
       </td>
       <td className="px-2 py-2 align-middle">
-        <div className="flex flex-wrap gap-1">
-          {task.tags.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-[10px]">
-              {tag}
-            </Badge>
-          ))}
-        </div>
+        <TagGlyphList tags={task.tags} initialMap={initialMap} onTagClick={onTagClick} />
       </td>
       <td className="px-2 py-2 align-middle">{dueBadge(task)}</td>
       <td className="px-2 py-2 align-middle text-right">

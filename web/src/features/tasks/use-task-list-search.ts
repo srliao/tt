@@ -9,7 +9,7 @@
  */
 
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { useCallback } from 'react';
+import { type MouseEvent, useCallback } from 'react';
 import { z } from 'zod';
 import type { TaskListParams } from '@/api/tasks';
 import type { TaskDueRange, TaskSortAxis, TaskState } from '@/types/task';
@@ -37,6 +37,7 @@ export const taskSearchSchema = z
   .object({
     states: z.array(z.enum(TASK_STATES)).optional(),
     tags: z.array(z.string()).optional(),
+    tagsExclude: z.array(z.string()).optional(),
     tagMode: z.enum(TAG_MODES).optional(),
     due: z.enum(TASK_DUE_RANGES).optional(),
     q: z.string().optional(),
@@ -152,3 +153,48 @@ export function useTaskListSearch() {
 
 // Re-export the underlying types so callers don't have to dig.
 export type { TaskDueRange, TaskSortAxis, TaskState };
+
+/** Click-modifier semantics for `<TagGlyph>` / row tag interactions. */
+export type TagFilterMode = 'replace' | 'add' | 'exclude';
+
+/**
+ * Translate a React MouseEvent's modifier keys into a filter mutation mode.
+ * Shared by row tag glyphs and any future click-to-filter affordance.
+ *
+ *   bare click   → replace (single-tag focus)
+ *   shift+click  → add to the current `tags` filter
+ *   alt+click    → add to the `tagsExclude` filter
+ */
+export function clickModeFromEvent(e: MouseEvent): TagFilterMode {
+  if (e.altKey) return 'exclude';
+  if (e.shiftKey) return 'add';
+  return 'replace';
+}
+
+/**
+ * Returns a stable callback that mutates the URL's tag filter according to
+ * the given mode. `replace` clears any prior exclusions so the user lands
+ * on a clean single-tag view.
+ */
+export function useTagFilterMutator() {
+  const { search, setSearch } = useTaskListSearch();
+  return useCallback(
+    (name: string, mode: TagFilterMode) => {
+      if (mode === 'replace') {
+        setSearch({ tags: [name], tagsExclude: undefined });
+        return;
+      }
+      if (mode === 'add') {
+        const set = new Set(search.tags ?? []);
+        set.add(name);
+        setSearch({ tags: [...set] });
+        return;
+      }
+      // exclude
+      const set = new Set(search.tagsExclude ?? []);
+      set.add(name);
+      setSearch({ tagsExclude: [...set] });
+    },
+    [search, setSearch],
+  );
+}
