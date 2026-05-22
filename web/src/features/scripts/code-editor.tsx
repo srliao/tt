@@ -4,8 +4,9 @@
  * - Loads the JavaScript language extension.
  * - Picks the light/dark theme from our `useTheme()` provider so the editor
  *   matches the rest of the app on theme switches.
- * - Constrains height to `min-h-[50vh]` so the editor has presence even on a
- *   freshly-created script.
+ * - Fills its parent's height when given one (via `h-full`), but keeps a
+ *   `min-h-[50vh]` floor so the editor still has presence in unconstrained
+ *   contexts (mobile, freshly-created script before layout settles).
  *
  * The editor itself is uncontrolled-ish (CodeMirror keeps its own document
  * state) but mirrors changes back through `onChange`, which the parent form
@@ -29,20 +30,20 @@ export function CodeEditor({ value, onChange, ariaLabel }: CodeEditorProps) {
     <div
       data-script-code
       data-cm-label={ariaLabel ?? 'Script code'}
-      className="min-h-[50vh] overflow-hidden rounded-md border"
+      className="flex h-full min-h-[50vh] flex-col overflow-hidden rounded-md border"
     >
       <CodeMirror
         value={value}
         onChange={onChange}
         extensions={[javascript()]}
         theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
-        height="auto"
+        height="100%"
         basicSetup={{
           lineNumbers: true,
           foldGutter: true,
           highlightActiveLine: true,
         }}
-        className="min-h-[50vh] text-sm"
+        className="min-h-0 flex-1 text-sm"
       />
     </div>
   );

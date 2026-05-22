@@ -2,11 +2,12 @@
  * The script editor page. Used for both `/scripts/$id` (edit existing) and
  * `/scripts/new` (create) — `id` is omitted for create-mode. Layout:
  *
- *   ┌─────────────────────────────────────────────┐
- *   │ Name input        [enabled switch] [Run now] [⋯] │
+ *   ┌──────────────────────────────────────────────┐
+ *   │ Name input        [enabled switch] [Run now] │
  *   │ Schedule sub-form                            │
  *   │ Code editor                                  │
- *   └─────────────────────────────────────────────┘
+ *   │ [Delete]                              [Save] │
+ *   └──────────────────────────────────────────────┘
  *                                ┌────────────────┐
  *                                │ Tabs: API|Tags │
  *                                │  Spawned|Runs  │
@@ -20,12 +21,15 @@
  *  1. The form is dirty — running stale code is confusing; force a save first.
  *  2. The script is disabled — backend would 409 anyway.
  *
+ * While a save is in flight a full-section overlay blocks pointer events so
+ * the user can't double-submit, delete, or navigate via the action bar.
+ *
  * `Cmd/Ctrl-Enter` from anywhere inside the form submits it.
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useBlocker, useNavigate } from '@tanstack/react-router';
-import { MoreHorizontalIcon, PlayIcon, Trash2Icon } from 'lucide-react';
+import { Loader2Icon, PlayIcon, Trash2Icon } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Controller, FormProvider, useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -47,12 +51,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -94,11 +92,18 @@ export const editorFormSchema = z
 
 export type EditorFormValues = z.infer<typeof editorFormSchema>;
 
+const NEW_SCRIPT_TEMPLATE = `(function () {
+  const new_task = { title: "" };
+
+  ctx.queueTask(new_task);
+})();
+`;
+
 function defaultValuesFor(script: Script | undefined): EditorFormValues {
   if (!script) {
     return {
       name: '',
-      code: '',
+      code: NEW_SCRIPT_TEMPLATE,
       enabled: true,
       schedule: { kind: 'daily' },
       confirm_every_tick: false,
@@ -224,23 +229,45 @@ export function ScriptEditorPage({ id }: ScriptEditorPageProps) {
   };
 
   const runDisabled = !isEdit || isDirty || !enabled || runScript.isPending;
+  const isSaving = methods.formState.isSubmitting;
 
   return (
     <FormProvider {...methods}>
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:flex-row">
+      <section className="relative mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:h-[calc(100vh-3.5rem)] lg:flex-row lg:overflow-hidden">
         <form
-          className="flex min-w-0 flex-1 flex-col gap-4"
+          className="flex min-w-0 flex-1 flex-col gap-4 lg:min-h-0"
           onSubmit={onSubmit}
           onKeyDown={onKeyDown}
         >
           <header className="flex flex-wrap items-end gap-3">
             <div className="flex flex-1 flex-col gap-1.5">
-              <Label htmlFor="script-name">Name</Label>
-              <Input
-                id="script-name"
-                autoFocus
-                {...methods.register('name')}
-                aria-invalid={!!methods.formState.errors.name}
+              <Label htmlFor="script-title-field">Name</Label>
+              {/*
+                Driven via Controller (not `register`) so we can override the
+                HTML `name` attribute. Password managers (1Password, LastPass,
+                Bitwarden) heuristically autofill inputs literally named
+                "name" — the data-* attributes plus a non-suggestive name
+                opt out across all the major ones.
+              */}
+              <Controller
+                control={methods.control}
+                name="name"
+                render={({ field }) => (
+                  <Input
+                    id="script-title-field"
+                    name="script-title-field"
+                    autoFocus
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
+                    data-form-type="other"
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    ref={field.ref}
+                    aria-invalid={!!methods.formState.errors.name}
+                  />
+                )}
               />
               {methods.formState.errors.name && (
                 <p className="text-xs text-destructive" role="alert">
@@ -265,40 +292,23 @@ export function ScriptEditorPage({ id }: ScriptEditorPageProps) {
               )}
             />
             {isEdit && (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={runDisabled}
-                  onClick={onRunNow}
-                  title={
-                    isDirty
-                      ? 'Save changes first'
-                      : !enabled
-                        ? 'Enable the script first'
-                        : 'Run this script now'
-                  }
-                >
-                  <PlayIcon /> Run now
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon-sm" aria-label="Script actions">
-                      <MoreHorizontalIcon />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
-                      <Trash2Icon /> Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={runDisabled}
+                onClick={onRunNow}
+                title={
+                  isDirty
+                    ? 'Save changes first'
+                    : !enabled
+                      ? 'Enable the script first'
+                      : 'Run this script now'
+                }
+              >
+                <PlayIcon /> Run now
+              </Button>
             )}
-            <Button type="submit" size="sm" disabled={methods.formState.isSubmitting}>
-              {isEdit ? 'Save changes' : 'Create script'}
-            </Button>
           </header>
 
           {serverError && (
@@ -313,18 +323,38 @@ export function ScriptEditorPage({ id }: ScriptEditorPageProps) {
             control={methods.control}
             name="code"
             render={({ field }) => (
-              <div className="flex flex-col gap-1.5">
+              <div className="flex flex-col gap-1.5 lg:min-h-0 lg:flex-1">
                 <Label>Code</Label>
-                <CodeEditor value={field.value} onChange={field.onChange} />
+                <div className="lg:min-h-0 lg:flex-1">
+                  <CodeEditor value={field.value} onChange={field.onChange} />
+                </div>
                 <p className="text-xs text-muted-foreground">
                   Cmd/Ctrl-Enter saves. Tip: paste tag names from the Tags sidebar.
                 </p>
               </div>
             )}
           />
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {isEdit ? (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Trash2Icon /> Delete
+              </Button>
+            ) : (
+              <span />
+            )}
+            <Button type="submit" size="sm" disabled={isSaving || !isDirty}>
+              {isEdit ? 'Save changes' : 'Create script'}
+            </Button>
+          </div>
         </form>
 
-        <aside className="flex w-full shrink-0 flex-col gap-2 lg:w-80">
+        <aside className="flex w-full shrink-0 flex-col gap-2 lg:w-80 lg:min-h-0 lg:overflow-y-auto">
           <Tabs defaultValue="api">
             <TabsList className="w-full">
               <TabsTrigger value="api">API</TabsTrigger>
@@ -350,6 +380,20 @@ export function ScriptEditorPage({ id }: ScriptEditorPageProps) {
             )}
           </Tabs>
         </aside>
+
+        {isSaving && (
+          <div
+            className="absolute inset-0 z-50 flex items-center justify-center rounded-md bg-background/60 backdrop-blur-sm"
+            role="status"
+            aria-live="polite"
+            aria-label="Saving"
+          >
+            <div className="flex items-center gap-2 rounded-md border bg-background px-4 py-3 shadow-md">
+              <Loader2Icon className="size-4 animate-spin" />
+              <span className="text-sm font-medium">Saving…</span>
+            </div>
+          </div>
+        )}
       </section>
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
