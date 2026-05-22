@@ -13,8 +13,8 @@ interface StageCountTask {
 }
 
 const NAV_ITEMS = [
-  { to: '/tasks', label: 'Tasks' },
   { to: '/stage', label: 'Stage' },
+  { to: '/tasks', label: 'Tasks' },
   { to: '/scripts', label: 'Scripts' },
   { to: '/tags', label: 'Tags' },
   { to: '/runs', label: 'Runs' },
@@ -29,9 +29,11 @@ function StageBadge() {
   });
   const stagedCount = data?.filter((t) => t.staged_order !== null).length ?? 0;
   return (
-    <Badge variant="secondary" data-testid="stage-badge">
-      Stage ({stagedCount})
-    </Badge>
+    <Link to="/stage" aria-label="Go to stage">
+      <Badge variant="secondary" data-testid="stage-badge">
+        Stage ({stagedCount})
+      </Badge>
+    </Link>
   );
 }
 
@@ -40,7 +42,7 @@ function TopNav() {
     <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-4 px-4">
         <Link
-          to="/tasks"
+          to="/stage"
           className="font-mono text-lg font-semibold tracking-tight"
           aria-label="tt home"
         >

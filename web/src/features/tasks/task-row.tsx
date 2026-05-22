@@ -3,13 +3,18 @@
  * table can stay focused on layout/keyboard handling while individual rows
  * own click + kebab-menu behaviour.
  *
- * Renders columns in spec §6 order: bulk-select checkbox, drag handle
- * (conditional), title (click → edit), state pill, tag chips, due date
- * (overdue indicator), staged badge, kebab menu.
+ * Renders columns: bulk-select checkbox, drag handle (conditional), stage
+ * toggle button, title (click → edit), state pill, tag chips, due date
+ * (overdue indicator), kebab menu.
  */
 
 import { format, isPast, parseISO } from 'date-fns';
-import { AlertTriangleIcon, GripVerticalIcon, MoreHorizontalIcon } from 'lucide-react';
+import {
+  AlertTriangleIcon,
+  BookmarkIcon,
+  GripVerticalIcon,
+  MoreHorizontalIcon,
+} from 'lucide-react';
 import { type CSSProperties, forwardRef, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -128,6 +133,25 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
           )}
         </td>
       )}
+      <td className="pl-3 pr-2 py-2 align-middle">
+        <button
+          type="button"
+          onClick={() => (task.staged_order === null ? onStage() : onUnstage())}
+          aria-label={task.staged_order === null ? `Stage ${task.title}` : `Unstage ${task.title}`}
+          aria-pressed={task.staged_order !== null}
+          data-staged={task.staged_order !== null || undefined}
+          className={cn(
+            'inline-flex size-7 items-center justify-center rounded-md transition-colors',
+            'hover:bg-accent hover:text-accent-foreground',
+            task.staged_order !== null ? 'text-primary' : 'text-muted-foreground',
+          )}
+        >
+          <BookmarkIcon
+            className={cn('size-4', task.staged_order !== null && 'fill-current')}
+            aria-hidden="true"
+          />
+        </button>
+      </td>
       <td className="px-2 py-2 align-middle">
         <button
           type="button"
@@ -153,13 +177,6 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
         </div>
       </td>
       <td className="px-2 py-2 align-middle">{dueBadge(task)}</td>
-      <td className="px-2 py-2 align-middle">
-        {task.staged_order !== null && (
-          <Badge variant="secondary" className="text-[10px]">
-            ·staged
-          </Badge>
-        )}
-      </td>
       <td className="px-1 py-2 align-middle">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
