@@ -29,9 +29,19 @@ export interface TaskTableProps {
   sort: TaskSortAxis;
   /** When true, render the multi-select checkbox column. */
   multiSelectMode: boolean;
+  /** Called when a shortcut wants to flip multi-select on (e.g. shift-j). */
+  onMultiSelectModeChange?: (next: boolean) => void;
   selectedIds: Set<number>;
   onSelectedChange: (next: Set<number>) => void;
   onEdit: (task: Task) => void;
+  /** Opens the inline tag editor over the focused task's tag cell (`t`). */
+  onEditTags?: (task: Task) => void;
+  /**
+   * When set, the keyboard shortcuts are inert. The inline tag editor flips
+   * this on so its own input can own keystrokes without the table eating
+   * `t`, `d`, etc.
+   */
+  shortcutsDisabled?: boolean;
   /**
    * Whether any filter is active. When true and DnD is on, show a hint that
    * the reorder operates only on the visible subset.
@@ -90,9 +100,12 @@ export function TaskTable({
   tasks,
   sort,
   multiSelectMode,
+  onMultiSelectModeChange,
   selectedIds,
   onSelectedChange,
   onEdit,
+  onEditTags,
+  shortcutsDisabled,
   hasFilters,
 }: TaskTableProps) {
   const showDragHandle = sort === 'priority';
@@ -143,6 +156,10 @@ export function TaskTable({
     selectedIds,
     onSelectedChange,
     onEdit,
+    onEditTags,
+    onMultiSelectModeChange,
+    multiSelectMode,
+    disabled: shortcutsDisabled,
     onToggleDone: (id, st) => setState.mutate({ id, state: st }),
     onStage: (id) => stage.mutate(id),
   });
@@ -299,14 +316,46 @@ interface TableShortcutsArgs {
   selectedIds: Set<number>;
   onSelectedChange: (next: Set<number>) => void;
   onEdit: (task: Task) => void;
+  onEditTags?: (task: Task) => void;
+  /** Multi-select mode auto-engages when the user starts a ⇧j/⇧k range. */
+  multiSelectMode?: boolean;
+  onMultiSelectModeChange?: (next: boolean) => void;
+  /** When true, swallow no keys. Used while the inline tag editor is open. */
+  disabled?: boolean;
   onToggleDone: (id: number, state: ReturnType<typeof toggleDoneState>) => void;
   onStage: (id: number) => void;
+}
+
+/**
+ * Compute the new selection set from an anchor + cursor pair. Exported so
+ * the unit test can exercise the math without driving a full table render.
+ *
+ * Semantics: every task whose index lies between `anchorIdx` and
+ * `cursorIdx` (inclusive) is selected; nothing else is selected. This is
+ * the "fresh range" model — the table doesn't try to preserve unrelated
+ * checkboxes the user toggled before starting a range, because the
+ * shift-walk should be predictable.
+ */
+export function rangeSelection(tasks: Task[], anchorIdx: number, cursorIdx: number): Set<number> {
+  if (anchorIdx < 0 || cursorIdx < 0) return new Set();
+  const lo = Math.min(anchorIdx, cursorIdx);
+  const hi = Math.max(anchorIdx, cursorIdx);
+  const out = new Set<number>();
+  for (let i = lo; i <= hi; i++) {
+    if (tasks[i]) out.add(tasks[i].id);
+  }
+  return out;
 }
 
 /**
  * j/k row navigation + enter/e/s/space/d action keys, scoped to the table
  * container. Only fires while the table itself or one of its descendants
  * is the focused element (avoids hijacking global typing).
+ *
+ * ⇧j/⇧k start (or extend) a range select rooted at the focused row when
+ * the shift modifier is first pressed. The anchor resets whenever the user
+ * does anything that breaks the range — clicks a checkbox, presses an
+ * unrelated key, or steps with plain j/k.
  */
 function useTableShortcuts({
   containerRef,
@@ -316,14 +365,23 @@ function useTableShortcuts({
   selectedIds,
   onSelectedChange,
   onEdit,
+  onEditTags,
+  multiSelectMode,
+  onMultiSelectModeChange,
+  disabled,
   onToggleDone,
   onStage,
 }: TableShortcutsArgs) {
+  const anchorRef = useRef<number | null>(null);
+  const multiSelectModeRef = useRef(multiSelectMode);
+  multiSelectModeRef.current = multiSelectMode;
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
     const handler = (event: KeyboardEvent) => {
+      if (disabled) return;
       if (
         !containerRef.current?.contains(event.target as Node) &&
         event.target !== containerRef.current
@@ -343,35 +401,80 @@ function useTableShortcuts({
         setFocusedId(tasks[clamped].id);
       };
 
+      // ⇧ + letter delivers a capital letter. We branch on those so the
+      // logic stays clear: lower-case = plain step (resets anchor),
+      // upper-case = extend range (anchor sticky).
+      if (event.key === 'J' || event.key === 'K') {
+        event.preventDefault();
+        if (currentIdx === -1) {
+          // Nothing focused yet — first ⇧j just focuses row 0; no range.
+          setIdx(0);
+          anchorRef.current = tasks[0].id;
+          return;
+        }
+        if (anchorRef.current == null) anchorRef.current = focusedId;
+        if (!multiSelectModeRef.current) {
+          onMultiSelectModeChange?.(true);
+        }
+        const nextIdx = Math.max(
+          0,
+          Math.min(tasks.length - 1, event.key === 'J' ? currentIdx + 1 : currentIdx - 1),
+        );
+        setFocusedId(tasks[nextIdx].id);
+        const anchorIdx = tasks.findIndex((t) => t.id === anchorRef.current);
+        onSelectedChange(rangeSelection(tasks, anchorIdx, nextIdx));
+        return;
+      }
+
       if (event.key === 'j') {
         event.preventDefault();
+        anchorRef.current = null;
         setIdx(currentIdx === -1 ? 0 : currentIdx + 1);
         return;
       }
       if (event.key === 'k') {
         event.preventDefault();
+        anchorRef.current = null;
         setIdx(currentIdx === -1 ? 0 : currentIdx - 1);
         return;
       }
-      if (focusedId == null) return;
+      if (focusedId == null) {
+        anchorRef.current = null;
+        return;
+      }
       const focusedTask = tasks.find((t) => t.id === focusedId);
-      if (!focusedTask) return;
+      if (!focusedTask) {
+        anchorRef.current = null;
+        return;
+      }
 
       if (event.key === 'Enter' || event.key === 'e') {
         event.preventDefault();
+        anchorRef.current = null;
         onEdit(focusedTask);
       } else if (event.key === 's') {
         event.preventDefault();
+        anchorRef.current = null;
         onStage(focusedTask.id);
       } else if (event.key === 'd') {
         event.preventDefault();
+        anchorRef.current = null;
         onToggleDone(focusedTask.id, toggleDoneState(focusedTask.state));
+      } else if (event.key === 't') {
+        if (!onEditTags) return;
+        event.preventDefault();
+        anchorRef.current = null;
+        onEditTags(focusedTask);
       } else if (event.key === ' ') {
         event.preventDefault();
+        anchorRef.current = null;
         const copy = new Set(selectedIds);
         if (copy.has(focusedTask.id)) copy.delete(focusedTask.id);
         else copy.add(focusedTask.id);
         onSelectedChange(copy);
+      } else {
+        // Any other letter / modifier-free key — break the range.
+        anchorRef.current = null;
       }
     };
 
@@ -385,7 +488,26 @@ function useTableShortcuts({
     selectedIds,
     onSelectedChange,
     onEdit,
+    onEditTags,
+    onMultiSelectModeChange,
     onToggleDone,
     onStage,
+    disabled,
   ]);
+
+  // A click on a row checkbox resets the range anchor — Phase 6 spec.
+  // The table renders the checkbox column inside `containerRef`, so a
+  // delegated listener here keeps the policy in one place.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onClick = (event: MouseEvent) => {
+      const t = event.target as HTMLElement | null;
+      if (t?.closest('[role="checkbox"], input[type="checkbox"]')) {
+        anchorRef.current = null;
+      }
+    };
+    el.addEventListener('click', onClick);
+    return () => el.removeEventListener('click', onClick);
+  }, [containerRef]);
 }
