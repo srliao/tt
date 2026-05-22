@@ -20,6 +20,7 @@ import { useEffect, useState } from 'react';
 import { useTasks } from '@/api/tasks';
 import { Button } from '@/components/ui/button';
 import type { Task } from '@/types/task';
+import { ActiveFilterStrip } from './active-filter-strip';
 import { AddTaskModal, useNewTaskListener } from './add-task-modal';
 import { BulkActionBar } from './bulk-action-bar';
 import { EditTaskModal } from './edit-task-modal';
@@ -96,6 +97,8 @@ export function TasksPage() {
             </Button>
           </div>
         </header>
+
+        <ActiveFilterStrip />
 
         {showEmpty ? (
           <EmptyState onCreate={() => setCreating(true)} />

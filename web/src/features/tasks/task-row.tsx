@@ -136,6 +136,10 @@ export const TaskRow = forwardRef<HTMLTableRowElement, TaskRowProps>(function Ta
       data-state={task.state}
       className={cn(
         'border-b hover:bg-muted/40 data-focused:bg-accent/40',
+        // Row focus rail — `<tr>` doesn't take `position: relative` reliably
+        // across browsers, so we render the 2px accent stripe via an inset
+        // box-shadow on the first cell instead. See `data-focused:[&>td:first-child]:…`.
+        'data-focused:[&>td:first-child]:shadow-[inset_2px_0_0_0_var(--color-primary)]',
         finished && 'opacity-60',
       )}
     >

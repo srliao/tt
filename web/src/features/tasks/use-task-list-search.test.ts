@@ -3,6 +3,7 @@ import {
   applyQuickFilter,
   clickModeFromEvent,
   hasActiveFilters,
+  isStateRestricted,
   taskSearchSchema,
 } from './use-task-list-search';
 
@@ -148,6 +149,26 @@ describe('hasActiveFilters', () => {
     expect(hasActiveFilters({ tags: ['work'] })).toBe(true);
     expect(hasActiveFilters({ tagsExclude: ['noise'] })).toBe(true);
     expect(hasActiveFilters({ states: ['done'] })).toBe(true);
+  });
+});
+
+describe('isStateRestricted', () => {
+  it('returns false when no states are set (default view)', () => {
+    expect(isStateRestricted({})).toBe(false);
+  });
+
+  it('returns false when states is empty (treated as default)', () => {
+    expect(isStateRestricted({ states: [] })).toBe(false);
+  });
+
+  it('returns false when all three states are explicitly selected', () => {
+    expect(isStateRestricted({ states: ['not_done', 'done', 'cancelled'] })).toBe(false);
+  });
+
+  it('returns true when only a strict subset of states is selected', () => {
+    expect(isStateRestricted({ states: ['not_done'] })).toBe(true);
+    expect(isStateRestricted({ states: ['done'] })).toBe(true);
+    expect(isStateRestricted({ states: ['not_done', 'done'] })).toBe(true);
   });
 });
 

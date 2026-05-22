@@ -129,6 +129,19 @@ export function hasActiveFilters(search: TaskSearch): boolean {
 }
 
 /**
+ * True when `search.states` is set to a strict subset of the full set of
+ * states — i.e. the user is hiding at least one state. The default view (no
+ * `states` set, or `states` equal to the full set) is NOT considered
+ * restricted. Used by the active-filter strip to surface an "Open only ·
+ * include done?" affordance.
+ */
+export function isStateRestricted(search: TaskSearch): boolean {
+  if (!search.states || search.states.length === 0) return false;
+  // Restricted iff at least one canonical state is missing from the selection.
+  return TASK_STATES.some((s) => !search.states?.includes(s));
+}
+
+/**
  * Hook bound to the `/tasks` route. Returns the parsed search object plus a
  * `setSearch(updates)` helper that performs a shallow merge into the URL.
  * Pass `undefined` to clear a single field.
