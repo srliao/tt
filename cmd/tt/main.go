@@ -20,6 +20,7 @@ import (
 	"github.com/srliao/tt/internal/script"
 	"github.com/srliao/tt/internal/tag"
 	"github.com/srliao/tt/internal/task"
+	"github.com/srliao/tt/internal/web"
 )
 
 // Version is overridden at build time via -ldflags "-X main.Version=...".
@@ -90,6 +91,16 @@ func run() error {
 	}
 	defer sched.Stop()
 
+	// Load the embedded SPA bundle. //go:embed always resolves (the package
+	// ships a sentinel .gitkeep so the directive is happy on a clean
+	// checkout), but a binary built without `just build` will contain only
+	// that sentinel and respond 404 to SPA routes — intentional.
+	distFS, err := web.Dist()
+	if err != nil {
+		return fmt.Errorf("load embedded dist: %w", err)
+	}
+	spaHandler := httpapi.NewSPAHandler(distFS)
+
 	server := httpapi.New(
 		tasks, tags, scripts, sched,
 		httpapi.PingerFunc(store.DB().PingContext),
@@ -97,9 +108,7 @@ func run() error {
 			Logger:  logger,
 			Version: Version,
 			BuiltAt: BuiltAt,
-			// Phase 09 swaps this for the embedded SPA bundle. Nil here
-			// degrades to a 404 envelope on unmatched routes.
-			SPA: nil,
+			SPA:     spaHandler,
 		},
 	)
 
