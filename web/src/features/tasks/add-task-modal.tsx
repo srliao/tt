@@ -7,12 +7,19 @@
  * with no chrome. Enter creates the task and closes; Esc cancels (handled by
  * Radix Dialog). When `stageAfterCreate` is set (e.g. on /stage) the new task
  * is staged immediately so it lands in the user's current focus batch.
+ *
+ * A "+ Add tags" disclosure lives below the title input. Clicking it reveals
+ * a <TagCombobox>; the title-input fast path (Enter to submit) is preserved
+ * because the form's onSubmit only fires when the title input owns submission
+ * (the combobox's Enter is consumed by cmdk and does not propagate as a form
+ * submit).
  */
 
 import { Dialog as DialogPrimitive } from 'radix-ui';
 import { useEffect, useRef, useState } from 'react';
 import { useCreateTask, useStageTask } from '@/api/tasks';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { TagCombobox } from '@/components/ui/tag-combobox';
 
 export interface AddTaskModalProps {
   open: boolean;
@@ -26,15 +33,24 @@ export function AddTaskModal({ open, onOpenChange, stageAfterCreate }: AddTaskMo
   const stageTask = useStageTask();
   const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
+  const [showTags, setShowTags] = useState(false);
 
   useEffect(() => {
-    if (!open) setTitle('');
+    if (!open) {
+      setTitle('');
+      setTags([]);
+      setShowTags(false);
+    }
   }, [open]);
 
   const submit = async () => {
     const trimmed = title.trim();
     if (!trimmed || createTask.isPending || stageTask.isPending) return;
-    const created = await createTask.mutateAsync({ title: trimmed });
+    const created = await createTask.mutateAsync({
+      title: trimmed,
+      ...(tags.length > 0 ? { tags } : {}),
+    });
     if (stageAfterCreate) {
       await stageTask.mutateAsync(created.id);
     }
@@ -69,6 +85,19 @@ export function AddTaskModal({ open, onOpenChange, stageAfterCreate }: AddTaskMo
             aria-label="New task title"
             className="w-full bg-transparent px-5 py-4 text-lg outline-none placeholder:text-muted-foreground"
           />
+          <div className="flex flex-col gap-2 border-t border-border px-5 py-3">
+            {showTags ? (
+              <TagCombobox value={tags} onChange={setTags} allowCreate autoFocus />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowTags(true)}
+                className="self-start text-xs text-muted-foreground hover:text-foreground"
+              >
+                + Add tags
+              </button>
+            )}
+          </div>
         </form>
       </DialogContent>
     </Dialog>

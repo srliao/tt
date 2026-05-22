@@ -42,6 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { TagCombobox } from '@/components/ui/tag-combobox';
 import type { Task, TaskState, TaskUpdateInput } from '@/types/task';
 
 const schema = z.object({
@@ -49,7 +50,7 @@ const schema = z.object({
   notes: z.string().optional(),
   state: z.enum(['not_done', 'done', 'cancelled']),
   due_date: z.string().optional(),
-  tags: z.string().optional(),
+  tags: z.array(z.string()).default([]),
 });
 
 const STATE_OPTIONS: Array<{ value: TaskState; label: string }> = [
@@ -67,13 +68,13 @@ export interface EditTaskModalProps {
 }
 
 function taskToFormValues(task: Task | null): FormValues {
-  if (!task) return { title: '', notes: '', state: 'not_done', due_date: '', tags: '' };
+  if (!task) return { title: '', notes: '', state: 'not_done', due_date: '', tags: [] };
   return {
     title: task.title,
     notes: task.notes ?? '',
     state: task.state,
     due_date: task.due_date ?? '',
-    tags: (task.tags ?? []).join(', '),
+    tags: task.tags ?? [],
   };
 }
 
@@ -98,24 +99,18 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
     if (open) {
       reset(taskToFormValues(task));
     } else {
-      reset({ title: '', notes: '', state: 'not_done', due_date: '', tags: '' });
+      reset({ title: '', notes: '', state: 'not_done', due_date: '', tags: [] });
       setConfirmDelete(false);
     }
   }, [open, task, reset]);
 
   const onSubmit = handleSubmit(async (values) => {
     if (!task) return;
-    const tags = values.tags
-      ? values.tags
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
     const input: TaskUpdateInput = {
       title: values.title.trim(),
       notes: values.notes?.trim() ?? '',
       due_date: values.due_date?.trim() || null,
-      tags,
+      tags: values.tags,
     };
     await updateTask.mutateAsync({ id: task.id, input });
     if (values.state !== task.state) {
@@ -193,7 +188,18 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="edit-task-tags">Tags</Label>
-            <Input id="edit-task-tags" placeholder="comma,separated" {...register('tags')} />
+            <Controller
+              control={control}
+              name="tags"
+              render={({ field }) => (
+                <TagCombobox
+                  id="edit-task-tags"
+                  value={field.value}
+                  onChange={field.onChange}
+                  allowCreate
+                />
+              )}
+            />
           </div>
           <DialogFooter className="sm:justify-between">
             <Button type="button" variant="destructive" onClick={() => setConfirmDelete(true)}>
