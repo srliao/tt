@@ -65,7 +65,11 @@ Quick locator tables. When you need to read code, start here.
 | Scripts list + editor + cheatsheets + spawned-tasks panel | `web/src/features/scripts/*` |
 | Runs list + detail + logs table + status pill | `web/src/features/runs/*` |
 | URL-driven filter state for /tasks | `web/src/features/tasks/use-task-list-search.ts` |
+| Client-side filter match + select-all-matching helper | `web/src/features/tasks/use-task-list-search.ts` → `matchesFilter`, `computeAllMatchingIds` |
 | Active-filter strip (chips above the task table) | `web/src/features/tasks/active-filter-strip.tsx` |
+| Persistent task selection (sessionStorage `tt:selection`) | `web/src/features/tasks/use-selection.ts` → `useSelection` (+ `__resetSelectionStoreForTests`, test-only) |
+| Bulk-tag popover (Add / Remove / Set, tri-state) | `web/src/features/tasks/bulk-tag-editor.tsx` → `BulkTagEditor` |
+| Tri-state checkbox indicator used by the bulk-tag editor | `web/src/features/tasks/bulk-tag-editor.tristate.tsx` → `TriStateIndicator` |
 
 ## Build / dev / tooling
 

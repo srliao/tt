@@ -74,6 +74,12 @@ These are load-bearing — violating them breaks tests or causes subtle bugs.
 
 8. **JSON error envelope.** All non-2xx responses share `{"error": {"code", "message", "details?"}}`. Codes are stable strings; see `internal/httpapi/errors.go`. The mapper is `writeServiceError` in `tasks.go` — string-based to avoid importing the scheduler/sqlite packages.
 
+9. **Task selection lives in `sessionStorage`, not the URL.** `useSelection` in `web/src/features/tasks/use-selection.ts` is a module-level store + `useSyncExternalStore` subscription, persisted under key `tt:selection`. Every caller (`<TaskTable>`, `<BulkActionBar>`, `<BulkTagEditor>`, `<CommandPalette>`) shares the same snapshot so cross-component mutations stay consistent. URL is reserved for filters and transient *signals* (`open`, `openBulkTagEditor`, `confirmBulkDelete`, `confirmBulkCancel`) — never the selection set itself.
+
+10. **Bulk-tag is one transaction.** `task.Impl.BulkTag` (see `internal/task/service.go`) opens a single tx and runs INSERT OR IGNORE / DELETE / REPLACE per op across the supplied task ids, then reloads the affected rows in request-order. Tag name → id resolution happens at the HTTP boundary (`handleBulkTag` in `internal/httpapi/tasks.go`): `tag.Resolve` (auto-create) for add/set, `tag.ResolveExisting` (silently drop unknown) for remove. Service operates on ids only.
+
+11. **Document-level keydown for the task table.** `useTableShortcuts` in `web/src/features/tasks/task-table.tsx` binds to `document` (not the table element) so j/k/x/⌘A fire regardless of focus. Guards: a `disabled` flag, `isEditableTarget(target)`, and an open Radix dialog probe (`[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]`). Replicate this guard set when adding any document-scoped shortcut on a page.
+
 ## Cross-cutting concerns
 
 - **Logging**: `slog` text handler to stderr. Middleware emits one line per HTTP request with `request_id`. Script-internal logs go to `script_logs` table, NOT stderr.

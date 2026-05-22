@@ -58,7 +58,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     items: [
       { keys: 'x', description: 'Select / deselect focused task' },
       { keys: '␣', description: 'Same — Space also works' },
-      { keys: '⇧ j / ⇧ k', description: 'Extend range' },
+      { keys: '⇧ j / ⇧ k', description: 'Extend selection range' },
       { keys: '⌘ A', description: 'Select all visible' },
       { keys: '⇧ ⌘ A', description: 'Select all matching the filter' },
       { keys: 'Esc', description: 'Clear selection' },
