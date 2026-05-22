@@ -129,14 +129,20 @@ export function hasActiveFilters(search: TaskSearch): boolean {
 }
 
 /**
- * True when `search.states` is set to a strict subset of the full set of
- * states — i.e. the user is hiding at least one state. The default view (no
- * `states` set, or `states` equal to the full set) is NOT considered
- * restricted. Used by the active-filter strip to surface an "Open only ·
- * include done?" affordance.
+ * True when the effective state filter hides at least one canonical state.
+ *
+ * The "default" view (no `states` in the URL) mirrors the sidebar's
+ * default-checked "Not done" — see `applyQuickFilter` — so it is considered
+ * restricted and the active-filter strip surfaces the "Open only · include
+ * done?" affordance even on a fresh `/tasks` visit. An empty `states` array
+ * is treated identically to the unset case.
+ *
+ * Only when all three canonical states are explicitly selected is the view
+ * considered unrestricted (no affordance).
  */
 export function isStateRestricted(search: TaskSearch): boolean {
-  if (!search.states || search.states.length === 0) return false;
+  // Default view (states unset or empty) = filtered to not_done only.
+  if (!search.states || search.states.length === 0) return true;
   // Restricted iff at least one canonical state is missing from the selection.
   return TASK_STATES.some((s) => !search.states?.includes(s));
 }

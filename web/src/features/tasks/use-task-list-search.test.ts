@@ -153,12 +153,12 @@ describe('hasActiveFilters', () => {
 });
 
 describe('isStateRestricted', () => {
-  it('returns false when no states are set (default view)', () => {
-    expect(isStateRestricted({})).toBe(false);
+  it('returns true when no states are set (default view = not_done only)', () => {
+    expect(isStateRestricted({})).toBe(true);
   });
 
-  it('returns false when states is empty (treated as default)', () => {
-    expect(isStateRestricted({ states: [] })).toBe(false);
+  it('returns true when states is empty (treated as default)', () => {
+    expect(isStateRestricted({ states: [] })).toBe(true);
   });
 
   it('returns false when all three states are explicitly selected', () => {
