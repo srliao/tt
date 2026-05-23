@@ -101,10 +101,11 @@ describe('ActiveFilterStrip', () => {
   });
 
   it('renders include + exclude tag chips and removes individual ones', async () => {
-    const { router } = renderStrip('/tasks?tag_filter=any%3Awork%2Curgent&tags_exclude=noise');
-    // The route validator parses `tag_filter` into a TagFilter object and
-    // `tagsExclude` into an array; seed via the URL so the schema does the
-    // transform for us.
+    const { router } = renderStrip('/tasks');
+    // Seed the filter state via `router.navigate` rather than the URL string:
+    // the structured search object goes through the route's `validateSearch`,
+    // and `tagsExclude` is camelCase in the schema, so this is both simpler
+    // and a closer match to how `setSearch` writes the URL at runtime.
     await act(async () => {
       await router.navigate({
         to: '/tasks',

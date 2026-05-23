@@ -3,9 +3,9 @@
  * multi-select, due-range select.
  *
  * All UI state lives in the URL via `useTaskListSearch()` so refreshes and
- * shared links stay stable. As of Phase 5, the in-sidebar search field is
- * gone — text search is performed via the global command palette (`/` or
- * `⌘K`). The `?q=` URL contract is unchanged so deep links keep working.
+ * shared links stay stable. The in-sidebar search field has been moved to
+ * the global command palette (`/` or `⌘K`); the `?q=` URL contract is
+ * unchanged so deep links keep working.
  */
 
 import { CheckIcon } from 'lucide-react';
@@ -25,10 +25,10 @@ import { TagChip } from '@/components/ui/tag-chip';
 import { cn } from '@/lib/utils';
 import type { TaskDueRange, TaskState } from '@/types/task';
 import {
+  isStateRestricted,
   QUICK_FILTERS,
   type QuickFilter,
   type TagMatchMode,
-  type TaskSearch,
   useTaskListSearch,
 } from './use-task-list-search';
 
@@ -55,14 +55,6 @@ const DUE_OPTIONS: Array<{ value: string; range: TaskDueRange; label: string }> 
   { value: 'this_week', range: 'this_week', label: 'This week' },
   { value: 'none', range: 'none', label: 'No due date' },
 ];
-
-function isStateRestricted(search: TaskSearch): boolean {
-  if (search.states && search.states.length > 0) {
-    return !(search.states.length === 3);
-  }
-  // Default is `not_done` only.
-  return true;
-}
 
 export function FilterSidebar() {
   const { search, setSearch } = useTaskListSearch();
