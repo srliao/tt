@@ -299,14 +299,20 @@ func neighborKey(row sqlcgen.Task, useStage bool) (*float64, error) {
 // List returns tasks matching f. The query is assembled dynamically in Go
 // because the filter shape is too varied for sqlc to model.
 //
-// Filters compose with AND semantics. Tag filtering uses a sub-select that
-// either HAVING-checks the distinct count (TagModeAll, the default — task
-// must carry all N supplied tags) or simply joins on any matching tag
-// (TagModeAny — OR semantics). Tag exclusion (TagExcludeIDs) drops any task
-// that carries at least one of the excluded tag ids and composes with the
-// inclusion clause via AND. Sort defaults to priority ASC, id ASC (the
-// main-list order); Ascending flips non-priority axes only. Limit / Offset
-// are applied verbatim when set (Limit == 0 disables paging).
+// Filters compose with AND semantics. Tag filtering is parameterised by
+// f.Tags (TagFilter):
+//   - Any + real ids: task carries at least one of the supplied ids.
+//   - Any + @untagged + real ids: union of the above with the untagged set.
+//   - Any + @untagged only: tasks with zero rows in task_tags.
+//   - All + real ids: task carries every supplied id (HAVING COUNT distinct).
+//   - All + @untagged + any real ids: impossible set, short-circuits to
+//     an empty result via `AND 0 = 1` so sort/limit emit well-formed SQL.
+//
+// Tag exclusion (TagExcludeIDs) drops any task that carries at least one
+// of the excluded tag ids and composes with the inclusion clause via AND.
+// Sort defaults to priority ASC, id ASC (the main-list order); Ascending
+// flips non-priority axes only. Limit / Offset are applied verbatim when
+// set (Limit == 0 disables paging).
 func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 	var sb strings.Builder
 	args := make([]any, 0, 8)
@@ -324,23 +330,48 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 		sb.WriteString(")")
 	}
 
-	if len(f.TagIDs) > 0 {
+	hasReal := len(f.Tags.RealTagIDs) > 0
+	hasUntag := f.Tags.IncludeUntagged
+	switch {
+	case !hasReal && !hasUntag:
+		// no tag-inclusion clause
+	case !hasReal && hasUntag:
+		// Untagged only: tasks with zero rows in task_tags.
+		sb.WriteString(" AND NOT EXISTS (SELECT 1 FROM task_tags tt WHERE tt.task_id = id)")
+	case hasReal && f.Tags.Mode == TagModeAll && hasUntag:
+		// Impossible set: a task cannot be untagged AND carry specific tags.
+		// Short-circuit so sort/limit still emit well-formed SQL.
+		sb.WriteString(" AND 0 = 1")
+	case hasReal && f.Tags.Mode == TagModeAll:
+		// All: task must carry every supplied real id.
 		sb.WriteString(" AND id IN (SELECT task_id FROM task_tags WHERE tag_id IN (")
-		for i, id := range f.TagIDs {
+		for i, id := range f.Tags.RealTagIDs {
 			if i > 0 {
 				sb.WriteString(", ")
 			}
 			sb.WriteString("?")
 			args = append(args, id)
 		}
-		// TagModeAny short-circuits the HAVING-count check so a task linked
-		// to any of the supplied tag ids matches. Default ("" or
-		// TagModeAll) preserves the original AND semantics.
-		if f.TagMode == TagModeAny {
-			sb.WriteString("))")
+		sb.WriteString(") GROUP BY task_id HAVING COUNT(DISTINCT tag_id) = ?)")
+		args = append(args, int64(len(f.Tags.RealTagIDs)))
+	default:
+		// Any (default): union of (task has any real id) ∪ (untagged if requested).
+		if hasUntag {
+			sb.WriteString(" AND (id IN (SELECT task_id FROM task_tags WHERE tag_id IN (")
 		} else {
-			sb.WriteString(") GROUP BY task_id HAVING COUNT(DISTINCT tag_id) = ?)")
-			args = append(args, int64(len(f.TagIDs)))
+			sb.WriteString(" AND id IN (SELECT task_id FROM task_tags WHERE tag_id IN (")
+		}
+		for i, id := range f.Tags.RealTagIDs {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("?")
+			args = append(args, id)
+		}
+		if hasUntag {
+			sb.WriteString(")) OR NOT EXISTS (SELECT 1 FROM task_tags tt WHERE tt.task_id = id))")
+		} else {
+			sb.WriteString("))")
 		}
 	}
 

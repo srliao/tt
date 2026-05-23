@@ -59,6 +59,27 @@ func TestCreateNormalizesAndRejectsEmpty(t *testing.T) {
 	}
 }
 
+// TestCreateRejectsAtPrefix ensures the reserved `@` prefix (used by sentinel
+// tokens like `@untagged` in the tag_filter URL schema) can never be
+// persisted as a real tag, no matter which entry point is used.
+func TestCreateRejectsAtPrefix(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+
+	if _, err := svc.Create(ctx, "@foo"); err == nil {
+		t.Errorf("Create(@foo): expected error, got nil")
+	}
+	if _, err := svc.Create(ctx, "  @bar  "); err == nil {
+		t.Errorf("Create(@bar after trim): expected error, got nil")
+	}
+	if _, err := svc.Resolve(ctx, []string{"@untagged"}, true); err == nil {
+		t.Errorf("Resolve(@untagged, autoCreate): expected error, got nil")
+	}
+	if _, err := svc.Resolve(ctx, []string{"@untagged"}, false); err == nil {
+		t.Errorf("Resolve(@untagged, no autoCreate): expected error, got nil")
+	}
+}
+
 func TestCreateIsCaseInsensitive(t *testing.T) {
 	ctx := context.Background()
 	svc := newSvc(t)

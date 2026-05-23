@@ -93,6 +93,20 @@ func TestTags_CreateEmptyNameIs400(t *testing.T) {
 	}
 }
 
+// TestTags_CreateReservedAtPrefixIs400 verifies that names beginning with the
+// reserved `@` sentinel prefix (used by tokens like `@untagged` in the
+// tag_filter URL schema) cannot be persisted as real tags.
+func TestTags_CreateReservedAtPrefixIs400(t *testing.T) {
+	t.Parallel()
+
+	fx := newTestServer(t, nil)
+	resp := doJSON(t, http.MethodPost, fx.server.URL+"/api/v1/tags", map[string]any{"name": "@foo"})
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
 func TestTags_RenameDuplicateIs409(t *testing.T) {
 	t.Parallel()
 
