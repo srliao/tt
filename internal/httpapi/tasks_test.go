@@ -295,6 +295,11 @@ func TestTasks_ListFilterByTagFilter(t *testing.T) {
 	// Impossible — must be empty, not 500.
 	expectIDs(t, "all:@untagged,work", "/api/v1/tasks?tag_filter=all:@untagged,work")
 
+	// Duplicate names are deduplicated before SQL — `all:work,work` must
+	// behave like `all:work` (the All-mode HAVING COUNT(DISTINCT) check
+	// would otherwise reject the legit single-tag match).
+	expectIDs(t, "all:work,work", "/api/v1/tasks?tag_filter=all:work,work", workTask.ID, dual.ID)
+
 	// Malformed forms degrade to "no filter" (all tasks come back).
 	expectIDs(t, "no-colon", "/api/v1/tasks?tag_filter=workurgent", bare.ID, workTask.ID, dual.ID)
 	expectIDs(t, "unknown-mode", "/api/v1/tasks?tag_filter=foo:work", bare.ID, workTask.ID, dual.ID)

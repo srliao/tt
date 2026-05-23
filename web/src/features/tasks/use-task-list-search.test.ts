@@ -128,6 +128,13 @@ describe('parseTagFilter', () => {
     expect(parseTagFilter('any:')).toBeUndefined();
     expect(parseTagFilter('any:,,')).toBeUndefined();
   });
+
+  it('deduplicates repeated tag names', () => {
+    expect(parseTagFilter('all:work,work,urgent')).toEqual({
+      mode: 'all',
+      tags: ['work', 'urgent'],
+    });
+  });
 });
 
 describe('serializeTagFilter', () => {
