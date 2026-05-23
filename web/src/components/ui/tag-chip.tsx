@@ -2,6 +2,7 @@ import { XIcon } from 'lucide-react';
 import type * as React from 'react';
 
 import { useTheme } from '@/components/theme-provider';
+import { UNTAGGED_TOKEN } from '@/features/tasks/use-task-list-search';
 import { tagColor, tagColorDark } from '@/lib/tag-color';
 import { cn } from '@/lib/utils';
 
@@ -42,20 +43,35 @@ export function TagChip({
   ariaLabel,
 }: TagChipProps) {
   const { resolvedTheme } = useTheme();
-  const palette = resolvedTheme === 'dark' ? tagColorDark(name) : tagColor(name);
+  const isUntagged = name === UNTAGGED_TOKEN;
+  // Visible label: the `@untagged` sentinel is a wire token only — render the
+  // friendly "Untagged" string anywhere it would surface as body copy.
+  const displayName = isUntagged ? 'Untagged' : name;
+  const palette = isUntagged
+    ? null
+    : resolvedTheme === 'dark'
+      ? tagColorDark(name)
+      : tagColor(name);
 
   // Solid chips fill the background with the tag's hue. Outline chips drop the
   // fill and use a neutral border so the dot is the sole color cue — useful in
-  // dense lists where many chips might cluster.
+  // dense lists where many chips might cluster. The untagged variant never
+  // uses a hash-derived color: dashed muted border + italic muted label.
   const style: React.CSSProperties =
-    variant === 'solid' ? { backgroundColor: palette.bg, color: palette.fg } : { color: 'inherit' };
+    palette && variant === 'solid'
+      ? { backgroundColor: palette.bg, color: palette.fg }
+      : { color: 'inherit' };
 
   const sizeClasses = size === 'md' ? 'h-6 px-2 text-sm gap-1.5' : 'h-5 px-1.5 text-xs gap-1';
 
   const baseClasses = cn(
     'inline-flex w-fit shrink-0 items-center rounded-full font-medium whitespace-nowrap select-none',
     'border transition-colors',
-    variant === 'solid' ? 'border-transparent' : 'border-border bg-transparent text-foreground',
+    isUntagged
+      ? 'border-dashed border-muted-foreground/40 bg-transparent italic text-muted-foreground'
+      : variant === 'solid'
+        ? 'border-transparent'
+        : 'border-border bg-transparent text-foreground',
     sizeClasses,
     dim && 'opacity-50',
     onClick &&
@@ -63,27 +79,35 @@ export function TagChip({
     className,
   );
 
-  const dot = (
+  const dot = isUntagged ? (
+    <span
+      aria-hidden
+      className={cn(
+        'inline-block shrink-0 rounded-full border border-dashed border-muted-foreground/60',
+        size === 'md' ? 'h-2 w-2' : 'h-1.5 w-1.5',
+      )}
+    />
+  ) : (
     <span
       aria-hidden
       className={cn(
         'inline-block shrink-0 rounded-full',
         size === 'md' ? 'h-2 w-2' : 'h-1.5 w-1.5',
       )}
-      style={{ backgroundColor: palette.dot }}
+      style={palette ? { backgroundColor: palette.dot } : undefined}
     />
   );
 
   const label = (
     <span className="truncate" data-slot="tag-chip-label">
-      {name}
+      {displayName}
     </span>
   );
 
   const remove = onRemove ? (
     <button
       type="button"
-      aria-label={`Remove ${name}`}
+      aria-label={`Remove ${displayName}`}
       onClick={(e) => {
         e.stopPropagation();
         onRemove();
@@ -107,14 +131,16 @@ export function TagChip({
     </>
   );
 
+  const dataVariant = isUntagged ? 'untagged' : variant;
+
   if (onClick) {
     return (
       <button
         type="button"
-        aria-label={ariaLabel ?? `Tag ${name}`}
+        aria-label={ariaLabel ?? `Tag ${displayName}`}
         onClick={onClick}
         data-slot="tag-chip"
-        data-variant={variant}
+        data-variant={dataVariant}
         className={baseClasses}
         style={style}
       >
@@ -126,7 +152,7 @@ export function TagChip({
   return (
     <span
       data-slot="tag-chip"
-      data-variant={variant}
+      data-variant={dataVariant}
       title={ariaLabel}
       className={baseClasses}
       style={style}
