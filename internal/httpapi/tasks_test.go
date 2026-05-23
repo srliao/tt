@@ -161,10 +161,12 @@ func TestTasks_ListFilterByState(t *testing.T) {
 	}
 }
 
-// TestTasks_ListLegacyTagParam exercises the Phase 6-removable back-compat
-// reader for the repeated `tag=` URL param. The legacy default is `any`
-// (Phase 2 spec); `tag_mode=all` still toggles AND semantics for one release.
-func TestTasks_ListLegacyTagParam(t *testing.T) {
+// TestTasks_ListLegacyTagParamIgnored confirms that the Phase 6 removal of
+// the legacy `tag=` + `tag_mode=` reader leaves those params silently
+// ignored — the request returns the full unfiltered list with a 200 status,
+// not a 400. Regression guard so a future re-add can't slip in without a
+// matching test update.
+func TestTasks_ListLegacyTagParamIgnored(t *testing.T) {
 	t.Parallel()
 
 	fx := newTestServer(t, nil)
@@ -174,6 +176,10 @@ func TestTasks_ListLegacyTagParam(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	t2, err := fx.tasks.Create(ctx, task.CreateInput{Title: "single"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	t3, err := fx.tasks.Create(ctx, task.CreateInput{Title: "untagged"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -192,32 +198,35 @@ func TestTasks_ListLegacyTagParam(t *testing.T) {
 		t.Fatalf("set tags t2: %v", err)
 	}
 
-	// Legacy default is `any` — both t1 (work+urgent) and t2 (work) match.
+	// `?tag=foo&tag=bar` is now silently ignored — every task comes back.
 	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag=work&tag=urgent", nil)
 	defer func() { _ = resp.Body.Close() }()
-	tasks := decodeTasks(t, resp)
-	if len(tasks) != 2 {
-		t.Fatalf("legacy default any result = %+v (want 2)", tasks)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200 (body: %s)", resp.StatusCode, string(body))
 	}
-	gotDef := map[int64]bool{tasks[0].ID: true, tasks[1].ID: true}
-	if !gotDef[t1.ID] || !gotDef[t2.ID] {
-		t.Fatalf("legacy default any missing ids: %+v", tasks)
+	tasks := decodeTasks(t, resp)
+	if len(tasks) != 3 {
+		t.Fatalf("legacy `tag=` should be ignored; got %d tasks (%+v), want 3 (all)", len(tasks), tasks)
+	}
+	gotIDs := map[int64]bool{}
+	for _, tt := range tasks {
+		gotIDs[tt.ID] = true
+	}
+	if !gotIDs[t1.ID] || !gotIDs[t2.ID] || !gotIDs[t3.ID] {
+		t.Fatalf("legacy `tag=` should be ignored; missing ids in %+v", tasks)
 	}
 
-	// tag_mode=all toggles AND semantics — only t1 matches.
+	// `tag_mode=all` alongside `tag=` is also silently ignored.
 	respAll := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag=work&tag=urgent&tag_mode=all", nil)
 	defer func() { _ = respAll.Body.Close() }()
-	tasksAll := decodeTasks(t, respAll)
-	if len(tasksAll) != 1 || tasksAll[0].ID != t1.ID {
-		t.Fatalf("tag_mode=all filter result = %+v", tasksAll)
+	if respAll.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(respAll.Body)
+		t.Fatalf("tag_mode=all status = %d, want 200 (body: %s)", respAll.StatusCode, string(body))
 	}
-
-	// tag_mode=any matches the legacy default.
-	respAny := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag=work&tag=urgent&tag_mode=any", nil)
-	defer func() { _ = respAny.Body.Close() }()
-	tasksAny := decodeTasks(t, respAny)
-	if len(tasksAny) != 2 {
-		t.Fatalf("tag_mode=any filter result = %+v (want 2)", tasksAny)
+	tasksAll := decodeTasks(t, respAll)
+	if len(tasksAll) != 3 {
+		t.Fatalf("legacy `tag=&tag_mode=all` should be ignored; got %d tasks, want 3", len(tasksAll))
 	}
 }
 

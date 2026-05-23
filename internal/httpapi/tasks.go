@@ -207,78 +207,62 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// parseTagFilter parses the inbound tag-inclusion params on GET /tasks. The
-// preferred form is the single `tag_filter` param ("any:work,errand" or
-// "all:work,urgent", optionally with the "@untagged" sentinel). The legacy
-// form (repeated `tag=` with an optional `tag_mode=all`) is honored as a
-// read-only fallback for one release and removed in Phase 6.
+// parseTagFilter parses the inbound tag-inclusion param on GET /tasks. The
+// only supported form is the single `tag_filter` param ("any:work,errand" or
+// "all:work,urgent", optionally with the "@untagged" sentinel).
 //
 // Malformed `tag_filter` strings (missing colon, unknown mode, empty list)
 // degrade silently to "no tag filter" so a typo in the URL never produces a
-// 400 — only an unknown but otherwise well-formed tag NAME does, mirroring
-// the previous behavior of the `tag=` reader.
+// 400 — only an unknown but otherwise well-formed tag NAME does.
+//
+// The legacy `tag=` (repeated) + `tag_mode=` reader was removed in Phase 6;
+// those params are now silently ignored.
 func (s *Server) parseTagFilter(ctx context.Context, q url.Values) (task.TagFilter, error) {
-	if raw := q.Get("tag_filter"); raw != "" {
-		idx := strings.IndexByte(raw, ':')
-		if idx < 0 {
-			return task.TagFilter{}, nil
-		}
-		mode := task.TagMode(raw[:idx])
-		if mode != task.TagModeAny && mode != task.TagModeAll {
-			return task.TagFilter{}, nil
-		}
-		rest := raw[idx+1:]
-		if rest == "" {
-			return task.TagFilter{}, nil
-		}
-		var includeUntagged bool
-		realNames := make([]string, 0, 4)
-		for _, n := range strings.Split(rest, ",") {
-			n = strings.TrimSpace(n)
-			if n == "" {
-				continue
-			}
-			if n == task.UntaggedToken {
-				includeUntagged = true
-				continue
-			}
-			realNames = append(realNames, n)
-		}
-		if !includeUntagged && len(realNames) == 0 {
-			return task.TagFilter{}, nil
-		}
-		var ids []int64
-		if len(realNames) > 0 {
-			resolved, err := s.tags.Resolve(ctx, realNames, false)
-			if err != nil {
-				return task.TagFilter{}, err
-			}
-			ids = resolved
-		}
-		return task.TagFilter{
-			Mode:            mode,
-			RealTagIDs:      ids,
-			IncludeUntagged: includeUntagged,
-		}, nil
+	raw := q.Get("tag_filter")
+	if raw == "" {
+		return task.TagFilter{}, nil
 	}
-
-	// Legacy reader (removed in Phase 6). Repeated tag=name params combine
-	// per the optional tag_mode (default any, matching the Phase 1 spec).
-	if legacy := q["tag"]; len(legacy) > 0 {
-		ids, err := s.tags.Resolve(ctx, legacy, false)
+	idx := strings.IndexByte(raw, ':')
+	if idx < 0 {
+		return task.TagFilter{}, nil
+	}
+	mode := task.TagMode(raw[:idx])
+	if mode != task.TagModeAny && mode != task.TagModeAll {
+		return task.TagFilter{}, nil
+	}
+	rest := raw[idx+1:]
+	if rest == "" {
+		return task.TagFilter{}, nil
+	}
+	var includeUntagged bool
+	realNames := make([]string, 0, 4)
+	for _, n := range strings.Split(rest, ",") {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		if n == task.UntaggedToken {
+			includeUntagged = true
+			continue
+		}
+		realNames = append(realNames, n)
+	}
+	if !includeUntagged && len(realNames) == 0 {
+		return task.TagFilter{}, nil
+	}
+	var ids []int64
+	if len(realNames) > 0 {
+		resolved, err := s.tags.Resolve(ctx, realNames, false)
 		if err != nil {
 			return task.TagFilter{}, err
 		}
-		mode := task.TagModeAny
-		if m := task.TagMode(q.Get("tag_mode")); m == task.TagModeAll {
-			mode = task.TagModeAll
-		}
-		return task.TagFilter{
-			Mode:       mode,
-			RealTagIDs: ids,
-		}, nil
+		ids = resolved
 	}
-	return task.TagFilter{}, nil
+	return task.TagFilter{
+		Mode:            mode,
+		RealTagIDs:      ids,
+		IncludeUntagged: includeUntagged,
+	}, nil
 }
 
 func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {

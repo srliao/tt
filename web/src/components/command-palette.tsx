@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/command';
 import { TagChip } from '@/components/ui/tag-chip';
 import { useSelection } from '@/features/tasks/use-selection';
+import { UNTAGGED_TOKEN } from '@/features/tasks/use-task-list-search';
 
 const NAV: ReadonlyArray<{
   label: string;
@@ -109,6 +110,14 @@ export function CommandPalette() {
     return tags.filter((t) => t.name.toLowerCase().includes(q)).slice(0, 8);
   }, [tags, q]);
 
+  // Surface the synthetic Untagged entry whenever the user's query is a
+  // substring of "untagged" (empty query surfaces it too, alongside the
+  // real-tag matches that are gated on `q`).
+  const queryMatchesUntagged = useMemo(() => {
+    if (!q) return true;
+    return 'untagged'.includes(q);
+  }, [q]);
+
   const applyQueryAsFilter = useCallback(
     (text: string) => {
       const value = text.trim();
@@ -130,7 +139,7 @@ export function CommandPalette() {
         to: '/tasks',
         search: (prev) => ({
           ...(prev as Record<string, unknown>),
-          tags: [name],
+          tag_filter: { mode: 'any' as const, tags: [name] },
           tagsExclude: undefined,
         }),
       });
@@ -138,6 +147,18 @@ export function CommandPalette() {
     },
     [navigate],
   );
+
+  const filterByUntagged = useCallback(() => {
+    void navigate({
+      to: '/tasks',
+      search: (prev) => ({
+        ...(prev as Record<string, unknown>),
+        tag_filter: { mode: 'any' as const, tags: [UNTAGGED_TOKEN] },
+        tagsExclude: undefined,
+      }),
+    });
+    setOpen(false);
+  }, [navigate]);
 
   const openTask = useCallback(
     (id: number) => {
@@ -285,10 +306,16 @@ export function CommandPalette() {
               </CommandItem>
             </CommandGroup>
 
-            {matchedTags.length > 0 && (
+            {(matchedTags.length > 0 || queryMatchesUntagged) && (
               <>
                 <CommandSeparator />
                 <CommandGroup heading={`Tags · ${matchedTags.length}`}>
+                  {queryMatchesUntagged && (
+                    <CommandItem value="untagged" onSelect={filterByUntagged}>
+                      <TagChip name={UNTAGGED_TOKEN} />
+                      <span className="ml-auto text-xs text-muted-foreground">filter by tag</span>
+                    </CommandItem>
+                  )}
                   {matchedTags.map((t) => (
                     <CommandItem
                       key={`tag-${t.id}`}
