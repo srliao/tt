@@ -306,7 +306,6 @@ describe('FilterSidebar', () => {
 
     const aside = await screen.findByRole('complementary');
     const allBtn = within(aside).getByRole('button', { name: 'all' });
-    expect(allBtn).toBeDisabled();
     expect(allBtn).toHaveAttribute('aria-disabled', 'true');
 
     await act(async () => {
@@ -327,10 +326,8 @@ describe('FilterSidebar', () => {
     const aside = await screen.findByRole('complementary');
     const allBtn = within(aside).getByRole('button', { name: 'all' });
     // Radix renders TooltipTrigger via asChild — the tooltip is anchored to
-    // the button. We assert the trigger is wired up by inspecting the
-    // surrounding span (the pointer-events shim).
-    const wrapper = allBtn.parentElement as HTMLElement;
-    expect(wrapper).toHaveAttribute('data-slot', 'tooltip-trigger');
+    // the button itself, so data-slot lands on the button (no wrapper).
+    expect(allBtn).toHaveAttribute('data-slot', 'tooltip-trigger');
   });
 
   it('renders the Matches summary with the correct joiner', async () => {
