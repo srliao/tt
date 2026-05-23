@@ -40,9 +40,17 @@ Migrations are embedded via `internal/db/migrations/embed.go`. They run on every
 
 ## When dynamic SQL is needed
 
-`task.Impl.List` builds the query as a string because the filter shape (states, tags, tag_mode, tag exclusion, due range, search, sort axis, asc/desc, limit/offset) is too varied for sqlc to model cleanly. Pattern: build into `strings.Builder`, push args into `[]any`, run via `s.store.DB().QueryContext`, then re-fetch each row through `s.q.GetTask` for typed projection.
+`task.Impl.List` builds the query as a string because the filter shape (states, tags, tag exclusion, due range, search, sort axis, asc/desc, limit/offset) is too varied for sqlc to model cleanly. Pattern: build into `strings.Builder`, push args into `[]any`, run via `s.store.DB().QueryContext`, then re-fetch each row through `s.q.GetTask` for typed projection.
 
-Tag filtering branches on `FilterSort.TagMode`: `TagModeAny` (or "") drops the HAVING-count check so a task matches if it carries any of the supplied tag ids; `TagModeAll` (the documented default for back-compat) requires every supplied tag. `FilterSort.TagExcludeIDs` adds a `NOT IN (SELECT task_id FROM task_tags WHERE tag_id IN (...))` clause and composes with inclusion via AND.
+Tag inclusion is parameterised by `FilterSort.Tags` (`task.TagFilter{Mode, RealTagIDs, IncludeUntagged}`):
+
+- `Any` + ids: `id IN (SELECT … tag_id IN (…))`.
+- `All` + ids: same sub-select with `GROUP BY task_id HAVING COUNT(DISTINCT tag_id) = N`.
+- `IncludeUntagged` alone: `NOT EXISTS (SELECT 1 FROM task_tags …)`.
+- `Any` + ids + `IncludeUntagged`: union of the two clauses with OR.
+- `All` + ids + `IncludeUntagged`: impossible set, short-circuits to `0 = 1`.
+
+The HTTP layer resolves tag NAMES → ids and strips the `@untagged` sentinel before constructing the `TagFilter` (see `parseTagFilter` in `internal/httpapi/tasks.go`). The service never touches tag-name resolution. `FilterSort.TagExcludeIDs` adds a `NOT IN (SELECT task_id FROM task_tags WHERE tag_id IN (...))` clause and composes with inclusion via AND.
 
 Don't replicate this for simple filters — prefer adding a named query.
 

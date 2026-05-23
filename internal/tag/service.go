@@ -43,13 +43,15 @@ func New(store *db.Store) *Impl {
 
 // Create inserts a new tag with the given name. The name is normalized
 // (trimmed + lowercased) before insertion; an empty or whitespace-only name is
-// rejected. To keep callers (especially Resolve) idempotent, Create first
-// looks up the name and returns the existing tag if found instead of
-// triggering a UNIQUE constraint error.
+// rejected, as is any name starting with the reserved `@` prefix (reserved
+// for sentinel tokens like `@untagged` used by the tag_filter URL schema).
+// To keep callers (especially Resolve) idempotent, Create first looks up the
+// name and returns the existing tag if found instead of triggering a UNIQUE
+// constraint error.
 func (s *Impl) Create(ctx context.Context, name string) (Tag, error) {
 	normalized := normalize(name)
-	if normalized == "" {
-		return Tag{}, errors.New("tag: name is required")
+	if err := validateName(normalized); err != nil {
+		return Tag{}, err
 	}
 
 	if existing, err := s.GetByName(ctx, normalized); err != nil {
@@ -69,8 +71,8 @@ func (s *Impl) Create(ctx context.Context, name string) (Tag, error) {
 // lowercased) and rejected if empty.
 func (s *Impl) Rename(ctx context.Context, id int64, name string) (Tag, error) {
 	normalized := normalize(name)
-	if normalized == "" {
-		return Tag{}, errors.New("tag: name is required")
+	if err := validateName(normalized); err != nil {
+		return Tag{}, err
 	}
 	row, err := s.q.RenameTag(ctx, sqlcgen.RenameTagParams{
 		Name: normalized,
@@ -164,6 +166,12 @@ func (s *Impl) Resolve(ctx context.Context, names []string, autoCreate bool) ([]
 	ids := make([]int64, 0, len(unique))
 	var missing []string
 	for _, n := range unique {
+		// Reserved sentinel names (e.g. "@untagged") can never name a real
+		// tag — reject before touching the DB so callers see a uniform
+		// validation error regardless of the autoCreate flag.
+		if err := validateName(n); err != nil {
+			return nil, err
+		}
 		existing, err := s.GetByName(ctx, n)
 		if err != nil {
 			return nil, err
@@ -232,6 +240,21 @@ func (s *Impl) ResolveExisting(ctx context.Context, names []string) ([]int64, er
 // of what the user typed.
 func normalize(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// validateName enforces the basic shape rules for a normalized tag name.
+// Empty names are rejected with the same "name is required" message used
+// elsewhere; names starting with "@" are reserved for sentinel tokens
+// surfaced through the tag_filter URL schema (e.g. "@untagged") and must
+// never be persisted as a real tag.
+func validateName(normalized string) error {
+	if normalized == "" {
+		return errors.New("tag: name is required")
+	}
+	if strings.HasPrefix(normalized, "@") {
+		return fmt.Errorf("tag: invalid name %q: reserved prefix @", normalized)
+	}
+	return nil
 }
 
 // rowToTag projects a sqlc-generated Tag row into the domain type.
