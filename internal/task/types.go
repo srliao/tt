@@ -51,28 +51,15 @@ const (
 	DueNone DueRange = "none"
 )
 
-// TagMode controls how multiple tag filters combine. The empty value behaves
-// as TagModeAll to preserve backward-compatible behavior for callers that do
-// not set the field.
+// TagMode controls how multiple tag filters combine on the List query.
 type TagMode string
 
 const (
 	// TagModeAll requires a task to carry every supplied tag (AND semantics).
-	// This is the default when TagMode is unset.
 	TagModeAll TagMode = "all"
 	// TagModeAny requires a task to carry at least one supplied tag (OR).
 	TagModeAny TagMode = "any"
 )
-
-// IsValid reports whether m is a recognized TagMode (treating "" as valid:
-// it defaults to TagModeAll).
-func (m TagMode) IsValid() bool {
-	switch m {
-	case "", TagModeAll, TagModeAny:
-		return true
-	}
-	return false
-}
 
 // SortAxis identifies the column the list query should order by.
 type SortAxis string
