@@ -220,7 +220,7 @@ describe('CommandPalette', () => {
     });
   });
 
-  it('selecting a tag navigates to /tasks with that tag filter', async () => {
+  it('selecting a tag navigates to /tasks with tag_filter=any:<name>', async () => {
     const { router } = renderPalette(
       {
         tags: [
@@ -240,15 +240,59 @@ describe('CommandPalette', () => {
       fireEvent.change(input, { target: { value: 'work' } });
     });
 
-    // The tag item appears under the "Tags" group; click it.
-    const tagItem = await screen.findByText(/filter by tag/i);
+    // Two CommandItems match the "work" query: the "Show only tasks matching"
+    // filter item, and the "work" tag chip. Disambiguate by data-value, which
+    // uniquely identifies the tag entry as `tag-work`.
+    const tagItem = await waitFor(() => {
+      const el = document.querySelector('[data-value="tag-work"]');
+      if (!el) throw new Error('tag-work item not found yet');
+      return el as HTMLElement;
+    });
     await act(async () => {
       fireEvent.click(tagItem);
     });
 
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/tasks');
-      expect(router.state.location.search).toMatchObject({ tags: ['work'] });
+      expect(router.state.location.search).toMatchObject({
+        tag_filter: { mode: 'any', tags: ['work'] },
+      });
+    });
+  });
+
+  it('typing "untag" surfaces Untagged at the top of the Tags group and selecting it sets tag_filter to any:@untagged', async () => {
+    const { router } = renderPalette(
+      {
+        tags: [
+          { id: 1, name: 'work', count: 2 },
+          { id: 2, name: 'home', count: 1 },
+        ],
+      },
+      '/stage',
+    );
+
+    await waitForMount();
+    await act(async () => {
+      dispatchKey(document.body, { key: '/' });
+    });
+    const input = await screen.findByPlaceholderText(/Search tasks, tags/);
+    await act(async () => {
+      fireEvent.change(input, { target: { value: 'untag' } });
+    });
+
+    // Only the synthetic Untagged entry should appear under "Tags · 0"
+    // (no real tag named "untag" exists in the mock). The CommandItem's
+    // value="untagged" wins it the role=option accessible name.
+    const untaggedItem = await screen.findByRole('option', { name: /untagged/i });
+    await act(async () => {
+      fireEvent.click(untaggedItem);
+    });
+
+    await waitFor(() => {
+      expect(router.state.location.pathname).toBe('/tasks');
+      expect(router.state.location.search).toMatchObject({
+        tag_filter: { mode: 'any', tags: ['@untagged'] },
+      });
     });
   });
 
