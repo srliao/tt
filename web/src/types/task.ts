@@ -48,14 +48,3 @@ export interface TaskUpdateInput {
   due_date: string | null;
   tags: string[];
 }
-
-export interface TaskFilterSort {
-  states?: TaskState[];
-  tag_ids?: number[];
-  due?: TaskDueRange;
-  search?: string;
-  sort?: TaskSortAxis;
-  ascending?: boolean;
-  limit?: number;
-  offset?: number;
-}

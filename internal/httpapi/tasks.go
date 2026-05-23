@@ -236,6 +236,7 @@ func (s *Server) parseTagFilter(ctx context.Context, q url.Values) (task.TagFilt
 	}
 	var includeUntagged bool
 	realNames := make([]string, 0, 4)
+	seen := make(map[string]struct{}, 4)
 	for _, n := range strings.Split(rest, ",") {
 		n = strings.TrimSpace(n)
 		if n == "" {
@@ -245,6 +246,10 @@ func (s *Server) parseTagFilter(ctx context.Context, q url.Values) (task.TagFilt
 			includeUntagged = true
 			continue
 		}
+		if _, dup := seen[n]; dup {
+			continue
+		}
+		seen[n] = struct{}{}
 		realNames = append(realNames, n)
 	}
 	if !includeUntagged && len(realNames) == 0 {

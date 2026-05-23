@@ -65,11 +65,15 @@ export function parseTagFilter(raw: string): TagFilter | undefined {
   if (idx < 0) return undefined;
   const mode = raw.slice(0, idx);
   if (mode !== 'any' && mode !== 'all') return undefined;
-  const tags = raw
-    .slice(idx + 1)
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const tags = Array.from(
+    new Set(
+      raw
+        .slice(idx + 1)
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
+  );
   if (tags.length === 0) return undefined;
   return { mode, tags };
 }
