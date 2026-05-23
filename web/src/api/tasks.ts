@@ -6,6 +6,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { TagFilter } from '@/features/tasks/use-task-list-search';
 import { api } from '@/lib/api';
 import type {
   Task,
@@ -32,6 +33,13 @@ export interface TaskListParams {
    * `tags` is non-empty (the UI default is `any` — see filter sidebar).
    */
   tagMode?: 'any' | 'all';
+  /**
+   * Structured tag filter — replaces `tags` + `tagMode` (Phase 3 will
+   * remove the old fields). Added in Phase 1 of the tag-filter refactor
+   * so consumers can begin migrating; the API client is still wiring
+   * `tags`/`tagMode` to the server until Phase 3.
+   */
+  tag_filter?: TagFilter;
   due?: TaskDueRange;
   q?: string;
   sort?: TaskSortAxis;

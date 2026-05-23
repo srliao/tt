@@ -27,7 +27,7 @@ import type { TaskDueRange, TaskState } from '@/types/task';
 import {
   QUICK_FILTERS,
   type QuickFilter,
-  type TagMode,
+  type TagMatchMode,
   type TaskSearch,
   useTaskListSearch,
 } from './use-task-list-search';
@@ -106,15 +106,31 @@ export function FilterSidebar() {
           <div className="flex items-center justify-between gap-2">
             <span>Tags</span>
             <TagModeToggle
-              value={search.tagMode ?? 'any'}
-              onChange={(m) => setSearch({ tagMode: m === 'any' ? undefined : m })}
+              value={search.tag_filter?.mode ?? 'any'}
+              onChange={(m) => {
+                const tags = search.tag_filter?.tags ?? [];
+                if (tags.length === 0) {
+                  // No tags selected — nothing to gate, drop the param.
+                  setSearch({ tag_filter: undefined });
+                  return;
+                }
+                setSearch({ tag_filter: { mode: m, tags } });
+              }}
             />
           </div>
         }
       >
         <TagInlineList
-          value={search.tags ?? []}
-          onChange={(tags) => setSearch({ tags: tags.length ? tags : undefined })}
+          value={search.tag_filter?.tags ?? []}
+          onChange={(tags) => {
+            if (tags.length === 0) {
+              setSearch({ tag_filter: undefined });
+              return;
+            }
+            setSearch({
+              tag_filter: { mode: search.tag_filter?.mode ?? 'any', tags },
+            });
+          }}
         />
       </Section>
 
@@ -191,7 +207,13 @@ function StateCheckboxes({
  * component itself always shows a non-null value so the active mode is
  * obvious at a glance.
  */
-function TagModeToggle({ value, onChange }: { value: TagMode; onChange: (next: TagMode) => void }) {
+function TagModeToggle({
+  value,
+  onChange,
+}: {
+  value: TagMatchMode;
+  onChange: (next: TagMatchMode) => void;
+}) {
   return (
     <fieldset
       aria-label="Tag match mode"

@@ -101,11 +101,17 @@ describe('ActiveFilterStrip', () => {
   });
 
   it('renders include + exclude tag chips and removes individual ones', async () => {
-    const { router } = renderStrip('/tasks');
+    const { router } = renderStrip('/tasks?tag_filter=any%3Awork%2Curgent&tags_exclude=noise');
+    // The route validator parses `tag_filter` into a TagFilter object and
+    // `tagsExclude` into an array; seed via the URL so the schema does the
+    // transform for us.
     await act(async () => {
       await router.navigate({
         to: '/tasks',
-        search: { tags: ['work', 'urgent'], tagsExclude: ['noise'] },
+        search: {
+          tag_filter: { mode: 'any', tags: ['work', 'urgent'] },
+          tagsExclude: ['noise'],
+        },
       });
     });
 
@@ -122,10 +128,10 @@ describe('ActiveFilterStrip', () => {
 
     await waitFor(() => {
       const s = router.state.location.search as {
-        tags?: string[];
+        tag_filter?: { mode: string; tags: string[] };
         tagsExclude?: string[];
       };
-      expect(s.tags).toEqual(['urgent']);
+      expect(s.tag_filter).toEqual({ mode: 'any', tags: ['urgent'] });
       expect(s.tagsExclude).toEqual(['noise']);
     });
   });
@@ -155,7 +161,7 @@ describe('ActiveFilterStrip', () => {
         search: {
           q: 'foo',
           due: 'today',
-          tags: ['work'],
+          tag_filter: { mode: 'any', tags: ['work'] },
           tagsExclude: ['noise'],
           quick: 'overdue',
           states: ['not_done'],
@@ -173,7 +179,7 @@ describe('ActiveFilterStrip', () => {
       const s = router.state.location.search as Record<string, unknown>;
       expect(s.q).toBeUndefined();
       expect(s.due).toBeUndefined();
-      expect(s.tags).toBeUndefined();
+      expect(s.tag_filter).toBeUndefined();
       expect(s.tagsExclude).toBeUndefined();
       expect(s.quick).toBeUndefined();
       expect(s.states).toBeUndefined();

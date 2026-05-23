@@ -152,7 +152,9 @@ describe('FilterSidebar', () => {
     });
 
     await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({ tags: ['work'] });
+      expect(router.state.location.search).toMatchObject({
+        tag_filter: { mode: 'any', tags: ['work'] },
+      });
     });
 
     // The same row should now report selected via data-selected.
@@ -182,7 +184,9 @@ describe('FilterSidebar', () => {
     });
 
     await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({ tags: ['work'] });
+      expect(router.state.location.search).toMatchObject({
+        tag_filter: { mode: 'any', tags: ['work'] },
+      });
     });
 
     // Now click the × on the chip and verify the URL clears tags.
@@ -197,11 +201,11 @@ describe('FilterSidebar', () => {
     });
 
     await waitFor(() => {
-      expect(router.state.location.search).not.toHaveProperty('tags');
+      expect(router.state.location.search).not.toHaveProperty('tag_filter');
     });
   });
 
-  it('clicking the all toggle writes tagMode=all to the URL', async () => {
+  it('clicking the all toggle writes the new tag_filter mode to the URL', async () => {
     vi.stubGlobal(
       'fetch',
       mockFetchWithTags([
@@ -209,8 +213,10 @@ describe('FilterSidebar', () => {
         { id: 2, name: 'home', count: 1 },
       ]),
     );
-    const { router } = renderSidebar('/tasks');
+    const { router } = renderSidebar('/tasks?tag_filter=any%3Awork');
 
+    // The mode toggle is meaningful once at least one tag is selected — the
+    // URL seeds a single-tag any-mode filter so the toggle has tags to gate.
     const aside = await screen.findByRole('complementary');
     const allToggle = within(aside).getByRole('button', { name: 'all' });
     await act(async () => {
@@ -218,10 +224,12 @@ describe('FilterSidebar', () => {
     });
 
     await waitFor(() => {
-      expect(router.state.location.search).toMatchObject({ tagMode: 'all' });
+      expect(router.state.location.search).toMatchObject({
+        tag_filter: { mode: 'all', tags: ['work'] },
+      });
     });
 
-    // Going back to "any" clears the URL param so the URL stays short.
+    // Flipping back to "any" keeps the same tag set, just with mode=any.
     const asides = screen.getAllByRole('complementary');
     const latest = asides[asides.length - 1];
     const anyToggle = within(latest).getByRole('button', { name: 'any' });
@@ -230,7 +238,9 @@ describe('FilterSidebar', () => {
     });
 
     await waitFor(() => {
-      expect(router.state.location.search).not.toHaveProperty('tagMode');
+      expect(router.state.location.search).toMatchObject({
+        tag_filter: { mode: 'any', tags: ['work'] },
+      });
     });
   });
 

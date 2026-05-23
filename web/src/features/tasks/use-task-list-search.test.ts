@@ -7,14 +7,18 @@ import {
   hasActiveFilters,
   isStateRestricted,
   matchesFilter,
+  parseTagFilter,
+  serializeTagFilter,
+  type TagFilter,
   taskSearchSchema,
+  UNTAGGED_TOKEN,
 } from './use-task-list-search';
 
 describe('taskSearchSchema', () => {
   it('parses a fully-populated URL search object', () => {
     const parsed = taskSearchSchema.parse({
       states: ['not_done', 'done'],
-      tags: ['work'],
+      tag_filter: 'any:work',
       due: 'today',
       q: 'milk',
       sort: 'priority',
@@ -23,6 +27,7 @@ describe('taskSearchSchema', () => {
     });
     expect(parsed.states).toEqual(['not_done', 'done']);
     expect(parsed.quick).toBe('overdue');
+    expect(parsed.tag_filter).toEqual({ mode: 'any', tags: ['work'] });
   });
 
   it('treats empty input as defaults', () => {
@@ -32,14 +37,143 @@ describe('taskSearchSchema', () => {
   it('rejects unknown enum values', () => {
     expect(() => taskSearchSchema.parse({ sort: 'completed_at' as unknown as never })).toThrow();
   });
+
+  it('does not surface the legacy tags or tagMode fields', () => {
+    const parsed = taskSearchSchema.parse({
+      tag_filter: 'any:work',
+    });
+    expect((parsed as Record<string, unknown>).tags).toBeUndefined();
+    expect((parsed as Record<string, unknown>).tagMode).toBeUndefined();
+  });
+
+  it('parses tag_filter from a URL string into a structured object', () => {
+    const parsed = taskSearchSchema.parse({ tag_filter: 'all:work,urgent' });
+    expect(parsed.tag_filter).toEqual({ mode: 'all', tags: ['work', 'urgent'] });
+  });
+
+  it('drops a malformed tag_filter silently', () => {
+    const parsed = taskSearchSchema.parse({ tag_filter: 'garbage' });
+    expect(parsed.tag_filter).toBeUndefined();
+  });
+
+  it('leaves tag_filter undefined when the param is absent', () => {
+    const parsed = taskSearchSchema.parse({});
+    expect(parsed.tag_filter).toBeUndefined();
+  });
+
+  it('mirrors the route /tasks?tag_filter=any:work,errand contract', () => {
+    // Simulate what TanStack Router hands `validateSearch`: a string-valued
+    // search-param record. The route in `routes/tasks.tsx` calls
+    // `taskSearchSchema.parse(search)` directly so this assertion stands
+    // in for a full route-validation round-trip.
+    const parsed = taskSearchSchema.parse({ tag_filter: 'any:work,errand' });
+    expect(parsed.tag_filter).toEqual({ mode: 'any', tags: ['work', 'errand'] });
+  });
+
+  it('mirrors the empty /tasks route contract (no tag_filter)', () => {
+    const parsed = taskSearchSchema.parse({});
+    expect(parsed.tag_filter).toBeUndefined();
+  });
+});
+
+describe('parseTagFilter', () => {
+  it('parses a simple any-mode filter', () => {
+    expect(parseTagFilter('any:work,errand')).toEqual({
+      mode: 'any',
+      tags: ['work', 'errand'],
+    });
+  });
+
+  it('parses an all-mode filter', () => {
+    expect(parseTagFilter('all:work,urgent')).toEqual({
+      mode: 'all',
+      tags: ['work', 'urgent'],
+    });
+  });
+
+  it('parses a single-tag filter', () => {
+    expect(parseTagFilter('any:work')).toEqual({ mode: 'any', tags: ['work'] });
+  });
+
+  it('preserves the @untagged sentinel', () => {
+    expect(parseTagFilter('any:@untagged')).toEqual({
+      mode: 'any',
+      tags: ['@untagged'],
+    });
+  });
+
+  it('preserves a mixed @untagged + real tag set', () => {
+    expect(parseTagFilter('all:work,@untagged')).toEqual({
+      mode: 'all',
+      tags: ['work', '@untagged'],
+    });
+  });
+
+  it('trims whitespace and drops empty segments', () => {
+    expect(parseTagFilter('any: work , , errand ')).toEqual({
+      mode: 'any',
+      tags: ['work', 'errand'],
+    });
+  });
+
+  it('returns undefined for input with no colon', () => {
+    expect(parseTagFilter('garbage')).toBeUndefined();
+  });
+
+  it('returns undefined for an unknown mode', () => {
+    expect(parseTagFilter('maybe:work')).toBeUndefined();
+  });
+
+  it('returns undefined for an empty tag list', () => {
+    expect(parseTagFilter('any:')).toBeUndefined();
+    expect(parseTagFilter('any:,,')).toBeUndefined();
+  });
+});
+
+describe('serializeTagFilter', () => {
+  it('joins tags with commas after the mode', () => {
+    expect(serializeTagFilter({ mode: 'any', tags: ['work', 'errand'] })).toBe('any:work,errand');
+  });
+
+  it('serialises a single tag', () => {
+    expect(serializeTagFilter({ mode: 'all', tags: ['work'] })).toBe('all:work');
+  });
+
+  it('serialises the @untagged sentinel', () => {
+    expect(serializeTagFilter({ mode: 'any', tags: [UNTAGGED_TOKEN] })).toBe('any:@untagged');
+  });
+
+  it('returns undefined for an empty tags array', () => {
+    expect(serializeTagFilter({ mode: 'any', tags: [] })).toBeUndefined();
+  });
+
+  it('returns undefined for an undefined input', () => {
+    expect(serializeTagFilter(undefined)).toBeUndefined();
+  });
+});
+
+describe('parseTagFilter / serializeTagFilter round-trip', () => {
+  const cases: TagFilter[] = [
+    { mode: 'any', tags: ['work'] },
+    { mode: 'all', tags: ['work', 'urgent'] },
+    { mode: 'any', tags: [UNTAGGED_TOKEN] },
+    { mode: 'all', tags: ['work', UNTAGGED_TOKEN] },
+  ];
+  for (const f of cases) {
+    it(`round-trips ${JSON.stringify(f)}`, () => {
+      const s = serializeTagFilter(f);
+      expect(s).toBeDefined();
+      expect(parseTagFilter(s as string)).toEqual(f);
+    });
+  }
 });
 
 describe('applyQuickFilter', () => {
   it('returns the user filter when no quick preset is set', () => {
     expect(applyQuickFilter({ states: ['done'] })).toEqual({
       states: ['done'],
-      tags: undefined,
-      tagMode: undefined,
+      tag_filter: undefined,
+      tagsExclude: undefined,
       due: undefined,
       q: undefined,
       sort: undefined,
@@ -50,8 +184,8 @@ describe('applyQuickFilter', () => {
   it('defaults to not_done when no states and no quick preset are set', () => {
     expect(applyQuickFilter({})).toEqual({
       states: ['not_done'],
-      tags: undefined,
-      tagMode: undefined,
+      tag_filter: undefined,
+      tagsExclude: undefined,
       due: undefined,
       q: undefined,
       sort: undefined,
@@ -59,19 +193,24 @@ describe('applyQuickFilter', () => {
     });
   });
 
-  it('sends tag_mode=any whenever tags are non-empty and no mode was set', () => {
-    const out = applyQuickFilter({ tags: ['work'] });
-    expect(out.tags).toEqual(['work']);
-    expect(out.tagMode).toBe('any');
+  it('forwards an any-mode tag_filter as-is', () => {
+    const out = applyQuickFilter({ tag_filter: { mode: 'any', tags: ['work'] } });
+    expect(out.tag_filter).toEqual({ mode: 'any', tags: ['work'] });
   });
 
-  it('passes through an explicit tagMode=all', () => {
-    const out = applyQuickFilter({ tags: ['work', 'urgent'], tagMode: 'all' });
-    expect(out.tagMode).toBe('all');
+  it('forwards an all-mode tag_filter as-is', () => {
+    const out = applyQuickFilter({ tag_filter: { mode: 'all', tags: ['work', 'urgent'] } });
+    expect(out.tag_filter).toEqual({ mode: 'all', tags: ['work', 'urgent'] });
   });
 
-  it('omits tag_mode when no tags are selected', () => {
-    expect(applyQuickFilter({ tagMode: 'all' }).tagMode).toBeUndefined();
+  it('passes tag_filter through alongside a quick preset', () => {
+    const out = applyQuickFilter({
+      quick: 'overdue',
+      tag_filter: { mode: 'any', tags: ['work'] },
+    });
+    expect(out.tag_filter).toEqual({ mode: 'any', tags: ['work'] });
+    expect(out.due).toBe('overdue');
+    expect(out.states).toEqual(['not_done']);
   });
 
   it('expands the "overdue" preset', () => {
@@ -149,7 +288,7 @@ describe('hasActiveFilters', () => {
   it('returns true when any axis is set', () => {
     expect(hasActiveFilters({ q: 'x' })).toBe(true);
     expect(hasActiveFilters({ quick: 'overdue' })).toBe(true);
-    expect(hasActiveFilters({ tags: ['work'] })).toBe(true);
+    expect(hasActiveFilters({ tag_filter: { mode: 'any', tags: ['work'] } })).toBe(true);
     expect(hasActiveFilters({ tagsExclude: ['noise'] })).toBe(true);
     expect(hasActiveFilters({ states: ['done'] })).toBe(true);
   });
@@ -234,23 +373,79 @@ describe('matchesFilter — states', () => {
   });
 });
 
-describe('matchesFilter — tagMode any vs all', () => {
-  it('any: matches when at least one filter tag is on the task', () => {
+describe('matchesFilter — tag_filter mode=any', () => {
+  it('matches when at least one filter tag is on the task', () => {
     const t = mkTask({ id: 1, tags: ['infra', 'urgent'] });
-    expect(matchesFilter(t, { tags: ['infra'], tagMode: 'any' })).toBe(true);
-    expect(matchesFilter(t, { tags: ['infra', 'cleanup'], tagMode: 'any' })).toBe(true);
-    expect(matchesFilter(t, { tags: ['cleanup'], tagMode: 'any' })).toBe(false);
+    expect(matchesFilter(t, { tag_filter: { mode: 'any', tags: ['infra'] } })).toBe(true);
+    expect(matchesFilter(t, { tag_filter: { mode: 'any', tags: ['infra', 'cleanup'] } })).toBe(
+      true,
+    );
+    expect(matchesFilter(t, { tag_filter: { mode: 'any', tags: ['cleanup'] } })).toBe(false);
   });
 
-  it('any is the default when tagMode is unset', () => {
-    const t = mkTask({ id: 1, tags: ['infra'] });
-    expect(matchesFilter(t, { tags: ['infra', 'other'] })).toBe(true);
+  it('untagged-only matches a task with zero tags', () => {
+    expect(
+      matchesFilter(mkTask({ id: 1, tags: [] }), {
+        tag_filter: { mode: 'any', tags: [UNTAGGED_TOKEN] },
+      }),
+    ).toBe(true);
+    expect(
+      matchesFilter(mkTask({ id: 1, tags: ['infra'] }), {
+        tag_filter: { mode: 'any', tags: [UNTAGGED_TOKEN] },
+      }),
+    ).toBe(false);
   });
 
-  it('all: requires every filter tag to appear', () => {
+  it('untagged + real tags is a union (untagged OR tagged-with-any)', () => {
+    // Tagged with one of the real tags → matches.
+    expect(
+      matchesFilter(mkTask({ id: 1, tags: ['work'] }), {
+        tag_filter: { mode: 'any', tags: [UNTAGGED_TOKEN, 'work'] },
+      }),
+    ).toBe(true);
+    // Untagged → also matches.
+    expect(
+      matchesFilter(mkTask({ id: 1, tags: [] }), {
+        tag_filter: { mode: 'any', tags: [UNTAGGED_TOKEN, 'work'] },
+      }),
+    ).toBe(true);
+    // Neither → drops.
+    expect(
+      matchesFilter(mkTask({ id: 1, tags: ['other'] }), {
+        tag_filter: { mode: 'any', tags: [UNTAGGED_TOKEN, 'work'] },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('matchesFilter — tag_filter mode=all', () => {
+  it('requires every filter tag to appear', () => {
     const t = mkTask({ id: 1, tags: ['infra', 'urgent'] });
-    expect(matchesFilter(t, { tags: ['infra', 'urgent'], tagMode: 'all' })).toBe(true);
-    expect(matchesFilter(t, { tags: ['infra', 'missing'], tagMode: 'all' })).toBe(false);
+    expect(matchesFilter(t, { tag_filter: { mode: 'all', tags: ['infra', 'urgent'] } })).toBe(true);
+    expect(matchesFilter(t, { tag_filter: { mode: 'all', tags: ['infra', 'missing'] } })).toBe(
+      false,
+    );
+  });
+
+  it('untagged-only matches a task with zero tags', () => {
+    expect(
+      matchesFilter(mkTask({ id: 1, tags: [] }), {
+        tag_filter: { mode: 'all', tags: [UNTAGGED_TOKEN] },
+      }),
+    ).toBe(true);
+  });
+
+  it('untagged + real tags is unsatisfiable (no task is both)', () => {
+    expect(
+      matchesFilter(mkTask({ id: 1, tags: [] }), {
+        tag_filter: { mode: 'all', tags: [UNTAGGED_TOKEN, 'work'] },
+      }),
+    ).toBe(false);
+    expect(
+      matchesFilter(mkTask({ id: 1, tags: ['work'] }), {
+        tag_filter: { mode: 'all', tags: [UNTAGGED_TOKEN, 'work'] },
+      }),
+    ).toBe(false);
   });
 });
 
@@ -325,7 +520,12 @@ describe('computeAllMatchingIds', () => {
       mkTask({ id: 2, state: 'done', tags: ['infra'] }),
       mkTask({ id: 3, state: 'not_done', tags: ['other'] }),
     ];
-    expect(computeAllMatchingIds(tasks, { states: ['not_done'], tags: ['infra'] })).toEqual([1]);
+    expect(
+      computeAllMatchingIds(tasks, {
+        states: ['not_done'],
+        tag_filter: { mode: 'any', tags: ['infra'] },
+      }),
+    ).toEqual([1]);
   });
 
   it('returns every id when the filter is empty', () => {

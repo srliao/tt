@@ -41,11 +41,18 @@ export function ActiveFilterStrip() {
       {search.due && (
         <FilterChip label={`due: ${search.due}`} onRemove={() => setSearch({ due: undefined })} />
       )}
-      {(search.tags ?? []).map((t) => (
+      {(search.tag_filter?.tags ?? []).map((t) => (
         <TagChip
           key={`inc-${t}`}
           name={t}
-          onRemove={() => setSearch({ tags: (search.tags ?? []).filter((x) => x !== t) })}
+          onRemove={() => {
+            const current = search.tag_filter;
+            if (!current) return;
+            const next = current.tags.filter((x) => x !== t);
+            setSearch({
+              tag_filter: next.length === 0 ? undefined : { mode: current.mode, tags: next },
+            });
+          }}
         />
       ))}
       {(search.tagsExclude ?? []).map((t) => (
@@ -75,7 +82,7 @@ export function ActiveFilterStrip() {
           setSearch({
             q: undefined,
             due: undefined,
-            tags: undefined,
+            tag_filter: undefined,
             tagsExclude: undefined,
             quick: undefined,
             states: undefined,
