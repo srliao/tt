@@ -400,7 +400,11 @@ function TagModeToggle({
 }) {
   return (
     <TooltipProvider>
-      <fieldset
+      {/* biome-ignore lint/a11y/useSemanticElements: <fieldset> without a
+          <legend> isn't reliably announced by all SR/browser combos, so we
+          use an explicit role="group" container instead. */}
+      <div
+        role="group"
         aria-label="Tag match mode"
         className="inline-flex items-center rounded-md border bg-background p-0.5 text-[10px] font-medium tracking-wide uppercase"
       >
@@ -416,7 +420,6 @@ function TagModeToggle({
               data-disabled={disabled || undefined}
               aria-pressed={active}
               aria-disabled={disabled || undefined}
-              disabled={disabled}
               onClick={() => {
                 if (disabled) return;
                 if (!active) onChange(m);
@@ -426,7 +429,7 @@ function TagModeToggle({
                 active
                   ? 'bg-accent text-accent-foreground'
                   : 'text-muted-foreground hover:text-foreground',
-                disabled && 'cursor-not-allowed opacity-50 hover:text-muted-foreground',
+                'aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:text-muted-foreground',
               )}
             >
               {m}
@@ -435,19 +438,17 @@ function TagModeToggle({
           if (disabled && allDisabledReason) {
             return (
               <Tooltip key={m}>
-                {/* Radix disables pointer events on a disabled <button>,
-                    which would also block tooltip hover. Wrap in a span so
-                    the pointer-events stay live. */}
-                <TooltipTrigger asChild>
-                  <span className="inline-flex">{button}</span>
-                </TooltipTrigger>
+                {/* Keep the button itself as the trigger so keyboard focus
+                    surfaces the tooltip. We use aria-disabled (not native
+                    disabled) so the button stays in the tab order. */}
+                <TooltipTrigger asChild>{button}</TooltipTrigger>
                 <TooltipContent>{allDisabledReason}</TooltipContent>
               </Tooltip>
             );
           }
           return button;
         })}
-      </fieldset>
+      </div>
     </TooltipProvider>
   );
 }
