@@ -6,6 +6,12 @@
  * (`quick=...`) are stored as-is and translated to effective filters via
  * `applyQuickFilter()` at read time — that keeps the URL short ("share me")
  * while still letting the user temporarily override one axis of the preset.
+ *
+ * Tag filtering uses a single structured `tag_filter=<mode>:<name>,<name>,…`
+ * URL param. The raw URL value is a string; `taskSearchSchema` transforms it
+ * into a `TagFilter` object so consumers can read `search.tag_filter` as a
+ * structured value. `setSearch` re-serialises back to the string form so the
+ * URL stays `tag_filter=any:work` rather than `[object Object]`.
  */
 
 import { useNavigate, useSearch } from '@tanstack/react-router';
@@ -24,21 +30,93 @@ export const QUICK_FILTERS = [
   'recently-completed',
   'cancelled',
 ] as const;
-export const TAG_MODES = ['any', 'all'] as const;
+
+export const TAG_MATCH_MODES = ['any', 'all'] as const;
+export type TagMatchMode = (typeof TAG_MATCH_MODES)[number];
+
+/**
+ * Reserved sentinel for the "untagged" pseudo-tag. Real tags can't contain
+ * `@` (validated server-side) so the sentinel cannot collide with a real
+ * tag name.
+ */
+export const UNTAGGED_TOKEN = '@untagged';
 
 export type QuickFilter = (typeof QUICK_FILTERS)[number];
-export type TagMode = (typeof TAG_MODES)[number];
+
+/**
+ * Structured tag filter — the parsed form of the `tag_filter=<mode>:<name>,…`
+ * URL param. `tags` may include `UNTAGGED_TOKEN` to mean "untagged tasks".
+ */
+export const tagFilterSchema = z.object({
+  mode: z.enum(TAG_MATCH_MODES),
+  tags: z.array(z.string().min(1)).min(1),
+});
+
+export type TagFilter = z.infer<typeof tagFilterSchema>;
+
+/**
+ * Parse a raw `tag_filter` URL value of the shape `mode:name,name,…` into a
+ * structured `TagFilter`. Returns `undefined` for any malformed input (bad
+ * mode, missing `:`, empty tag list) so the route validator can drop the
+ * param silently rather than throw.
+ */
+export function parseTagFilter(raw: string): TagFilter | undefined {
+  const idx = raw.indexOf(':');
+  if (idx < 0) return undefined;
+  const mode = raw.slice(0, idx);
+  if (mode !== 'any' && mode !== 'all') return undefined;
+  const tags = raw
+    .slice(idx + 1)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (tags.length === 0) return undefined;
+  return { mode, tags };
+}
+
+/**
+ * Serialise a `TagFilter` back to its URL string form. Returns `undefined`
+ * when the filter has no tags so callers can omit the param entirely
+ * (never write `tag_filter=any:`).
+ */
+export function serializeTagFilter(f: TagFilter | undefined): string | undefined {
+  if (!f || f.tags.length === 0) return undefined;
+  return `${f.mode}:${f.tags.join(',')}`;
+}
 
 /**
  * Zod schema for the /tasks URL search params. Used both by the
  * route's `validateSearch` and the hook below.
+ *
+ * `tag_filter` arrives as a string from the URL and is transformed to a
+ * `TagFilter | undefined`. Consumers read `search.tag_filter` as the parsed
+ * object; `setSearch` calls `serializeTagFilter` to write the string form
+ * back to the URL.
  */
 export const taskSearchSchema = z
   .object({
     states: z.array(z.enum(TASK_STATES)).optional(),
-    tags: z.array(z.string()).optional(),
+    /**
+     * Accepts either the raw URL string form (`'any:work,errand'`) or a
+     * pre-parsed `TagFilter` object. The URL serialiser always writes the
+     * string; programmatic callers (e.g. tests calling `router.navigate`
+     * directly with structured search) pass the object form.
+     */
+    tag_filter: z
+      .union([z.string(), tagFilterSchema])
+      .optional()
+      .transform((v) => {
+        if (v === undefined) return undefined;
+        if (typeof v === 'string') return parseTagFilter(v);
+        return v;
+      })
+      .pipe(tagFilterSchema.optional()),
+    /**
+     * Tag exclusions are orthogonal to the include filter — alt-click on a
+     * row tag adds to this list. Phase 1 leaves this shape unchanged; the
+     * tag-filter refactor only touches the include side.
+     */
     tagsExclude: z.array(z.string()).optional(),
-    tagMode: z.enum(TAG_MODES).optional(),
     due: z.enum(TASK_DUE_RANGES).optional(),
     q: z.string().optional(),
     sort: z.enum(TASK_SORTS).optional(),
@@ -75,15 +153,11 @@ export type TaskSearch = z.infer<typeof taskSearchSchema>;
  */
 export function applyQuickFilter(search: TaskSearch): TaskListParams {
   const quick = search.quick;
-  // We always send tag_mode when tags are non-empty so the server respects
-  // the UI default of "any" — see comments on TaskListParams.tagMode.
-  const tagsPresent = search.tags && search.tags.length > 0;
   const tagsExcludePresent = search.tagsExclude && search.tagsExclude.length > 0;
   const base: TaskListParams = {
     states: search.states && search.states.length > 0 ? search.states : undefined,
-    tags: tagsPresent ? search.tags : undefined,
+    tag_filter: search.tag_filter,
     tagsExclude: tagsExcludePresent ? search.tagsExclude : undefined,
-    tagMode: tagsPresent ? (search.tagMode ?? 'any') : undefined,
     due: search.due,
     q: search.q,
     sort: search.sort,
@@ -117,9 +191,8 @@ export function applyQuickFilter(search: TaskSearch): TaskListParams {
 
   return {
     states: base.states ?? preset.states,
-    tags: base.tags,
+    tag_filter: base.tag_filter,
     tagsExclude: base.tagsExclude,
-    tagMode: base.tagMode,
     due: base.due ?? preset.due,
     q: base.q,
     sort: base.sort ?? preset.sort,
@@ -131,7 +204,7 @@ export function applyQuickFilter(search: TaskSearch): TaskListParams {
 export function hasActiveFilters(search: TaskSearch): boolean {
   return Boolean(
     (search.states && search.states.length > 0) ||
-      (search.tags && search.tags.length > 0) ||
+      search.tag_filter ||
       (search.tagsExclude && search.tagsExclude.length > 0) ||
       search.due ||
       search.q ||
@@ -162,6 +235,11 @@ export function isStateRestricted(search: TaskSearch): boolean {
  * Hook bound to the `/tasks` route. Returns the parsed search object plus a
  * `setSearch(updates)` helper that performs a shallow merge into the URL.
  * Pass `undefined` to clear a single field.
+ *
+ * `tag_filter` is special: callers pass the structured `TagFilter` object,
+ * which is serialised back to its URL string form before navigating. That
+ * way `search.tag_filter` is always the parsed shape and the URL is always
+ * the canonical `tag_filter=any:work` string.
  */
 export function useTaskListSearch() {
   // `strict: false` lets this hook be exercised under test routers that
@@ -175,14 +253,22 @@ export function useTaskListSearch() {
         to: '.',
         search: (prev) => {
           const merged: TaskSearch = { ...(prev as TaskSearch), ...updates };
-          // Strip empty/undefined values so the URL stays short.
-          const cleaned: TaskSearch = {};
+          // Strip empty/undefined values so the URL stays short, and
+          // re-serialise `tag_filter` back to its URL string form so the
+          // navigate call writes `tag_filter=any:work` rather than the
+          // JSON-encoded object form.
+          const cleaned: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(merged)) {
             if (value === undefined || value === '' || value === null) continue;
             if (Array.isArray(value) && value.length === 0) continue;
-            (cleaned as Record<string, unknown>)[key] = value;
+            if (key === 'tag_filter') {
+              const serialised = serializeTagFilter(value as TagFilter | undefined);
+              if (serialised) cleaned[key] = serialised;
+              continue;
+            }
+            cleaned[key] = value;
           }
-          return cleaned;
+          return cleaned as TaskSearch;
         },
       });
     },
@@ -203,7 +289,7 @@ export type TagFilterMode = 'replace' | 'add' | 'exclude';
  * Shared by row tag glyphs and any future click-to-filter affordance.
  *
  *   bare click   → replace (single-tag focus)
- *   shift+click  → add to the current `tags` filter
+ *   shift+click  → add to the current tag filter
  *   alt+click    → add to the `tagsExclude` filter
  */
 export function clickModeFromEvent(e: MouseEvent): TagFilterMode {
@@ -216,19 +302,35 @@ export function clickModeFromEvent(e: MouseEvent): TagFilterMode {
  * Returns a stable callback that mutates the URL's tag filter according to
  * the given mode. `replace` clears any prior exclusions so the user lands
  * on a clean single-tag view.
+ *
+ * `add` preserves the existing match mode (defaulting to `'any'` when no
+ * filter is set yet) so a shift-click from the row never silently flips the
+ * user's chosen Any/All toggle.
  */
 export function useTagFilterMutator() {
   const { search, setSearch } = useTaskListSearch();
   return useCallback(
     (name: string, mode: TagFilterMode) => {
       if (mode === 'replace') {
-        setSearch({ tags: [name], tagsExclude: undefined });
+        setSearch({
+          tag_filter: { mode: 'any', tags: [name] },
+          tagsExclude: undefined,
+        });
         return;
       }
       if (mode === 'add') {
-        const set = new Set(search.tags ?? []);
-        set.add(name);
-        setSearch({ tags: [...set] });
+        const current = search.tag_filter;
+        const tags = current?.tags ?? [];
+        if (tags.includes(name)) {
+          // Already present — nothing to do; avoid a no-op URL write.
+          return;
+        }
+        setSearch({
+          tag_filter: {
+            mode: current?.mode ?? 'any',
+            tags: [...tags, name],
+          },
+        });
         return;
       }
       // exclude
@@ -248,10 +350,13 @@ export function useTagFilterMutator() {
  * Mirror semantics — kept aligned with `internal/task/service.go`:
  *
  * - `states`: task.state must be in `filter.states` (no-op when unset/empty).
- * - `tags` + `tagMode='any'` (default): at least one of the filter tags
- *   appears on the task.
- * - `tags` + `tagMode='all'`: every filter tag appears on the task.
- * - `tagsExclude`: no filter tag appears on the task.
+ * - `tag_filter` (mode='any', default): at least one of the filter tags
+ *   appears on the task. The `@untagged` sentinel matches tasks with zero
+ *   tags, so `any:@untagged,work` returns the union (untagged ∪ tagged-with-work).
+ * - `tag_filter` (mode='all'): every filter tag appears on the task. When
+ *   `@untagged` is in the list together with real tag names, the result is
+ *   always empty (no task can be both untagged AND have other tags).
+ * - `tagsExclude`: no excluded tag appears on the task.
  * - `due`:
  *     - `'overdue'`  → due_date strictly before today AND state !== 'done'
  *       (the spec narrows the server predicate so "select all overdue"
@@ -270,20 +375,35 @@ export function matchesFilter(task: Task, filter: TaskListParams): boolean {
     if (!filter.states.includes(task.state)) return false;
   }
 
-  if (filter.tags && filter.tags.length > 0) {
+  if (filter.tag_filter && filter.tag_filter.tags.length > 0) {
     const taskTags = new Set(task.tags);
-    const mode = filter.tagMode ?? 'any';
+    const { mode, tags } = filter.tag_filter;
+    const wantsUntagged = tags.includes(UNTAGGED_TOKEN);
+    const realTags = tags.filter((t) => t !== UNTAGGED_TOKEN);
+    const isUntagged = taskTags.size === 0;
+
     if (mode === 'all') {
-      for (const t of filter.tags) if (!taskTags.has(t)) return false;
+      // All + Untagged with any real tag is unsatisfiable — a task can't be
+      // both untagged AND carry the real tags.
+      if (wantsUntagged && realTags.length > 0) return false;
+      if (wantsUntagged) {
+        if (!isUntagged) return false;
+      } else {
+        for (const t of realTags) if (!taskTags.has(t)) return false;
+      }
     } else {
-      let any = false;
-      for (const t of filter.tags) {
-        if (taskTags.has(t)) {
-          any = true;
-          break;
+      // any: union of (untagged tasks) ∪ (tasks matching at least one real tag)
+      let matched = false;
+      if (wantsUntagged && isUntagged) matched = true;
+      if (!matched) {
+        for (const t of realTags) {
+          if (taskTags.has(t)) {
+            matched = true;
+            break;
+          }
         }
       }
-      if (!any) return false;
+      if (!matched) return false;
     }
   }
 
