@@ -21,7 +21,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it } from 'vitest';
 import { ThemeProvider } from '@/components/theme-provider';
 import { ActiveFilterStrip } from './active-filter-strip';
-import { taskSearchSchema } from './use-task-list-search';
+import { taskSearchSchema, UNTAGGED_TOKEN } from './use-task-list-search';
 
 function renderStrip(initial = '/tasks') {
   const rootRoute = createRootRoute({ component: () => <Outlet /> });
@@ -134,6 +134,111 @@ describe('ActiveFilterStrip', () => {
       };
       expect(s.tag_filter).toEqual({ mode: 'any', tags: ['urgent'] });
       expect(s.tagsExclude).toEqual(['noise']);
+    });
+  });
+
+  it('renders the "or" joiner between include tag chips in Any mode', async () => {
+    const { router, container } = renderStrip('/tasks');
+    await act(async () => {
+      await router.navigate({
+        to: '/tasks',
+        search: { tag_filter: { mode: 'any', tags: ['work', 'errand'] } },
+      });
+    });
+    await screen.findByText('work');
+    expect(screen.getByText('errand')).toBeTruthy();
+    const joiners = container.querySelectorAll('[data-slot="tag-filter-joiner"]');
+    expect(joiners.length).toBe(1);
+    expect(joiners[0].textContent).toBe('or');
+  });
+
+  it('renders the "and" joiner between include tag chips in All mode', async () => {
+    const { router } = renderStrip('/tasks');
+    await act(async () => {
+      await router.navigate({
+        to: '/tasks',
+        search: { tag_filter: { mode: 'all', tags: ['work', 'urgent'] } },
+      });
+    });
+    await screen.findByText('work');
+    expect(screen.getByText('urgent')).toBeTruthy();
+    const joiners = document.querySelectorAll('[data-slot="tag-filter-joiner"]');
+    expect(Array.from(joiners).some((el) => el.textContent === 'and')).toBe(true);
+  });
+
+  it('renders Untagged + one real tag with an "or" joiner and an untagged variant chip', async () => {
+    const { router } = renderStrip('/tasks');
+    await act(async () => {
+      await router.navigate({
+        to: '/tasks',
+        search: { tag_filter: { mode: 'any', tags: [UNTAGGED_TOKEN, 'work'] } },
+      });
+    });
+    // The Untagged sentinel renders as the human-readable "Untagged" label
+    // via the TagChip untagged variant.
+    await screen.findByText('Untagged');
+    expect(screen.getByText('work')).toBeTruthy();
+    const untaggedChip = document.querySelector('[data-variant="untagged"]');
+    expect(untaggedChip).not.toBeNull();
+    const joiners = document.querySelectorAll('[data-slot="tag-filter-joiner"]');
+    expect(Array.from(joiners).some((el) => el.textContent === 'or')).toBe(true);
+  });
+
+  it('renders Untagged alone as the italic dashed variant with no joiner', async () => {
+    const { router } = renderStrip('/tasks');
+    await act(async () => {
+      await router.navigate({
+        to: '/tasks',
+        search: { tag_filter: { mode: 'any', tags: [UNTAGGED_TOKEN] } },
+      });
+    });
+    await screen.findByText('Untagged');
+    expect(document.querySelector('[data-variant="untagged"]')).not.toBeNull();
+    // No joiners when only one chip is present.
+    expect(document.querySelectorAll('[data-slot="tag-filter-joiner"]').length).toBe(0);
+  });
+
+  it('auto-flips All → Any when removing collapses the include set to a single tag', async () => {
+    const { router } = renderStrip('/tasks');
+    await act(async () => {
+      await router.navigate({
+        to: '/tasks',
+        search: { tag_filter: { mode: 'all', tags: ['work', 'urgent'] } },
+      });
+    });
+    await screen.findByText('urgent');
+
+    const removeUrgent = screen.getAllByRole('button', { name: 'Remove urgent' });
+    await act(async () => {
+      fireEvent.click(removeUrgent[0]);
+    });
+
+    await waitFor(() => {
+      const s = router.state.location.search as {
+        tag_filter?: { mode: string; tags: string[] };
+      };
+      expect(s.tag_filter).toEqual({ mode: 'any', tags: ['work'] });
+    });
+  });
+
+  it('clears tag_filter entirely when removing the last include tag', async () => {
+    const { router } = renderStrip('/tasks');
+    await act(async () => {
+      await router.navigate({
+        to: '/tasks',
+        search: { tag_filter: { mode: 'any', tags: ['work'] } },
+      });
+    });
+    await screen.findByText('work');
+
+    const removeWork = screen.getAllByRole('button', { name: 'Remove work' });
+    await act(async () => {
+      fireEvent.click(removeWork[0]);
+    });
+
+    await waitFor(() => {
+      const s = router.state.location.search as { tag_filter?: unknown };
+      expect(s.tag_filter).toBeUndefined();
     });
   });
 
