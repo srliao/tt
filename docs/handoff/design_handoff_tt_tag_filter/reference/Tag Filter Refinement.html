@@ -1,0 +1,1184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Tag Filter Refinement — tt</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #f7f5f0;
+    --paper:    #ffffff;
+    --ink:      #1c1917;
+    --ink-2:    #44403c;
+    --mute:     #78716c;
+    --mute-2:   #a8a29e;
+    --line:     #e7e4dd;
+    --line-2:   #d6d3cc;
+    --accent:   #1c1917;
+    --pink:     oklch(0.94 0.04 0);
+    --pink-fg:  oklch(0.40 0.12 0);
+    --note:     #fff7d6;
+    --note-line:#e6d27a;
+    --warn:     #fff1ec;
+    --warn-line:#e9b29a;
+    --ok:       #ecf6ee;
+    --ok-line:  #bcd9c1;
+    --shadow:   0 1px 0 rgba(28,25,23,0.04), 0 2px 6px rgba(28,25,23,0.05);
+    --radius:   8px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Helvetica, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-size: 14px;
+  }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+
+  .doc {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 64px 32px 120px;
+  }
+
+  /* ────────────────  Header  ──────────────── */
+  .meta-row { display: flex; gap: 8px; align-items: center; color: var(--mute); font-size: 12px; }
+  .meta-row .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--mute-2); }
+  h1 {
+    font-size: 32px;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 12px 0 6px;
+    font-weight: 500;
+  }
+  .lede { color: var(--ink-2); font-size: 15px; max-width: 720px; margin: 0; }
+
+  .pill-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
+  .pill {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    color: var(--ink-2);
+  }
+  .pill.scope { background: #ecf2ff; border-color: #c8d6f3; color: #2746a3; }
+
+  /* ────────────────  Section  ──────────────── */
+  section { margin-top: 56px; }
+  .section-tag {
+    display: inline-block;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--mute);
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--line-2);
+    margin-bottom: 18px;
+    min-width: 60px;
+  }
+  h2 {
+    font-size: 22px;
+    font-weight: 500;
+    margin: 0 0 4px;
+    letter-spacing: -0.005em;
+  }
+  h3 {
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0 0 6px;
+    color: var(--ink);
+  }
+  h3 .num {
+    color: var(--mute);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    margin-right: 8px;
+  }
+  .sub { color: var(--mute); font-size: 13px; max-width: 680px; }
+
+  /* ────────────────  Cards  ──────────────── */
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .card .card-head {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+  }
+  .card .card-head .label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--mute);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .card .card-head .title { font-weight: 500; }
+  .card .card-body { padding: 16px; }
+  .card .card-foot {
+    padding: 10px 16px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--mute);
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-2-uneven { display: grid; grid-template-columns: 320px 1fr; gap: 16px; }
+
+  /* ────────────────  Sidebar mock  ──────────────── */
+  .sidebar-mock {
+    width: 252px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    font-size: 13px;
+    box-shadow: var(--shadow);
+  }
+  .side-section { margin-bottom: 16px; }
+  .side-section + .side-section { padding-top: 16px; border-top: 1px solid var(--line); }
+  .side-h {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--mute);
+    margin-bottom: 8px;
+  }
+  .input-mock {
+    width: 100%;
+    height: 32px;
+    border: 1px solid var(--line-2);
+    border-radius: 6px;
+    background: var(--paper);
+    padding: 0 10px 0 28px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .input-mock svg { position: absolute; left: 8px; top: 50%; transform: translateY(-50%); color: var(--mute-2); }
+  .input-mock .placeholder { color: var(--mute-2); }
+  .check-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 13px;
+    color: var(--ink-2);
+  }
+  .check {
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    border: 1.25px solid var(--line-2);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .check.checked {
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+  .check.checked::after {
+    content: '';
+    position: absolute;
+    left: 3px; top: 0px;
+    width: 4px; height: 8px;
+    border: solid #fff;
+    border-width: 0 1.5px 1.5px 0;
+    transform: rotate(45deg);
+  }
+  .check.indet {
+    background: var(--ink);
+    border-color: var(--ink);
+  }
+  .check.indet::after {
+    content: '';
+    position: absolute;
+    left: 2.5px; top: 5.5px;
+    width: 8px; height: 1.5px;
+    background: #fff;
+  }
+  .count {
+    margin-left: auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--mute);
+  }
+
+  /* segmented control */
+  .seg {
+    display: inline-flex;
+    background: #f3f1ec;
+    border-radius: 6px;
+    padding: 2px;
+    gap: 0;
+    border: 1px solid var(--line);
+  }
+  .seg button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: default;
+    color: var(--mute);
+  }
+  .seg button.active {
+    background: var(--paper);
+    color: var(--ink);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.06);
+  }
+  .seg.tiny button { font-size: 11px; padding: 3px 8px; }
+
+  /* tag chip */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.6;
+    border: 1px solid transparent;
+  }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .chip.untagged {
+    color: var(--mute);
+    background: transparent;
+    border: 1px dashed var(--line-2);
+    font-style: italic;
+  }
+  .chip.untagged .dot { background: transparent; border: 1px dashed var(--mute-2); }
+
+  /* tag presets */
+  .t-work    { color: oklch(0.40 0.12 30);  background: oklch(0.94 0.04 30); }
+  .t-work    .dot { background: oklch(0.55 0.14 30); }
+  .t-errand  { color: oklch(0.40 0.12 210); background: oklch(0.94 0.04 210); }
+  .t-errand  .dot { background: oklch(0.55 0.14 210); }
+  .t-bug     { color: oklch(0.40 0.12 0);   background: oklch(0.94 0.04 0); }
+  .t-bug     .dot { background: oklch(0.55 0.14 0); }
+  .t-project { color: oklch(0.40 0.12 120); background: oklch(0.94 0.04 120); }
+  .t-project .dot { background: oklch(0.55 0.14 120); }
+  .t-urgent  { color: oklch(0.40 0.12 60);  background: oklch(0.94 0.04 60); }
+  .t-urgent  .dot { background: oklch(0.55 0.14 60); }
+  .t-personal{ color: oklch(0.40 0.12 270); background: oklch(0.94 0.04 270); }
+  .t-personal.dot, .t-personal .dot { background: oklch(0.55 0.14 270); }
+  .t-deep    { color: oklch(0.40 0.12 150); background: oklch(0.94 0.04 150); }
+  .t-deep    .dot { background: oklch(0.55 0.14 150); }
+  .t-house   { color: oklch(0.40 0.12 330); background: oklch(0.94 0.04 330); }
+  .t-house   .dot { background: oklch(0.55 0.14 330); }
+
+  /* tag picker row */
+  .tag-row-pick {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: default;
+    margin: 0 -6px;
+  }
+  .tag-row-pick:hover { background: #f7f5f0; }
+  .tag-row-pick .label { flex: 1; font-size: 13px; color: var(--ink); }
+  .tag-row-pick .label em { font-style: italic; color: var(--mute); }
+  .tag-row-pick .swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+  .tag-row-pick.disabled { opacity: 0.45; }
+  .tag-row-pick.disabled:hover { background: transparent; }
+
+  .divider {
+    border-top: 1px dashed var(--line-2);
+    margin: 4px -6px 4px;
+  }
+
+  /* annotation system */
+  .annotated {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 28px;
+    align-items: start;
+  }
+  .annotations {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 8px;
+  }
+  .annot {
+    background: var(--note);
+    border-left: 3px solid var(--note-line);
+    padding: 10px 12px;
+    border-radius: 0 4px 4px 0;
+    font-size: 12.5px;
+    color: var(--ink-2);
+    line-height: 1.5;
+  }
+  .annot .ref {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    background: rgba(0,0,0,0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-right: 6px;
+    color: var(--ink);
+  }
+  .annot.warn { background: var(--warn); border-left-color: var(--warn-line); }
+  .annot.ok   { background: var(--ok);  border-left-color: var(--ok-line); }
+  .annot strong { color: var(--ink); font-weight: 500; }
+
+  /* badge pin used to anchor annotations onto mocks */
+  .pin {
+    position: absolute;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 10px;
+    font-weight: 500;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 2px var(--paper), 0 2px 4px rgba(0,0,0,0.2);
+    z-index: 2;
+  }
+
+  /* ────────────────  Matrix  ──────────────── */
+  .matrix {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+    font-size: 13px;
+  }
+  .matrix th, .matrix td {
+    text-align: left;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  .matrix th {
+    background: #faf8f3;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--mute);
+    font-weight: 500;
+  }
+  .matrix tr:last-child td { border-bottom: 0; }
+  .matrix .result {
+    color: var(--ink-2);
+    line-height: 1.45;
+  }
+  .matrix .impossible {
+    background: var(--warn);
+  }
+  .matrix code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    background: #f3f1ec;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  /* ────────────────  URL block  ──────────────── */
+  .url-block {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .url-row {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    border-top: 1px solid var(--line);
+  }
+  .url-row:first-child { border-top: 0; }
+  .url-row .scenario { padding: 12px 16px; color: var(--ink-2); font-size: 13px; }
+  .url-row .url {
+    padding: 12px 16px;
+    background: #faf8f3;
+    border-left: 1px solid var(--line);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--ink);
+    word-break: break-all;
+  }
+  .url .k { color: #8a4ad9; }
+  .url .v { color: #1f6d3a; }
+  .url .sep { color: var(--mute); }
+
+  /* ────────────────  Popover mock  ──────────────── */
+  .pop {
+    width: 380px;
+    background: var(--paper);
+    border: 1px solid var(--line-2);
+    border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(28,25,23,0.12), 0 2px 6px rgba(28,25,23,0.08);
+    overflow: hidden;
+  }
+  .pop-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .pop-head .title { font-size: 13px; font-weight: 500; flex: 1; }
+  .pop-search {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .pop-list { max-height: 280px; padding: 6px 8px; }
+  .pop-foot {
+    border-top: 1px solid var(--line);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #faf8f3;
+    font-size: 12px;
+    color: var(--mute);
+  }
+  .kbd {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    background: #fff;
+    border: 1px solid var(--line-2);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0 5px;
+    line-height: 16px;
+    display: inline-block;
+    color: var(--ink-2);
+  }
+
+  /* ────────────────  Active-filter strip mock  ──────────────── */
+  .strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    background: #faf8f3;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    font-size: 12px;
+  }
+  .strip .label { color: var(--mute); font-family: "IBM Plex Mono", monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .strip .joiner { color: var(--mute); font-family: "IBM Plex Mono", monospace; font-size: 10px; padding: 0 2px; }
+  .strip .clear { margin-left: auto; color: var(--mute); cursor: default; font-size: 12px; }
+
+  /* ────────────────  Toggle pill (Variant A header)  ──────────────── */
+  .label-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .label-row .side-h { margin-bottom: 0; }
+
+  /* footer cards */
+  .files {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    color: var(--ink-2);
+    line-height: 1.7;
+    white-space: pre-wrap;
+  }
+  .files .add { color: #1f6d3a; }
+  .files .edit { color: #8a4ad9; }
+  .files .comment { color: var(--mute); }
+
+  .checklist { margin: 0; padding: 0; list-style: none; }
+  .checklist li {
+    padding: 8px 0 8px 28px;
+    border-bottom: 1px solid var(--line);
+    position: relative;
+    font-size: 13px;
+    color: var(--ink-2);
+  }
+  .checklist li:last-child { border-bottom: 0; }
+  .checklist li::before {
+    content: '';
+    position: absolute;
+    left: 4px; top: 11px;
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    border: 1.25px solid var(--line-2);
+  }
+  .checklist li code {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12px;
+    background: #f3f1ec;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .columns-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+
+  .impossible-card {
+    background: var(--warn);
+    border: 1px solid var(--warn-line);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .impossible-card .title {
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+  .impossible-card .body {
+    color: var(--ink-2);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .before-after {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .ba-tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    color: var(--mute);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 8px;
+    display: inline-block;
+  }
+  .ba-tag.before { color: #b15a32; }
+  .ba-tag.after  { color: #1f6d3a; }
+
+  .arrow {
+    display: inline-flex;
+    align-items: center;
+    color: var(--mute);
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  /* small svg icon helper */
+  .ico { width: 14px; height: 14px; stroke: currentColor; stroke-width: 1.5; fill: none; flex-shrink: 0; }
+  .ico-sm { width: 12px; height: 12px; }
+
+  /* utility */
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mt-8 { margin-top: 8px; } .mt-12 { margin-top: 12px; } .mt-16 { margin-top: 16px; } .mt-24 { margin-top: 24px; }
+  .mb-8 { margin-bottom: 8px; } .mb-12 { margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="doc">
+
+<!-- ============== HEADER ============== -->
+<div class="meta-row">
+  <span class="mono">tt · design refinement</span>
+  <span class="dot"></span>
+  <span>mid-fidelity</span>
+  <span class="dot"></span>
+  <span class="mono">frontend + 1 server param</span>
+</div>
+<h1>Tag filter — Untagged, Any / All, and mixed sets</h1>
+<p class="lede">
+  The tag filter is a multi-select that does implicit OR. There's no way to surface tasks with
+  <em>no tags</em>, no way to require every selected tag, and no way to express "untagged or
+  tagged with X." This refinement adds those three capabilities with one model — a pinned
+  <em>Untagged</em> pseudo-tag and an Any&nbsp;/&nbsp;All match mode — exposed two ways: in the
+  existing sidebar, and as a standalone popover.
+</p>
+<div class="pill-row">
+  <span class="pill scope">Untagged</span>
+  <span class="pill scope">OR within tags</span>
+  <span class="pill scope">AND within tags</span>
+  <span class="pill scope">Mix untagged + tag(s)</span>
+  <span class="pill">URL: tag_filter=</span>
+  <span class="pill">2 surfaces</span>
+</div>
+
+<!-- ============== PROBLEM ============== -->
+<section>
+  <span class="section-tag">01 · gap</span>
+  <h2>What we can't express today</h2>
+  <p class="sub">Three filter intentions the user can describe in one sentence but the current control can't produce.</p>
+
+  <div class="columns-3 mt-16">
+    <div class="card">
+      <div class="card-head">
+        <span class="label">Intent</span>
+        <span class="title">"Show me my untagged tasks"</span>
+      </div>
+      <div class="card-body">
+        <p class="sub" style="font-size:13px">Inbox triage: which tasks haven't been categorized yet? Today the picker only lists existing tags. Untagged is not a selectable value.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <span class="label">Intent</span>
+        <span class="title">"Show only tasks tagged work <em>and</em> urgent"</span>
+      </div>
+      <div class="card-body">
+        <p class="sub" style="font-size:13px">Cross-cutting view. Selecting both today returns the <em>union</em> (work ∪ urgent). There's no toggle to mean intersection.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <span class="label">Intent</span>
+        <span class="title">"Show untagged or work"</span>
+      </div>
+      <div class="card-body">
+        <p class="sub" style="font-size:13px">"Things I haven't classified yet, plus my work pile." Needs Untagged to be selectable like a tag, plus the OR behavior we already have.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== MODEL ============== -->
+<section>
+  <span class="section-tag">02 · model</span>
+  <h2>One model, two knobs</h2>
+  <p class="sub">
+    A single pseudo-tag — <strong>Untagged</strong> — pinned at the top of the tag list, selectable like any other. A single
+    match-mode toggle: <strong>Any</strong> (the existing OR) or <strong>All</strong> (new — AND). Every filter intent above
+    falls out of those two knobs.
+  </p>
+
+  <table class="matrix mt-16">
+    <thead>
+      <tr>
+        <th style="width:28%">Selection</th>
+        <th style="width:14%">Mode</th>
+        <th>Returns</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>nothing selected</td>
+        <td><code>—</code></td>
+        <td class="result">All tasks (no tag filter).</td>
+      </tr>
+      <tr>
+        <td><span class="chip t-work"><span class="dot"></span>work</span></td>
+        <td><code>any</code></td>
+        <td class="result">Tasks tagged <code>work</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="chip t-work"><span class="dot"></span>work</span> <span class="chip t-errand"><span class="dot"></span>errand</span></td>
+        <td><code>any</code></td>
+        <td class="result">Tasks tagged <code>work</code> <em>or</em> <code>errand</code> (existing OR behavior).</td>
+      </tr>
+      <tr>
+        <td><span class="chip t-work"><span class="dot"></span>work</span> <span class="chip t-urgent"><span class="dot"></span>urgent</span></td>
+        <td><code>all</code></td>
+        <td class="result"><strong>New.</strong> Tasks tagged <code>work</code> <em>and</em> <code>urgent</code>.</td>
+      </tr>
+      <tr>
+        <td><span class="chip untagged"><span class="dot"></span>Untagged</span></td>
+        <td><code>any</code></td>
+        <td class="result"><strong>New.</strong> Tasks with zero tags.</td>
+      </tr>
+      <tr>
+        <td><span class="chip untagged"><span class="dot"></span>Untagged</span> <span class="chip t-work"><span class="dot"></span>work</span></td>
+        <td><code>any</code></td>
+        <td class="result"><strong>New.</strong> Tasks with zero tags <em>or</em> tagged <code>work</code> (the example case).</td>
+      </tr>
+      <tr class="impossible">
+        <td><span class="chip untagged"><span class="dot"></span>Untagged</span> <span class="chip t-work"><span class="dot"></span>work</span></td>
+        <td><code>all</code></td>
+        <td class="result"><strong>Impossible set</strong> — a task can't be both untagged and tagged. UI prevents this; see §06.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ============== VARIANT A ============== -->
+<section>
+  <span class="section-tag">03 · variant a</span>
+  <h2>Sidebar — in-place expansion</h2>
+  <p class="sub">
+    Lowest friction: keeps the existing Tags section in the left sidebar. Adds (1) a pinned
+    <em>Untagged</em> row above the tag list, and (2) a small <em>Any / All</em> segmented
+    control on the section heading.
+  </p>
+
+  <div class="before-after mt-16">
+    <!-- BEFORE -->
+    <div>
+      <span class="ba-tag before">Before</span>
+      <div class="sidebar-mock" style="margin:0">
+        <div class="side-section">
+          <div class="side-h">Search</div>
+          <div class="input-mock">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <span class="placeholder">Search tasks…</span>
+          </div>
+        </div>
+        <div class="side-section">
+          <div class="side-h">Tags</div>
+          <button style="width:100%;height:32px;border:1px solid var(--line-2);background:var(--paper);border-radius:6px;display:flex;align-items:center;padding:0 10px;font-family:inherit;font-size:13px;color:var(--ink-2);justify-content:space-between">
+            <span>Any tag</span>
+            <svg class="ico ico-sm" viewBox="0 0 24 24" style="color:var(--mute-2)"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <p style="font-size:11px;color:var(--mute);margin:6px 0 0;line-height:1.45">A popover with checkboxes. Multi-select means OR. No untagged, no AND.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- AFTER -->
+    <div>
+      <span class="ba-tag after">After</span>
+      <div class="sidebar-mock" style="margin:0;position:relative">
+        <div class="side-section">
+          <div class="side-h">Search</div>
+          <div class="input-mock">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <span class="placeholder">Search tasks…</span>
+          </div>
+        </div>
+        <div class="side-section">
+          <div class="label-row">
+            <span class="side-h">Tags</span>
+            <div class="seg tiny" style="position:relative">
+              <span class="pin" style="left:-22px;top:-2px">1</span>
+              <button class="active">Any</button>
+              <button>All</button>
+            </div>
+          </div>
+          <!-- pinned untagged -->
+          <div class="tag-row-pick" style="position:relative">
+            <span class="pin" style="left:-22px;top:6px">2</span>
+            <span class="check checked"></span>
+            <span class="swatch" style="background:transparent;border:1px dashed var(--mute-2);width:8px;height:8px"></span>
+            <span class="label"><em>Untagged</em></span>
+            <span class="count">12</span>
+          </div>
+          <div class="divider"></div>
+          <!-- real tags -->
+          <div class="tag-row-pick">
+            <span class="check checked"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 30)"></span>
+            <span class="label">work</span>
+            <span class="count">28</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 210)"></span>
+            <span class="label">errand</span>
+            <span class="count">7</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 0)"></span>
+            <span class="label">bug</span>
+            <span class="count">4</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 120)"></span>
+            <span class="label">project-x</span>
+            <span class="count">11</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 60)"></span>
+            <span class="label">urgent</span>
+            <span class="count">3</span>
+          </div>
+
+          <!-- summary -->
+          <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line-2);position:relative">
+            <span class="pin" style="left:-22px;top:8px">3</span>
+            <div style="font-size:11px;color:var(--mute);font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px">Matches</div>
+            <div class="row">
+              <span class="chip untagged"><span class="dot"></span>Untagged</span>
+              <span class="mono" style="font-size:10px;color:var(--mute)">or</span>
+              <span class="chip t-work"><span class="dot"></span>work</span>
+            </div>
+            <p style="font-size:11px;color:var(--mute);margin:6px 0 0;line-height:1.4">40 tasks · <a style="color:var(--ink-2);text-decoration:underline">Clear</a></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="annotations mt-16" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+    <div class="annot">
+      <span class="ref">1</span>
+      <strong>Match-mode toggle.</strong> Tiny Any&nbsp;/&nbsp;All segmented control on the section heading. Defaults to Any (back-compat with existing OR). Persists in URL as part of <code>tag_filter</code>.
+    </div>
+    <div class="annot">
+      <span class="ref">2</span>
+      <strong>Untagged pinned at top.</strong> Italic label, dashed swatch, dashed divider below. Behaves like any tag — selectable, counts shown, click anywhere on the row.
+    </div>
+    <div class="annot">
+      <span class="ref">3</span>
+      <strong>"Matches" summary.</strong> Plain-English readout of the current filter using the chip vocabulary plus <code>or</code>&nbsp;/&nbsp;<code>and</code> joiners. One-line task count and Clear.
+    </div>
+  </div>
+
+  <p class="sub mt-16" style="font-size:13px">
+    <strong>Trade-off:</strong> the sidebar real-estate stays cramped — fine when the user has &lt;20 tags. Past that, the popover surface (Variant B) reads better.
+  </p>
+</section>
+
+<!-- ============== VARIANT B ============== -->
+<section>
+  <span class="section-tag">04 · variant b</span>
+  <h2>Popover — dedicated surface</h2>
+  <p class="sub">
+    The sidebar's <em>Any tag</em> trigger opens a richer popover (380px). Same model, more room: search field at the top, Untagged pinned, full tag list with counts, mode toggle in the footer. Pairs naturally with the existing palette (<span class="kbd">⌘K</span>) — selecting a tag there can pre-open this popover focused on that tag.
+  </p>
+
+  <div class="grid-2-uneven mt-16">
+    <!-- closed state on the sidebar -->
+    <div>
+      <div class="sidebar-mock">
+        <div class="side-section">
+          <div class="side-h">Tags</div>
+          <button style="width:100%;height:34px;border:1.5px solid var(--ink);background:var(--paper);border-radius:6px;display:flex;align-items:center;padding:0 10px;font-family:inherit;font-size:13px;color:var(--ink);justify-content:space-between;gap:8px">
+            <span style="display:inline-flex;align-items:center;gap:6px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              <span class="chip untagged" style="padding:1px 6px"><span class="dot"></span>Untagged</span>
+              <span class="mono" style="font-size:10px;color:var(--mute)">or</span>
+              <span class="chip t-work" style="padding:1px 6px"><span class="dot"></span>work</span>
+            </span>
+            <svg class="ico ico-sm" viewBox="0 0 24 24" style="color:var(--mute)"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <p style="font-size:11px;color:var(--mute);margin:8px 0 0;line-height:1.45">
+            Trigger summarises the active filter using chips + <code>or</code>/<code>and</code> — no more "2 selected" ambiguity.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- popover open -->
+    <div style="position:relative;padding-left:28px">
+      <div class="pop">
+        <div class="pop-head">
+          <span class="title">Filter by tag</span>
+          <div class="seg tiny" style="position:relative">
+            <span class="pin" style="left:-22px;top:-2px">1</span>
+            <button class="active">Any</button>
+            <button>All</button>
+          </div>
+        </div>
+        <div class="pop-search">
+          <div class="input-mock">
+            <svg class="ico ico-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+            <span class="placeholder">Search tags…</span>
+          </div>
+        </div>
+        <div class="pop-list">
+          <div class="tag-row-pick" style="position:relative">
+            <span class="pin" style="left:-22px;top:6px">2</span>
+            <span class="check checked"></span>
+            <span class="swatch" style="background:transparent;border:1px dashed var(--mute-2);width:8px;height:8px"></span>
+            <span class="label"><em>Untagged</em></span>
+            <span class="count">12</span>
+          </div>
+          <div class="divider"></div>
+          <div class="tag-row-pick">
+            <span class="check checked"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 30)"></span>
+            <span class="label">work</span>
+            <span class="count">28</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 210)"></span>
+            <span class="label">errand</span>
+            <span class="count">7</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 0)"></span>
+            <span class="label">bug</span>
+            <span class="count">4</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 120)"></span>
+            <span class="label">project-x</span>
+            <span class="count">11</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 60)"></span>
+            <span class="label">urgent</span>
+            <span class="count">3</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 270)"></span>
+            <span class="label">personal</span>
+            <span class="count">9</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 150)"></span>
+            <span class="label">deep-work</span>
+            <span class="count">5</span>
+          </div>
+          <div class="tag-row-pick">
+            <span class="check"></span>
+            <span class="swatch" style="background:oklch(0.55 0.14 330)"></span>
+            <span class="label">house</span>
+            <span class="count">6</span>
+          </div>
+        </div>
+        <div class="pop-foot" style="position:relative">
+          <span class="pin" style="left:-22px;top:10px">3</span>
+          <span>2 selected · 40 matches</span>
+          <span class="clear" style="margin-left:auto;text-decoration:underline">Clear</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="annotations mt-16" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+    <div class="annot">
+      <span class="ref">1</span>
+      <strong>Mode in the header.</strong> Same Any/All control but lives in the popover head — closer to the working area. Changing mode never modifies selection (except for the All+Untagged case; see §06).
+    </div>
+    <div class="annot">
+      <span class="ref">2</span>
+      <strong>Search filters the list.</strong> Plain substring match on tag names. <em>Untagged</em> always remains visible at the top — it isn't searchable, it's a pinned UI affordance.
+    </div>
+    <div class="annot">
+      <span class="ref">3</span>
+      <strong>Live count.</strong> "N selected · M matches" — the second number is the size of the resulting task set under the current mode, refreshed as selections change.
+    </div>
+  </div>
+</section>
+
+<!-- ============== ACTIVE FILTER STRIP ============== -->
+<section>
+  <span class="section-tag">05 · readout</span>
+  <h2>Active-filter strip reads naturally</h2>
+  <p class="sub">
+    The existing <code>ActiveFilterStrip</code> already lives above the table. The new model
+    needs joiners (<code>or</code>&nbsp;/&nbsp;<code>and</code>) between tag chips so the user
+    can read the filter as a sentence. Each chip removes itself; the joiner is read-only.
+  </p>
+
+  <div class="stack mt-16">
+    <div class="strip">
+      <span class="label">Filter</span>
+      <span class="chip t-work"><span class="dot"></span>work ×</span>
+      <span class="joiner">or</span>
+      <span class="chip t-errand"><span class="dot"></span>errand ×</span>
+      <span class="clear">Clear all</span>
+    </div>
+    <div class="strip">
+      <span class="label">Filter</span>
+      <span class="chip t-work"><span class="dot"></span>work ×</span>
+      <span class="joiner">and</span>
+      <span class="chip t-urgent"><span class="dot"></span>urgent ×</span>
+      <span class="clear">Clear all</span>
+    </div>
+    <div class="strip">
+      <span class="label">Filter</span>
+      <span class="chip untagged"><span class="dot"></span>Untagged ×</span>
+      <span class="joiner">or</span>
+      <span class="chip t-work"><span class="dot"></span>work ×</span>
+      <span class="clear">Clear all</span>
+    </div>
+    <div class="strip">
+      <span class="label">Filter</span>
+      <span class="chip untagged"><span class="dot"></span>Untagged ×</span>
+      <span class="clear">Clear all</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============== EDGE CASES ============== -->
+<section>
+  <span class="section-tag">06 · edges</span>
+  <h2>Edge cases</h2>
+
+  <div class="grid-2 mt-16" style="grid-template-columns: 1.2fr 1fr">
+    <div class="impossible-card">
+      <div class="title">All + Untagged → guard, don't return empty</div>
+      <div class="body">
+        <p style="margin:0 0 8px">
+          The intersection of <em>"has no tags"</em> and <em>"has tag X"</em> is empty by definition. Two reasonable handlings:
+        </p>
+        <ul style="margin:0 0 8px 18px;padding:0;font-size:13px">
+          <li><strong>Auto-flip mode.</strong> When the user adds <em>Untagged</em> while <code>all</code> is active, transparently flip the mode to <code>any</code>. Show a small toast: <em>"Switched to Any — All&nbsp;+&nbsp;Untagged would return nothing."</em></li>
+          <li><strong>Pick one — recommended:</strong> when <em>Untagged</em> is selected, the <code>All</code> button is disabled with a tooltip: <em>"Untagged can only combine with Any."</em> Mirrors the chip — when <code>all</code> is active and a user selects Untagged, the other selections clear and mode flips. This avoids a transient empty-state.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="card">
+        <div class="card-head"><span class="label">Edge</span><span class="title">Tags with same name as the sentinel</span></div>
+        <div class="card-body">
+          <p class="sub" style="font-size:13px;margin:0">
+            URL encoding uses <code>@untagged</code> as a reserved token (see §07). Tag names containing <code>@</code> are already disallowed by validation — see <code>internal/tag/validate.go</code>. No collision risk; add a test that confirms.
+          </p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><span class="label">Edge</span><span class="title">Palette parity</span></div>
+        <div class="card-body">
+          <p class="sub" style="font-size:13px;margin:0">
+            <code>command-palette.tsx</code> already has a "filter by tag" command per tag. Add one more at the top: <strong>Filter by: Untagged</strong>. Same path as a real tag — sets <code>tag_filter=any:@untagged</code>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============== URL ============== -->
+<section>
+  <span class="section-tag">07 · url shape</span>
+  <h2>One param — <span class="mono">tag_filter=</span></h2>
+  <p class="sub">
+    Replaces the repeated <code>tag=foo&amp;tag=bar</code> pattern with a single structured
+    param. The format is <code>&lt;mode&gt;:&lt;name&gt;,&lt;name&gt;,…</code> where mode is
+    <code>any</code> or <code>all</code> and <code>@untagged</code> is the reserved pseudo-tag
+    token. Names are comma-separated and URL-encoded; commas in tag names are escaped
+    server-side per the existing tag-name rules.
+  </p>
+
+  <div class="url-block mt-16">
+    <div class="url-row">
+      <div class="scenario">No filter</div>
+      <div class="url"><span class="sep">/tasks</span></div>
+    </div>
+    <div class="url-row">
+      <div class="scenario">Tag <em>work</em> — Any</div>
+      <div class="url"><span class="sep">/tasks?</span><span class="k">tag_filter=</span><span class="v">any:work</span></div>
+    </div>
+    <div class="url-row">
+      <div class="scenario">Work <em>or</em> errand</div>
+      <div class="url"><span class="sep">/tasks?</span><span class="k">tag_filter=</span><span class="v">any:work,errand</span></div>
+    </div>
+    <div class="url-row">
+      <div class="scenario">Work <em>and</em> urgent</div>
+      <div class="url"><span class="sep">/tasks?</span><span class="k">tag_filter=</span><span class="v">all:work,urgent</span></div>
+    </div>
+    <div class="url-row">
+      <div class="scenario">Untagged only</div>
+      <div class="url"><span class="sep">/tasks?</span><span class="k">tag_filter=</span><span class="v">any:@untagged</span></div>
+    </div>
+    <div class="url-row">
+      <div class="scenario">Untagged <em>or</em> work</div>
+      <div class="url"><span class="sep">/tasks?</span><span class="k">tag_filter=</span><span class="v">any:@untagged,work</span></div>
+    </div>
+  </div>
+
+  <p class="sub mt-16" style="font-size:13px">
+    <strong>Migration.</strong> The server keeps accepting the legacy repeated <code>tag=</code>
+    param for one release as read-only back-compat (treated as <code>any:</code>). The frontend
+    only writes <code>tag_filter=</code>. After one release, remove the legacy path.
+  </p>
+
+  <h3 class="mt-24"><span class="num">07a</span>Zod schema (frontend)</h3>
+  <div class="files">
+<span class="comment">// web/src/features/tasks/use-task-list-search.ts</span>
+
+<span class="add">export const TAG_MATCH_MODES = ['any', 'all'] as const;</span>
+<span class="add">export type TagMatchMode = (typeof TAG_MATCH_MODES)[number];</span>
+
+<span class="add">export const tagFilterSchema = z.object({</span>
+<span class="add">  mode: z.enum(TAG_MATCH_MODES),</span>
+<span class="add">  tags: z.array(z.string()),         // raw names; '@untagged' is the sentinel</span>
+<span class="add">});</span>
+
+<span class="comment">// existing search schema, with the new field:</span>
+export const taskSearchSchema = z.object({
+<span class="edit">  // tags: z.array(z.string()).optional(),   ← REMOVED</span>
+<span class="add">  tag_filter: tagFilterSchema.optional(),</span>
+  …
+});
+
+<span class="comment">// Parse / serialise tag_filter=any:foo,bar to/from the URL string in</span>
+<span class="comment">// the route's validateSearch transformer (single string ↔ object).</span>
+  </div>
+</section>
+
+<!-- ============== FILE TOUCH ============== -->
+<section>
+  <span class="section-tag">08 · file touch</span>
+  <h2>What changes, where</h2>
+  <p class="sub">Single small frontend change set, plus one server param swap.</p>
+
+  <div class="files mt-16">
+web/src/
+├── api/
+│   └── tasks.ts                       <span class="edit">(swap tag= encoding for tag_filter=)</span>
+├── components/
+│   └── command-palette.tsx            <span class="edit">(add "Filter by: Untagged" command)</span>
+├── features/tasks/
+│   ├── filter-sidebar.tsx             <span class="edit">(Variant A: pinned Untagged + Any/All seg)</span>
+│   ├── tag-filter-popover.tsx         <span class="add">NEW (Variant B)</span>
+│   ├── active-filter-strip.tsx        <span class="edit">(joiner chips, Untagged chip variant)</span>
+│   └── use-task-list-search.ts        <span class="edit">(tag_filter schema + (de)serialise)</span>
+└── components/ui/
+    └── tag-chip.tsx                   <span class="edit">(add `untagged` variant)</span>
+
+internal/
+├── httpapi/tasks_handler.go           <span class="edit">(parse tag_filter; back-compat tag=)</span>
+└── task/service.go                    <span class="edit">(ListTasks(... TagFilter{Mode, Tags}))</span>
+  </div>
+
+  <h3 class="mt-24">Acceptance</h3>
+  <ul class="checklist mt-8">
+    <li>Selecting <em>Untagged</em> with no tags returns tasks that have zero tags in <code>task_tags</code>.</li>
+    <li>Selecting <em>Untagged</em> + one or more tags in Any mode returns the union of (untagged tasks, tasks tagged with any selected tag).</li>
+    <li>Selecting two or more tags in All mode returns only tasks tagged with every selected tag.</li>
+    <li>The Any/All segmented control persists in the URL via <code>tag_filter</code> and survives reload.</li>
+    <li>Selecting <em>Untagged</em> while All is active flips the mode to Any and clears non-Untagged tags (no transient empty state).</li>
+    <li>The active-filter strip renders joiners (<code>or</code>/<code>and</code>) between tag chips matching the current mode.</li>
+    <li>The command palette gains a <em>Filter by: Untagged</em> entry above the per-tag entries.</li>
+    <li>Legacy URLs with repeated <code>tag=</code> still load correctly (treated as <code>any:</code>) for one release.</li>
+    <li>Shortcut cheatsheet does not change — same controls, no new keys. (Verified in <code>shortcut-cheatsheet.tsx</code> — Tags filter group unaffected.)</li>
+  </ul>
+</section>
+
+<!-- ============== OPEN QUESTIONS ============== -->
+<section>
+  <span class="section-tag">09 · open</span>
+  <h2>Resolved in this handoff</h2>
+  <ul class="checklist mt-8" style="border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);padding:0 16px">
+    <li><strong>"Untagged" placement</strong> — pinned at top of tag list (one place, not three).</li>
+    <li><strong>Match-mode UX</strong> — global Any/All segmented control (not per-chip operators).</li>
+    <li><strong>Untagged + tag intent</strong> — union (untagged OR any of the selected tags).</li>
+    <li><strong>Control surface</strong> — both: sidebar in-place <em>and</em> a popover. Variant A is the default; Variant B replaces the existing closed-state trigger.</li>
+    <li><strong>URL shape</strong> — single structured <code>tag_filter=</code> param.</li>
+  </ul>
+</section>
+
+</div>
+</body>
+</html>
