@@ -6,7 +6,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { TagFilter } from '@/features/tasks/use-task-list-search';
+import { serializeTagFilter, type TagFilter } from '@/features/tasks/use-task-list-search';
 import { api } from '@/lib/api';
 import type {
   Task,
@@ -20,26 +20,18 @@ import type {
 /** Shape of search params we send to the server. */
 export interface TaskListParams {
   states?: TaskState[];
-  /** Tag names (server resolves to IDs). */
-  tags?: string[];
+  /**
+   * Structured tag filter — serialised to the URL as
+   * `tag_filter=<mode>:<name>,<name>,…`. The list may include the
+   * `@untagged` sentinel to match tasks with zero tags. Replaces the
+   * pre-Phase-3 `tags` + `tagMode` pair.
+   */
+  tag_filter?: TagFilter;
   /**
    * Tag names to exclude. Serialised as a single CSV `tags_exclude=a,b,c`
    * query param to keep the URL short for the common alt-click case.
    */
   tagsExclude?: string[];
-  /**
-   * How multiple tag filters combine on the server. The backend defaults to
-   * `all` when the field is unset, so the UI sends `any` explicitly whenever
-   * `tags` is non-empty (the UI default is `any` — see filter sidebar).
-   */
-  tagMode?: 'any' | 'all';
-  /**
-   * Structured tag filter — replaces `tags` + `tagMode` (Phase 3 will
-   * remove the old fields). Added in Phase 1 of the tag-filter refactor
-   * so consumers can begin migrating; the API client is still wiring
-   * `tags`/`tagMode` to the server until Phase 3.
-   */
-  tag_filter?: TagFilter;
   due?: TaskDueRange;
   q?: string;
   sort?: TaskSortAxis;
@@ -51,10 +43,8 @@ export interface TaskListParams {
 export function buildTaskListQuery(params: TaskListParams): string {
   const sp = new URLSearchParams();
   for (const s of params.states ?? []) sp.append('state', s);
-  for (const t of params.tags ?? []) sp.append('tag', t);
-  if (params.tagMode && (params.tags?.length ?? 0) > 0) {
-    sp.set('tag_mode', params.tagMode);
-  }
+  const tf = serializeTagFilter(params.tag_filter);
+  if (tf) sp.set('tag_filter', tf);
   if (params.tagsExclude && params.tagsExclude.length > 0) {
     sp.set('tags_exclude', params.tagsExclude.join(','));
   }
