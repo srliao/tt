@@ -125,3 +125,11 @@ handles its own styling based on `name === UNTAGGED_TOKEN`).
 - Phase 1 (schema)
 - Phase 3 (`TagChip` untagged variant)
 - Independent of Phase 4 — can land in parallel.
+
+## Pre-existing `tagsExclude` chips
+
+The strip likely already renders excluded-tag chips (sourced from
+`search.tagsExclude`) in their own group with their own removal handler.
+**Leave that block untouched.** This phase only changes the include-side
+chip rendering to add joiners between them. Read order in the strip stays:
+state → due → q → include tags (with joiners) → exclude tags (unchanged).

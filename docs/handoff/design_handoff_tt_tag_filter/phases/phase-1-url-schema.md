@@ -185,3 +185,24 @@ const base: TaskListParams = {
 ## Dependencies
 
 None — this is the first phase. Phases 2 – 6 all depend on this contract.
+
+## Pre-existing code to retarget (not rewrite)
+
+`use-task-list-search.ts` already exports **`useTagFilterMutator`** and a
+**`clickModeFromEvent`** helper, used by row-chip clicks in
+`task-table.tsx` and by the palette. The mutator currently reads/writes the
+old `tags` + `tagMode` pair on the include side, and `tagsExclude` on the
+exclude side.
+
+In this phase, **retarget only the include path** to `tag_filter`:
+
+- Include click → `setSearch({ tag_filter: { mode: prev?.mode ?? 'any', tags: [...prev?.tags ?? [], name] } })`
+  (deduped; no-op if already present).
+- Clear-from-include click → remove `name` from `tag_filter.tags`; if empty,
+  set `tag_filter: undefined`. Same auto-flip-to-Any rule as
+  `ActiveFilterStrip` (Phase 5) when the remainder is a single tag or just
+  Untagged.
+- **Exclude path is unchanged** — keeps writing `tagsExclude`.
+
+Call sites (`task-table.tsx`'s `onTagClick`, `command-palette.tsx`) do **not**
+change — the mutator's external signature stays `(name, clickMode)`.

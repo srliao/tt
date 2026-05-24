@@ -583,7 +583,7 @@ function useTableShortcuts({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const onClick = (event: MouseEvent) => {
+    const onClick = (event: globalThis.MouseEvent) => {
       const t = event.target as HTMLElement | null;
       if (t?.closest('[role="checkbox"], input[type="checkbox"]')) {
         anchorRef.current = null;

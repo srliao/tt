@@ -91,6 +91,10 @@ Grep the test suite for any test that hits `?tag=` directly and migrate them
 to `?tag_filter=any:…`. Add one regression test that confirms `?tag=foo` now
 returns the unfiltered list (the param is silently ignored).
 
+**Don't touch `?tagsExclude=`** — that's a separate, still-supported param
+(see README scope note). Only the legacy include reader (`?tag=`) is being
+removed.
+
 ### Doc sync
 
 Run the documented doc-sync flow per repo `CLAUDE.md`. Files that almost

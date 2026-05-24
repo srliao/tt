@@ -34,6 +34,26 @@ The design doc shows two surfaces (sidebar in-place and a dedicated popover).
 Spacing/colors should match the existing app tokens (`web/src/index.css`,
 shadcn primitives), not the hex values in the reference HTML.
 
+## Scope note — pre-existing features to preserve
+
+The live repo already has two tag-filter features that aren't in the design
+reference and **stay intact** through this handoff:
+
+- **`tagsExclude` URL param + exclude chips.** Tag exclusion is already
+  shipped as a separate URL param (`tagsExclude=`). This handoff does **not**
+  fold exclude into `tag_filter`. The two params coexist:
+  `?tag_filter=any:work,@untagged&tagsExclude=wip` means "(untagged or
+  tagged work) and not tagged wip." Future work can subsume exclude into a
+  richer `tag_filter` encoding (e.g. `any:work;not:wip`); out of scope here.
+- **`useTagFilterMutator(name, clickMode)`** in `use-task-list-search.ts`.
+  This is the central include/exclude/clear mutator that row-chip clicks and
+  the palette call into. Phase 1 **retargets** it to read/write `tag_filter`
+  instead of the old `tags` + `tagMode` pair, while leaving its exclude path
+  (the one that writes `tagsExclude`) unchanged. Call sites (`task-table.tsx`,
+  `command-palette.tsx`, anywhere else) don't change.
+
+When in doubt: if a piece of code touches `tagsExclude`, leave it alone.
+
 ## Decisions locked in this handoff
 
 - **Untagged placement** — single source of truth: pinned at the top of the
