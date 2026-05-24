@@ -63,15 +63,23 @@ func dateBindings(rt *goja.Runtime, now time.Time) map[string]any {
 		"year": func() int {
 			return nowUTC.Year()
 		},
-		"isFirstOfMonth": func() bool {
-			return nowUTC.Day() == 1
+		"isFirstOfMonth": func(args ...goja.Value) (bool, error) {
+			t, err := optionalDateArg(args, nowUTC)
+			if err != nil {
+				return false, fmt.Errorf("runtime: isFirstOfMonth: %w", err)
+			}
+			return t.Day() == 1, nil
 		},
-		"isLastOfMonth": func() bool {
-			// The last day of the current month equals the day before the
-			// first of the next month.
-			firstNext := time.Date(nowUTC.Year(), nowUTC.Month()+1, 1, 0, 0, 0, 0, time.UTC)
+		"isLastOfMonth": func(args ...goja.Value) (bool, error) {
+			t, err := optionalDateArg(args, nowUTC)
+			if err != nil {
+				return false, fmt.Errorf("runtime: isLastOfMonth: %w", err)
+			}
+			// The last day of t's month equals the day before the first of
+			// the next month.
+			firstNext := time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, time.UTC)
 			last := firstNext.AddDate(0, 0, -1)
-			return nowUTC.Day() == last.Day()
+			return t.Day() == last.Day(), nil
 		},
 		"isWeekday": func(name string) bool {
 			return strings.EqualFold(nowUTC.Weekday().String(), name)
@@ -136,6 +144,18 @@ func timeToJSDate(rt *goja.Runtime, t time.Time) (goja.Value, error) {
 		return nil, fmt.Errorf("runtime: construct Date: %w", err)
 	}
 	return v, nil
+}
+
+// optionalDateArg resolves the variadic first argument of a ctx.* helper
+// that defaults to "now" when omitted. Used by isFirstOfMonth /
+// isLastOfMonth so both forms — bare query and arg form — share parsing
+// with the rest of the date API (JS Date, RFC3339, both SQLite layouts,
+// YYYY-MM-DD).
+func optionalDateArg(args []goja.Value, fallback time.Time) (time.Time, error) {
+	if len(args) == 0 || args[0] == nil || goja.IsUndefined(args[0]) || goja.IsNull(args[0]) {
+		return fallback, nil
+	}
+	return jsValueToTime(args[0])
 }
 
 // jsValueToTime converts a value produced by ctx.parseDate / addDays (a JS

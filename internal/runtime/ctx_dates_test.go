@@ -99,6 +99,100 @@ func TestDateBindings_IsLastOfMonth(t *testing.T) {
 	}
 }
 
+func TestDateBindings_IsFirstOfMonth_WithArg(t *testing.T) {
+	rt := newRuntimeWithDates(t, fixedNow)
+	cases := []struct {
+		expr string
+		want bool
+	}{
+		{`ctx.isFirstOfMonth("2026-06-01")`, true},
+		{`ctx.isFirstOfMonth("2026-06-02")`, false},
+		// SQLite timestamp form
+		{`ctx.isFirstOfMonth("2026-06-01 09:30:00")`, true},
+		// RFC3339
+		{`ctx.isFirstOfMonth("2026-06-01T09:30:00Z")`, true},
+		// JS Date
+		{`ctx.isFirstOfMonth(ctx.parseDate("2026-06-01"))`, true},
+		{`ctx.isFirstOfMonth(ctx.parseDate("2026-06-02"))`, false},
+		// Cross-year edge
+		{`ctx.isFirstOfMonth("2027-01-01")`, true},
+		{`ctx.isFirstOfMonth("2026-12-31")`, false},
+	}
+	for _, tc := range cases {
+		if got := runJS(t, rt, tc.expr).ToBoolean(); got != tc.want {
+			t.Fatalf("%s = %v, want %v", tc.expr, got, tc.want)
+		}
+	}
+}
+
+func TestDateBindings_IsLastOfMonth_WithArg(t *testing.T) {
+	rt := newRuntimeWithDates(t, fixedNow)
+	cases := []struct {
+		expr string
+		want bool
+	}{
+		{`ctx.isLastOfMonth("2026-05-31")`, true},
+		{`ctx.isLastOfMonth("2026-05-30")`, false},
+		// SQLite timestamp form
+		{`ctx.isLastOfMonth("2026-05-31 23:59:59")`, true},
+		// RFC3339
+		{`ctx.isLastOfMonth("2026-05-31T12:00:00Z")`, true},
+		// JS Date
+		{`ctx.isLastOfMonth(ctx.parseDate("2026-05-31"))`, true},
+		{`ctx.isLastOfMonth(ctx.parseDate("2026-05-30"))`, false},
+		// Cross-year edge
+		{`ctx.isLastOfMonth("2026-12-31")`, true},
+		{`ctx.isLastOfMonth("2027-01-01")`, false},
+		// Leap year: Feb 29 is the last day of Feb 2024.
+		{`ctx.isLastOfMonth("2024-02-29")`, true},
+		// Non-leap year: Feb 28 is the last day of Feb 2025.
+		{`ctx.isLastOfMonth("2025-02-28")`, true},
+	}
+	for _, tc := range cases {
+		if got := runJS(t, rt, tc.expr).ToBoolean(); got != tc.want {
+			t.Fatalf("%s = %v, want %v", tc.expr, got, tc.want)
+		}
+	}
+}
+
+// The motivating use case: schedule something N days before the end of
+// the month by composing addDays with isLastOfMonth.
+func TestDateBindings_IsLastOfMonth_AddDaysComposition(t *testing.T) {
+	// On 2026-05-26, today+5 = 2026-05-31 (last of month) → true.
+	rt := newRuntimeWithDates(t, time.Date(2026, 5, 26, 14, 30, 0, 0, time.UTC))
+	if v := runJS(t, rt, `ctx.isLastOfMonth(ctx.addDays(ctx.today(), 5))`).ToBoolean(); !v {
+		t.Fatalf("isLastOfMonth(today+5) on 2026-05-26 = false, want true")
+	}
+	// On 2026-05-27, today+5 = 2026-06-01 → false.
+	rt2 := newRuntimeWithDates(t, time.Date(2026, 5, 27, 14, 30, 0, 0, time.UTC))
+	if v := runJS(t, rt2, `ctx.isLastOfMonth(ctx.addDays(ctx.today(), 5))`).ToBoolean(); v {
+		t.Fatalf("isLastOfMonth(today+5) on 2026-05-27 = true, want false")
+	}
+}
+
+func TestDateBindings_IsFirstOfMonth_AddDaysComposition(t *testing.T) {
+	// On 2026-05-27, today+5 = 2026-06-01 → true.
+	rt := newRuntimeWithDates(t, time.Date(2026, 5, 27, 14, 30, 0, 0, time.UTC))
+	if v := runJS(t, rt, `ctx.isFirstOfMonth(ctx.addDays(ctx.today(), 5))`).ToBoolean(); !v {
+		t.Fatalf("isFirstOfMonth(today+5) on 2026-05-27 = false, want true")
+	}
+	// On 2026-05-26, today+5 = 2026-05-31 → false.
+	rt2 := newRuntimeWithDates(t, time.Date(2026, 5, 26, 14, 30, 0, 0, time.UTC))
+	if v := runJS(t, rt2, `ctx.isFirstOfMonth(ctx.addDays(ctx.today(), 5))`).ToBoolean(); v {
+		t.Fatalf("isFirstOfMonth(today+5) on 2026-05-26 = true, want false")
+	}
+}
+
+// Feb 29 in a non-leap year must surface as a parse error, not silently
+// roll into March. The script can catch it; we just have to refuse the
+// invalid calendar date.
+func TestDateBindings_IsLastOfMonth_InvalidDate(t *testing.T) {
+	rt := newRuntimeWithDates(t, fixedNow)
+	if _, err := rt.RunString(`ctx.isLastOfMonth("2025-02-29")`); err == nil {
+		t.Fatalf("isLastOfMonth(\"2025-02-29\") returned no error; want parse error")
+	}
+}
+
 func TestDateBindings_IsWeekday(t *testing.T) {
 	rt := newRuntimeWithDates(t, fixedNow)
 	if v := runJS(t, rt, `ctx.isWeekday("thursday")`).ToBoolean(); !v {

@@ -63,8 +63,10 @@ ctx.weekday()                  // "monday".."sunday"
 ctx.dayOfMonth()               // 1..31
 ctx.month()                    // 1..12
 ctx.year()                     // int
-ctx.isFirstOfMonth()           // bool
-ctx.isLastOfMonth()            // bool
+ctx.isFirstOfMonth()           // bool — about "now"
+ctx.isFirstOfMonth(date)       // bool — about a given date (any accepted form)
+ctx.isLastOfMonth()            // bool — about "now"
+ctx.isLastOfMonth(date)        // bool — about a given date (any accepted form)
 ctx.isWeekday("monday")        // bool
 ctx.daysSince(dateOrString)    // int (negative if future)
 ctx.daysBetween(a, b)          // int
@@ -198,6 +200,23 @@ ctx.log.info(`Queued ${bills.length} bill reminders`);
 
 Schedule: `monthly`, `{ "day": 1 }`. The loop creates all three in a
 single run; either all persist or (if one validation fails) none do.
+
+### Lead-time reminder: N days before end-of-month
+
+```js
+// Rent is due on the last day of the month; give yourself 5 days notice.
+if (ctx.isLastOfMonth(ctx.addDays(ctx.today(), 5))) {
+  ctx.queueTask({
+    title:    "Pay rent",
+    tags:     ["bills"],
+    due_date: ctx.formatDate(ctx.addDays(ctx.today(), 5)),
+  });
+}
+```
+
+Schedule: `daily`. The arg form of `isLastOfMonth` makes the offset
+read naturally — "is *that* date the last of its month?" — instead of
+forcing you to compute the end-of-month yourself.
 
 ### Follow-up N days after spawning
 
