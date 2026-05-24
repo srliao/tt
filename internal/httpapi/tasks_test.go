@@ -161,7 +161,12 @@ func TestTasks_ListFilterByState(t *testing.T) {
 	}
 }
 
-func TestTasks_ListFilterByTagAND(t *testing.T) {
+// TestTasks_ListLegacyTagParamIgnored confirms that the Phase 6 removal of
+// the legacy `tag=` + `tag_mode=` reader leaves those params silently
+// ignored — the request returns the full unfiltered list with a 200 status,
+// not a 400. Regression guard so a future re-add can't slip in without a
+// matching test update.
+func TestTasks_ListLegacyTagParamIgnored(t *testing.T) {
 	t.Parallel()
 
 	fx := newTestServer(t, nil)
@@ -171,6 +176,10 @@ func TestTasks_ListFilterByTagAND(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	t2, err := fx.tasks.Create(ctx, task.CreateInput{Title: "single"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	t3, err := fx.tasks.Create(ctx, task.CreateInput{Title: "untagged"})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -189,31 +198,118 @@ func TestTasks_ListFilterByTagAND(t *testing.T) {
 		t.Fatalf("set tags t2: %v", err)
 	}
 
+	// `?tag=foo&tag=bar` is now silently ignored — every task comes back.
 	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag=work&tag=urgent", nil)
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200 (body: %s)", resp.StatusCode, string(body))
+	}
 	tasks := decodeTasks(t, resp)
-	if len(tasks) != 1 || tasks[0].ID != t1.ID {
-		t.Fatalf("AND filter result = %+v", tasks)
+	if len(tasks) != 3 {
+		t.Fatalf("legacy `tag=` should be ignored; got %d tasks (%+v), want 3 (all)", len(tasks), tasks)
+	}
+	gotIDs := map[int64]bool{}
+	for _, tt := range tasks {
+		gotIDs[tt.ID] = true
+	}
+	if !gotIDs[t1.ID] || !gotIDs[t2.ID] || !gotIDs[t3.ID] {
+		t.Fatalf("legacy `tag=` should be ignored; missing ids in %+v", tasks)
 	}
 
-	// Explicit tag_mode=all matches the default behavior above.
+	// `tag_mode=all` alongside `tag=` is also silently ignored.
 	respAll := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag=work&tag=urgent&tag_mode=all", nil)
 	defer func() { _ = respAll.Body.Close() }()
+	if respAll.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(respAll.Body)
+		t.Fatalf("tag_mode=all status = %d, want 200 (body: %s)", respAll.StatusCode, string(body))
+	}
 	tasksAll := decodeTasks(t, respAll)
-	if len(tasksAll) != 1 || tasksAll[0].ID != t1.ID {
-		t.Fatalf("tag_mode=all filter result = %+v", tasksAll)
+	if len(tasksAll) != 3 {
+		t.Fatalf("legacy `tag=&tag_mode=all` should be ignored; got %d tasks, want 3", len(tasksAll))
+	}
+}
+
+// TestTasks_ListFilterByTagFilter exercises every branch of the new
+// tag_filter URL schema: any / all / @untagged / mixed / impossible / unknown
+// tag name / malformed input.
+func TestTasks_ListFilterByTagFilter(t *testing.T) {
+	t.Parallel()
+
+	fx := newTestServer(t, nil)
+	ctx := context.Background()
+	bare, err := fx.tasks.Create(ctx, task.CreateInput{Title: "bare"})
+	if err != nil {
+		t.Fatalf("create bare: %v", err)
+	}
+	workTask, err := fx.tasks.Create(ctx, task.CreateInput{Title: "workTask"})
+	if err != nil {
+		t.Fatalf("create workTask: %v", err)
+	}
+	dual, err := fx.tasks.Create(ctx, task.CreateInput{Title: "dual"})
+	if err != nil {
+		t.Fatalf("create dual: %v", err)
+	}
+	workIDs, err := fx.tags.Resolve(ctx, []string{"work"}, true)
+	if err != nil {
+		t.Fatalf("resolve work: %v", err)
+	}
+	urgentIDs, err := fx.tags.Resolve(ctx, []string{"urgent"}, true)
+	if err != nil {
+		t.Fatalf("resolve urgent: %v", err)
+	}
+	if err := fx.tasks.SetTagsByID(ctx, workTask.ID, workIDs); err != nil {
+		t.Fatalf("set tags workTask: %v", err)
+	}
+	if err := fx.tasks.SetTagsByID(ctx, dual.ID, append(append([]int64{}, workIDs...), urgentIDs...)); err != nil {
+		t.Fatalf("set tags dual: %v", err)
 	}
 
-	// tag_mode=any returns tasks with at least one of the supplied tags.
-	respAny := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag=work&tag=urgent&tag_mode=any", nil)
-	defer func() { _ = respAny.Body.Close() }()
-	tasksAny := decodeTasks(t, respAny)
-	if len(tasksAny) != 2 {
-		t.Fatalf("tag_mode=any filter result = %+v (want 2)", tasksAny)
+	expectIDs := func(t *testing.T, label, urlSuffix string, want ...int64) {
+		t.Helper()
+		resp := doJSON(t, http.MethodGet, fx.server.URL+urlSuffix, nil)
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("%s: status = %d body = %s", label, resp.StatusCode, string(body))
+		}
+		tasks := decodeTasks(t, resp)
+		if len(tasks) != len(want) {
+			t.Fatalf("%s: got %d tasks (%+v), want %d", label, len(tasks), tasks, len(want))
+		}
+		got := make(map[int64]bool, len(tasks))
+		for _, tt := range tasks {
+			got[tt.ID] = true
+		}
+		for _, id := range want {
+			if !got[id] {
+				t.Fatalf("%s: missing id %d in %+v", label, id, tasks)
+			}
+		}
 	}
-	gotIDs := map[int64]bool{tasksAny[0].ID: true, tasksAny[1].ID: true}
-	if !gotIDs[t1.ID] || !gotIDs[t2.ID] {
-		t.Fatalf("tag_mode=any missing expected ids: got %+v", tasksAny)
+
+	expectIDs(t, "any:work,urgent", "/api/v1/tasks?tag_filter=any:work,urgent", workTask.ID, dual.ID)
+	expectIDs(t, "all:work,urgent", "/api/v1/tasks?tag_filter=all:work,urgent", dual.ID)
+	expectIDs(t, "any:@untagged", "/api/v1/tasks?tag_filter=any:@untagged", bare.ID)
+	expectIDs(t, "any:@untagged,work", "/api/v1/tasks?tag_filter=any:@untagged,work", bare.ID, workTask.ID, dual.ID)
+	// Impossible — must be empty, not 500.
+	expectIDs(t, "all:@untagged,work", "/api/v1/tasks?tag_filter=all:@untagged,work")
+
+	// Duplicate names are deduplicated before SQL — `all:work,work` must
+	// behave like `all:work` (the All-mode HAVING COUNT(DISTINCT) check
+	// would otherwise reject the legit single-tag match).
+	expectIDs(t, "all:work,work", "/api/v1/tasks?tag_filter=all:work,work", workTask.ID, dual.ID)
+
+	// Malformed forms degrade to "no filter" (all tasks come back).
+	expectIDs(t, "no-colon", "/api/v1/tasks?tag_filter=workurgent", bare.ID, workTask.ID, dual.ID)
+	expectIDs(t, "unknown-mode", "/api/v1/tasks?tag_filter=foo:work", bare.ID, workTask.ID, dual.ID)
+	expectIDs(t, "empty-list", "/api/v1/tasks?tag_filter=any:", bare.ID, workTask.ID, dual.ID)
+
+	// Unknown but well-formed tag name still surfaces as 400.
+	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag_filter=any:nope", nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown tag name: status = %d, want 400", resp.StatusCode)
 	}
 }
 
@@ -250,14 +346,19 @@ func TestTasks_ListFilterByTagsExclude(t *testing.T) {
 	}
 }
 
-func TestTasks_ListInvalidTagMode(t *testing.T) {
+// TestTasks_ListUnknownTagModeIsTolerated verifies the Phase 2 behavior
+// change: `tag_mode` outside the legacy `tag=` branch is silently ignored
+// rather than producing a 400. Stale clients that send `tag_mode=bogus`
+// alone (no `tag=`) keep working.
+func TestTasks_ListUnknownTagModeIsTolerated(t *testing.T) {
 	t.Parallel()
 
 	fx := newTestServer(t, nil)
 	resp := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?tag_mode=bogus", nil)
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 200 (body: %s)", resp.StatusCode, string(body))
 	}
 }
 

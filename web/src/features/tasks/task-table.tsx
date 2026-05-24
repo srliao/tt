@@ -234,14 +234,6 @@ export function TaskTable({
       {showDragHandle && hasFilters && (
         <p className="text-xs text-muted-foreground">Filtered view — hidden tasks unchanged.</p>
       )}
-      {focusedId == null && visible.length > 0 && (
-        <div
-          className="mb-2 inline-flex items-center gap-1.5 self-end rounded-full border border-dashed border-primary/30 bg-primary/5 px-2.5 py-0.5 text-[11px] font-mono text-primary"
-          aria-hidden="true"
-        >
-          Press <kbd className="font-mono text-[10px]">j</kbd> to navigate
-        </div>
-      )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext
           items={ids}
@@ -260,6 +252,18 @@ export function TaskTable({
           </div>
         </SortableContext>
       </DndContext>
+      {/*
+       * Hint sits BELOW the list so that when it disappears on first `j`,
+       * the rows the user is reading don't shift up under their cursor.
+       */}
+      {focusedId == null && visible.length > 0 && (
+        <div
+          className="mt-2 inline-flex items-center gap-1.5 self-end rounded-full border border-dashed border-primary/30 bg-primary/5 px-2.5 py-0.5 text-[11px] font-mono text-primary"
+          aria-hidden="true"
+        >
+          Press <kbd className="font-mono text-[10px]">j</kbd> to navigate
+        </div>
+      )}
     </div>
   );
 }
@@ -579,7 +583,7 @@ function useTableShortcuts({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const onClick = (event: MouseEvent) => {
+    const onClick = (event: globalThis.MouseEvent) => {
       const t = event.target as HTMLElement | null;
       if (t?.closest('[role="checkbox"], input[type="checkbox"]')) {
         anchorRef.current = null;

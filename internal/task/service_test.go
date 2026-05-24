@@ -723,18 +723,10 @@ func TestList_FilterByTags_ModeAllAndAny(t *testing.T) {
 		t.Fatalf("SetTagsByID t2: %v", err)
 	}
 
-	// Default (empty TagMode) preserves the historical AND/all semantics:
-	// only t2 carries both alpha and bravo.
-	gotAllDefault, err := svc.List(ctx, task.FilterSort{TagIDs: []int64{tagA, tagB}})
-	if err != nil {
-		t.Fatalf("List(default): %v", err)
-	}
-	if len(gotAllDefault) != 1 || gotAllDefault[0].ID != t2.ID {
-		t.Fatalf("default mode = %+v, want [%d]", gotAllDefault, t2.ID)
-	}
-
-	// Explicit TagModeAll matches the default.
-	gotAll, err := svc.List(ctx, task.FilterSort{TagIDs: []int64{tagA, tagB}, TagMode: task.TagModeAll})
+	// TagModeAll: only t2 carries both alpha and bravo.
+	gotAll, err := svc.List(ctx, task.FilterSort{
+		Tags: task.TagFilter{Mode: task.TagModeAll, RealTagIDs: []int64{tagA, tagB}},
+	})
 	if err != nil {
 		t.Fatalf("List(all): %v", err)
 	}
@@ -743,7 +735,9 @@ func TestList_FilterByTags_ModeAllAndAny(t *testing.T) {
 	}
 
 	// TagModeAny returns every task carrying at least one of the supplied tags.
-	gotAny, err := svc.List(ctx, task.FilterSort{TagIDs: []int64{tagA, tagB}, TagMode: task.TagModeAny})
+	gotAny, err := svc.List(ctx, task.FilterSort{
+		Tags: task.TagFilter{Mode: task.TagModeAny, RealTagIDs: []int64{tagA, tagB}},
+	})
 	if err != nil {
 		t.Fatalf("List(any): %v", err)
 	}
@@ -753,6 +747,80 @@ func TestList_FilterByTags_ModeAllAndAny(t *testing.T) {
 	seen := map[int64]bool{gotAny[0].ID: true, gotAny[1].ID: true}
 	if !seen[t1.ID] || !seen[t2.ID] {
 		t.Fatalf("TagModeAny missing expected ids: got %+v", gotAny)
+	}
+}
+
+// TestList_FilterByTags_Untagged covers the @untagged sentinel branches and
+// the impossible "all + @untagged + real tags" short-circuit.
+func TestList_FilterByTags_Untagged(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	bare, err := svc.Create(ctx, task.CreateInput{Title: "bare"})
+	if err != nil {
+		t.Fatalf("Create bare: %v", err)
+	}
+	workOnly, err := svc.Create(ctx, task.CreateInput{Title: "work-only"})
+	if err != nil {
+		t.Fatalf("Create work-only: %v", err)
+	}
+	homeOnly, err := svc.Create(ctx, task.CreateInput{Title: "home-only"})
+	if err != nil {
+		t.Fatalf("Create home-only: %v", err)
+	}
+
+	tagWork := insertTag(t, store, ctx, "work")
+	tagHome := insertTag(t, store, ctx, "home")
+	if err := svc.SetTagsByID(ctx, workOnly.ID, []int64{tagWork}); err != nil {
+		t.Fatalf("SetTagsByID work-only: %v", err)
+	}
+	if err := svc.SetTagsByID(ctx, homeOnly.ID, []int64{tagHome}); err != nil {
+		t.Fatalf("SetTagsByID home-only: %v", err)
+	}
+
+	// Untagged-only: just `bare`.
+	gotUntag, err := svc.List(ctx, task.FilterSort{
+		Tags: task.TagFilter{Mode: task.TagModeAny, IncludeUntagged: true},
+	})
+	if err != nil {
+		t.Fatalf("List(untagged): %v", err)
+	}
+	if len(gotUntag) != 1 || gotUntag[0].ID != bare.ID {
+		t.Fatalf("untagged-only = %+v, want [%d]", gotUntag, bare.ID)
+	}
+
+	// Any + @untagged + work: union of (untagged) ∪ (carries work).
+	gotUnion, err := svc.List(ctx, task.FilterSort{
+		Tags: task.TagFilter{
+			Mode:            task.TagModeAny,
+			RealTagIDs:      []int64{tagWork},
+			IncludeUntagged: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("List(any untagged+work): %v", err)
+	}
+	if len(gotUnion) != 2 {
+		t.Fatalf("any untagged+work len = %d (%+v)", len(gotUnion), gotUnion)
+	}
+	got := map[int64]bool{gotUnion[0].ID: true, gotUnion[1].ID: true}
+	if !got[bare.ID] || !got[workOnly.ID] {
+		t.Fatalf("any untagged+work missing ids: %+v", gotUnion)
+	}
+
+	// All + @untagged + work: impossible set, must return empty (not 500).
+	gotImpossible, err := svc.List(ctx, task.FilterSort{
+		Tags: task.TagFilter{
+			Mode:            task.TagModeAll,
+			RealTagIDs:      []int64{tagWork},
+			IncludeUntagged: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("List(all untagged+work): %v", err)
+	}
+	if len(gotImpossible) != 0 {
+		t.Fatalf("all untagged+work = %+v, want []", gotImpossible)
 	}
 }
 
@@ -795,7 +863,7 @@ func TestList_FilterByTagsExclude(t *testing.T) {
 	// Combine inclusion (alpha) with exclusion (bravo): tagged passes,
 	// both is dropped because it carries bravo.
 	got, err = svc.List(ctx, task.FilterSort{
-		TagIDs:        []int64{tagA},
+		Tags:          task.TagFilter{Mode: task.TagModeAny, RealTagIDs: []int64{tagA}},
 		TagExcludeIDs: []int64{tagB},
 	})
 	if err != nil {

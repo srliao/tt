@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -111,24 +113,17 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		states = append(states, st)
 	}
 
-	tagNames := q["tag"]
-	var tagIDs []int64
-	if len(tagNames) > 0 {
-		ids, err := s.tags.Resolve(r.Context(), tagNames, false)
-		if err != nil {
-			// Unknown tag should produce an empty result set, not 400 — the
-			// UI may pre-populate dropdowns lazily. Treat it as a hard
-			// 400 instead so callers can fix the typo. Either is defensible;
-			// 400 mirrors the validation_failed envelope.
-			writeError(w, http.StatusBadRequest, CodeValidation, err.Error(), nil)
-			return
-		}
-		tagIDs = ids
+	tagFilter, err := s.parseTagFilter(r.Context(), q)
+	if err != nil {
+		// Resolve errors (unknown tag names) → 400 with the validation
+		// envelope. Malformed tag_filter strings never reach this branch —
+		// parseTagFilter silently degrades them to "no filter".
+		writeError(w, http.StatusBadRequest, CodeValidation, err.Error(), nil)
+		return
 	}
 
-	// tags_exclude is CSV (mirroring how the UI serialises it). Parsed the
-	// same way as `tag` so unknown names surface as 400 with the same
-	// envelope.
+	// tags_exclude is CSV (mirroring how the UI serialises it). Parsed
+	// independently of tag_filter so it composes orthogonally.
 	var tagExcludeIDs []int64
 	if raw := q.Get("tags_exclude"); raw != "" {
 		parts := strings.Split(raw, ",")
@@ -146,12 +141,6 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 			}
 			tagExcludeIDs = ids
 		}
-	}
-
-	tagMode := task.TagMode(q.Get("tag_mode"))
-	if !tagMode.IsValid() {
-		writeError(w, http.StatusBadRequest, CodeValidation, "invalid tag_mode (must be any or all)", map[string]any{"value": string(tagMode)})
-		return
 	}
 
 	due := task.DueRange(q.Get("due"))
@@ -199,8 +188,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 
 	out, err := s.tasks.List(r.Context(), task.FilterSort{
 		States:        states,
-		TagIDs:        tagIDs,
-		TagMode:       tagMode,
+		Tags:          tagFilter,
 		TagExcludeIDs: tagExcludeIDs,
 		Due:           due,
 		Search:        q.Get("q"),
@@ -217,6 +205,69 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		out = []task.Task{}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// parseTagFilter parses the inbound tag-inclusion param on GET /tasks. The
+// only supported form is the single `tag_filter` param ("any:work,errand" or
+// "all:work,urgent", optionally with the "@untagged" sentinel).
+//
+// Malformed `tag_filter` strings (missing colon, unknown mode, empty list)
+// degrade silently to "no tag filter" so a typo in the URL never produces a
+// 400 — only an unknown but otherwise well-formed tag NAME does.
+//
+// The legacy `tag=` (repeated) + `tag_mode=` reader was removed in Phase 6;
+// those params are now silently ignored.
+func (s *Server) parseTagFilter(ctx context.Context, q url.Values) (task.TagFilter, error) {
+	raw := q.Get("tag_filter")
+	if raw == "" {
+		return task.TagFilter{}, nil
+	}
+	idx := strings.IndexByte(raw, ':')
+	if idx < 0 {
+		return task.TagFilter{}, nil
+	}
+	mode := task.TagMode(raw[:idx])
+	if mode != task.TagModeAny && mode != task.TagModeAll {
+		return task.TagFilter{}, nil
+	}
+	rest := raw[idx+1:]
+	if rest == "" {
+		return task.TagFilter{}, nil
+	}
+	var includeUntagged bool
+	realNames := make([]string, 0, 4)
+	seen := make(map[string]struct{}, 4)
+	for _, n := range strings.Split(rest, ",") {
+		n = strings.TrimSpace(n)
+		if n == "" {
+			continue
+		}
+		if n == task.UntaggedToken {
+			includeUntagged = true
+			continue
+		}
+		if _, dup := seen[n]; dup {
+			continue
+		}
+		seen[n] = struct{}{}
+		realNames = append(realNames, n)
+	}
+	if !includeUntagged && len(realNames) == 0 {
+		return task.TagFilter{}, nil
+	}
+	var ids []int64
+	if len(realNames) > 0 {
+		resolved, err := s.tags.Resolve(ctx, realNames, false)
+		if err != nil {
+			return task.TagFilter{}, err
+		}
+		ids = resolved
+	}
+	return task.TagFilter{
+		Mode:            mode,
+		RealTagIDs:      ids,
+		IncludeUntagged: includeUntagged,
+	}, nil
 }
 
 func (s *Server) handleGetTask(w http.ResponseWriter, r *http.Request) {

@@ -10,7 +10,7 @@ Files: `internal/httpapi/{server,middleware,errors,spa,health,tasks,stage,tags,s
 GET    /api/v1/health
 GET    /api/v1/version
 
-GET    /api/v1/tasks?state=&tag=&tag_mode=&tags_exclude=&due=&q=&sort=&asc=&limit=&offset=
+GET    /api/v1/tasks?state=&tag_filter=&tags_exclude=&due=&q=&sort=&asc=&limit=&offset=
 POST   /api/v1/tasks
 GET    /api/v1/tasks/{id}
 PATCH  /api/v1/tasks/{id}
@@ -92,7 +92,9 @@ The HTTP error mapper is `writeServiceError` in `internal/httpapi/tasks.go`. It 
 - Query-string filters use **multi-value params** when multi-select (e.g., `?state=not_done&state=done`).
 - Booleans use `strconv.ParseBool` (accepts `1/0`, `true/false`).
 - Tag filters accept **names**, not ids. The handler resolves them via `tag.Service.Resolve(..., autoCreate: false)` — unknown tags currently 400. (This was a deliberate design choice; see `handleListTasks` comments.)
-- `tag=` is repeated (`?tag=a&tag=b`) and combined per `tag_mode` (`any`/`all`, default `all`); `tags_exclude=` is **CSV** (`?tags_exclude=a,b`) and drops any task carrying at least one excluded tag. Inclusion and exclusion compose with AND.
+- Tag inclusion uses a single `tag_filter=` param of the form `<mode>:<csv>` where mode is `any` or `all` and the CSV may include the `@untagged` sentinel (e.g. `tag_filter=any:work,errand`, `tag_filter=all:work,urgent`, `tag_filter=any:@untagged`, `tag_filter=any:@untagged,work`). The `all:@untagged,…real` combination is an impossible set and returns an empty list (never 500). Malformed strings (no colon / unknown mode / empty list) degrade to "no filter" silently; unknown tag NAMES still surface as 400. The legacy `tag=` (repeated) + `tag_mode=` reader was removed in Phase 6 and is now silently ignored.
+- `tags_exclude=` is **CSV** (`?tags_exclude=a,b`) and drops any task carrying at least one excluded tag. Inclusion and exclusion compose with AND.
+- Tag names starting with `@` are reserved for sentinel tokens (currently only `@untagged`) and rejected by `POST /tags` and the `tag.Service.Resolve` path with a 400.
 - `sort` defaults to `priority`; priority always sorts ASC regardless of `asc`.
 - Date filters (`from`, `to` on `/runs`) are RFC3339.
 

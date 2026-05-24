@@ -21,12 +21,42 @@
  */
 
 import { XIcon } from 'lucide-react';
+import { Fragment } from 'react';
 import { TagChip } from '@/components/ui/tag-chip';
-import { hasActiveFilters, isStateRestricted, useTaskListSearch } from './use-task-list-search';
+import {
+  hasActiveFilters,
+  isStateRestricted,
+  type TagMatchMode,
+  UNTAGGED_TOKEN,
+  useTaskListSearch,
+} from './use-task-list-search';
 
 export function ActiveFilterStrip() {
   const { search, setSearch } = useTaskListSearch();
   if (!hasActiveFilters(search) && !isStateRestricted(search)) return null;
+
+  const filter = search.tag_filter;
+  const includeTags = filter?.tags ?? [];
+  // Joiner mirrors the filter's match mode: All → "and", Any → "or". Rendered
+  // between chips (i > 0) so the strip reads as a natural sentence, e.g.
+  // `work and urgent` or `Untagged or errand`.
+  const joiner = filter?.mode === 'all' ? 'and' : 'or';
+
+  // Removing a chip from the include set shrinks `tag_filter.tags`. When the
+  // remaining set degenerates (size 1, or only the Untagged sentinel), `all`
+  // no longer carries semantic weight, so we flip to `any` to keep the URL
+  // canonical and the rendered joiner sensible.
+  const removeIncludeTag = (name: string) => {
+    if (!filter) return;
+    const next = filter.tags.filter((t) => t !== name);
+    if (next.length === 0) {
+      setSearch({ tag_filter: undefined });
+      return;
+    }
+    const mode: TagMatchMode =
+      next.length === 1 || next.every((t) => t === UNTAGGED_TOKEN) ? 'any' : filter.mode;
+    setSearch({ tag_filter: { mode, tags: next } });
+  };
 
   return (
     <div
@@ -41,12 +71,18 @@ export function ActiveFilterStrip() {
       {search.due && (
         <FilterChip label={`due: ${search.due}`} onRemove={() => setSearch({ due: undefined })} />
       )}
-      {(search.tags ?? []).map((t) => (
-        <TagChip
-          key={`inc-${t}`}
-          name={t}
-          onRemove={() => setSearch({ tags: (search.tags ?? []).filter((x) => x !== t) })}
-        />
+      {includeTags.map((t, i) => (
+        <Fragment key={`inc-${t}`}>
+          {i > 0 && (
+            <span
+              data-slot="tag-filter-joiner"
+              className="font-mono text-[10px] text-muted-foreground"
+            >
+              {joiner}
+            </span>
+          )}
+          <TagChip name={t} onRemove={() => removeIncludeTag(t)} />
+        </Fragment>
       ))}
       {(search.tagsExclude ?? []).map((t) => (
         <TagChip
@@ -75,7 +111,7 @@ export function ActiveFilterStrip() {
           setSearch({
             q: undefined,
             due: undefined,
-            tags: undefined,
+            tag_filter: undefined,
             tagsExclude: undefined,
             quick: undefined,
             states: undefined,

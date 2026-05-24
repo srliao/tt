@@ -51,28 +51,15 @@ const (
 	DueNone DueRange = "none"
 )
 
-// TagMode controls how multiple tag filters combine. The empty value behaves
-// as TagModeAll to preserve backward-compatible behavior for callers that do
-// not set the field.
+// TagMode controls how multiple tag filters combine on the List query.
 type TagMode string
 
 const (
 	// TagModeAll requires a task to carry every supplied tag (AND semantics).
-	// This is the default when TagMode is unset.
 	TagModeAll TagMode = "all"
 	// TagModeAny requires a task to carry at least one supplied tag (OR).
 	TagModeAny TagMode = "any"
 )
-
-// IsValid reports whether m is a recognized TagMode (treating "" as valid:
-// it defaults to TagModeAll).
-func (m TagMode) IsValid() bool {
-	switch m {
-	case "", TagModeAll, TagModeAny:
-		return true
-	}
-	return false
-}
 
 // SortAxis identifies the column the list query should order by.
 type SortAxis string
@@ -173,16 +160,43 @@ type BulkTagInput struct {
 	TagIDs []int64
 }
 
+// UntaggedToken is the sentinel name used in tag_filter to select tasks
+// with zero attached tags. Mirrored on the frontend at
+// `web/src/features/tasks/use-task-list-search.ts:UNTAGGED_TOKEN`.
+const UntaggedToken = "@untagged"
+
+// TagFilter parameterises the tag-inclusion clause of FilterSort. Names
+// containing the UntaggedToken sentinel are stripped by the HTTP layer and
+// surfaced as IncludeUntagged so the service operates purely on numeric ids.
+//
+// Mode controls how RealTagIDs combine and whether @untagged unions in:
+//   - TagModeAny: union of (task carries any of RealTagIDs) ∪ (task is
+//     untagged, if IncludeUntagged).
+//   - TagModeAll: task must carry every id in RealTagIDs. Combining with
+//     IncludeUntagged produces an impossible set (a task cannot
+//     simultaneously be untagged and carry specific tags), short-circuited
+//     to an empty result by the List query builder.
+type TagFilter struct {
+	Mode            TagMode `json:"mode"`
+	RealTagIDs      []int64 `json:"real_tag_ids"`
+	IncludeUntagged bool    `json:"include_untagged"`
+}
+
+// IsZero reports whether the filter selects "no tag filtering" — neither
+// real ids nor the @untagged flag are set.
+func (f TagFilter) IsZero() bool {
+	return len(f.RealTagIDs) == 0 && !f.IncludeUntagged
+}
+
 // FilterSort parameterises List. Zero values disable each filter.
 type FilterSort struct {
-	States        []State  `json:"states"`
-	TagIDs        []int64  `json:"tag_ids"`
-	TagMode       TagMode  `json:"tag_mode"`
-	TagExcludeIDs []int64  `json:"tag_exclude_ids"`
-	Due           DueRange `json:"due"`
-	Search        string   `json:"search"`
-	Sort          SortAxis `json:"sort"`
-	Ascending     bool     `json:"ascending"`
-	Limit         int      `json:"limit"`
-	Offset        int      `json:"offset"`
+	States        []State   `json:"states"`
+	Tags          TagFilter `json:"tags"`
+	TagExcludeIDs []int64   `json:"tag_exclude_ids"`
+	Due           DueRange  `json:"due"`
+	Search        string    `json:"search"`
+	Sort          SortAxis  `json:"sort"`
+	Ascending     bool      `json:"ascending"`
+	Limit         int       `json:"limit"`
+	Offset        int       `json:"offset"`
 }

@@ -22,18 +22,31 @@ function wrapper() {
 }
 
 describe('buildTaskListQuery', () => {
-  it('serialises repeated state and tag params', () => {
+  it('serialises repeated state params plus structured tag_filter', () => {
     const qs = buildTaskListQuery({
       states: ['not_done', 'done'],
-      tags: ['work', 'urgent'],
+      tag_filter: { mode: 'any', tags: ['work', 'urgent'] },
       due: 'today',
       q: 'milk',
       sort: 'priority',
       asc: true,
     });
     expect(qs).toBe(
-      '?state=not_done&state=done&tag=work&tag=urgent&due=today&q=milk&sort=priority&asc=true',
+      '?state=not_done&state=done&tag_filter=any%3Awork%2Curgent&due=today&q=milk&sort=priority&asc=true',
     );
+  });
+
+  it('serialises tag_filter with the @untagged sentinel', () => {
+    const qs = buildTaskListQuery({
+      tag_filter: { mode: 'any', tags: ['work', '@untagged'] },
+    });
+    // URLSearchParams percent-encodes ':' '@' and ',' — the un-encoded form
+    // is `tag_filter=any:work,@untagged`.
+    expect(qs).toBe('?tag_filter=any%3Awork%2C%40untagged');
+  });
+
+  it('omits tag_filter when tags array is empty', () => {
+    expect(buildTaskListQuery({ tag_filter: { mode: 'any', tags: [] } })).toBe('');
   });
 
   it('returns empty string when no params', () => {
