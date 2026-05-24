@@ -11,16 +11,29 @@ just build && ./bin/tt
 
 ## Why
 
-Most task managers either lock you out of the data (SaaS) or ask you to
-glue together a half-dozen processes (database, web server, frontend
-build, sync daemon). `tt` is the opposite: a single binary you run on
-your own machine, with your data in one SQLite file you can copy, diff,
-or back up however you like. Everything is keyboard-first, and the only
-extension mechanism is a tiny JS API — no plugin store, no marketplace,
-no telemetry.
+`tt` exists to do two things well that most to-do apps treat as
+afterthoughts:
 
-It is intentionally narrow: one user, one machine, one browser, no auth.
-If you want multi-user, sync, or mobile, this isn't the project.
+**1. Repetitive tasks, the dev way.** "Pay rent on the 1st," "weekly
+review every Monday," "follow up 3 days after the last spawn" —
+recurring rules in most apps are a fixed dropdown of options. In `tt`
+they're short JavaScript snippets running in a sandboxed `ctx` API. You
+get real conditionals, persistent per-script state, date math, and
+logging — without standing up a cron daemon or maintaining a separate
+automation tool. If you can describe the pattern, you can write it.
+
+**2. A focus list for getting work done.** Long to-do lists are good
+for capture but terrible for execution. `tt` separates the **main
+list** (everything you've captured) from the **stage** (a small,
+reorderable list of what you're actually working on right now, soft
+capped at 7). The stage pairs naturally with the Pomodoro method: pick
+your stage at the top of a session, then work it down without the rest
+of the list nagging at you.
+
+Everything else flows from "local, single-user, one binary": your data
+is one SQLite file you can copy, diff, or back up however you like; no
+accounts, no sync, no telemetry, no plugin marketplace. If you want
+multi-user, cloud sync, or a mobile app, this isn't the project.
 
 ## Features
 
