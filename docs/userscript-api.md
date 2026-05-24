@@ -166,26 +166,21 @@ in the managed tag list.
 ### Daily stand-up notes (weekdays only)
 
 ```js
-const weekday = ctx.weekday();
-if (weekday === "saturday" || weekday === "sunday") {
-  return;
+const wd = ctx.weekday();
+if (wd !== "saturday" && wd !== "sunday") {
+  ctx.queueTask({
+    title:    `Stand-up — ${ctx.today()}`,
+    tags:     ["work", "standup"],
+    due_date: ctx.today(),
+  });
 }
-
-const today = ctx.today();
-if (ctx.state.get("lastSpawn") === today) {
-  return; // already spawned today
-}
-
-ctx.queueTask({
-  title:    `Stand-up — ${today}`,
-  tags:     ["work", "standup"],
-  due_date: today,
-});
-ctx.state.set("lastSpawn", today);
 ```
 
-Schedule: `daily`. Persists `lastSpawn` so re-runs in the same day are
-no-ops.
+Schedule: `daily`. No in-script de-dup is needed — the runtime
+guarantees one execution per local-day for `daily` scripts. (If you
+were on `every_tick`, you'd either filter on `ctx.lastSpawn?.created_at`
+or persist a date via `ctx.state` — but reaching for a daily-style
+schedule is almost always the cleaner answer.)
 
 ### Monthly bills, day 1
 
@@ -221,6 +216,30 @@ if (prev && ctx.daysSince(prev.created_at) >= FOLLOWUP_DAYS) {
 
 Schedule: `daily`. Uses `ctx.lastSpawn` to chain a follow-up off the
 previous spawn.
+
+### Rotating focus area (state used for real)
+
+```js
+// Each weekday, pick the next project from a rotation list.
+const projects = ["website", "newsletter", "side-project"];
+const idx = (ctx.state.get("rotationIdx") ?? 0) % projects.length;
+
+const wd = ctx.weekday();
+if (wd !== "saturday" && wd !== "sunday") {
+  ctx.queueTask({
+    title:    `Focus 30m: ${projects[idx]}`,
+    tags:     ["focus"],
+    due_date: ctx.today(),
+  });
+  ctx.state.set("rotationIdx", idx + 1);
+}
+```
+
+Schedule: `daily`. `ctx.state` is the right tool here because the
+rotation index isn't recoverable from the task store — it's bookkeeping
+that only the script cares about. The state write happens *after* the
+queue and is only persisted if the run finishes `ok`, so a failure
+won't advance the rotation past the spawn that never happened.
 
 ## What is NOT available
 

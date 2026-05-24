@@ -91,27 +91,23 @@ or move your data, copy the `db.sqlite` file.
 
 ## Userscript example
 
-A daily 9am stand-up script:
+A weekday stand-up script:
 
 ```js
-// Spawn a "stand-up notes" task once per weekday morning.
-if (ctx.isWeekday(ctx.weekday()) && ctx.weekday() !== "saturday" && ctx.weekday() !== "sunday") {
-  const today = ctx.today();
-  if (ctx.state.get("lastSpawn") !== today) {
-    ctx.queueTask({
-      title: `Stand-up — ${today}`,
-      tags: ["work", "standup"],
-      due_date: today,
-    });
-    ctx.state.set("lastSpawn", today);
-  }
+// Spawn a "stand-up notes" task on weekdays.
+const wd = ctx.weekday();
+if (wd !== "saturday" && wd !== "sunday") {
+  ctx.queueTask({
+    title:    `Stand-up — ${ctx.today()}`,
+    tags:     ["work", "standup"],
+    due_date: ctx.today(),
+  });
 }
 ```
 
-Set the schedule to `daily`. The script runs at the next tick after
-midnight and won't double-spawn because `ctx.state` persists between
-runs. Logs from `ctx.log.*` are stored per-run and viewable in the Runs
-page.
+Set the schedule to `daily` and the runtime guarantees one execution
+per local-day — no in-script de-duplication needed. Logs from
+`ctx.log.*` are stored per-run and viewable in the Runs page.
 
 The full `ctx` API — date helpers, persistent state, logging, and
 `queueTask` — is documented in
