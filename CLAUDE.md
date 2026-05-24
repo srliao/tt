@@ -11,10 +11,7 @@ guide written specifically for AI agents:
 - `docs/agent/01-architecture.md` — process model, layer map, load-bearing rules
 - `docs/agent/02-navigation.md` — file/symbol locator tables
 - `docs/agent/03-data-layer.md` through `11-common-changes.md` — focused topics
-
-The full design spec lives at
-`docs/superpowers/specs/2026-05-21-task-tracker-design.md` (canonical for "why")
-and phased plans at `docs/superpowers/plans/2026-05-21-tt/`.
+- `docs/userscript-api.md` — public-facing `ctx` API reference for userscripts
 
 ## Keeping docs + CLAUDE.md current — MANDATORY
 

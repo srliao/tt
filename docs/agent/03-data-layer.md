@@ -17,7 +17,7 @@ script_runs  ── id, script_id FK, started_at, finished_at, status, error_mes
 script_logs  ── id, script_run_id FK CASCADE, level, message, logged_at
 ```
 
-DDL source: `internal/db/migrations/0001_init.sql`. Spec semantic rules are at `docs/superpowers/specs/2026-05-21-task-tracker-design.md` §3 — read those before touching schema.
+DDL source: `internal/db/migrations/0001_init.sql`. Read it directly before touching schema — it has inline comments on the load-bearing rules (fractional ordering, ON DELETE CASCADE/SET NULL choices, etc.).
 
 ## Adding columns or tables
 
