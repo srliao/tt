@@ -82,7 +82,6 @@ describe('useTasks', () => {
 
 function fullTask(partial: Partial<Task> & { id: number }): Task {
   return {
-    id: partial.id,
     title: partial.title ?? `task ${partial.id}`,
     notes: '',
     state: 'not_done',

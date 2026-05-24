@@ -50,7 +50,7 @@ const schema = z.object({
   notes: z.string().optional(),
   state: z.enum(['not_done', 'done', 'cancelled']),
   due_date: z.string().optional(),
-  tags: z.array(z.string()).default([]),
+  tags: z.array(z.string()),
 });
 
 const STATE_OPTIONS: Array<{ value: TaskState; label: string }> = [

@@ -87,7 +87,9 @@ describe('TagRow', () => {
     // The row also fires /tags?counts=1 for the delete-confirm copy — return
     // an empty list so it resolves cleanly. The assertion below filters out
     // those reads.
-    const fetchMock = vi.fn((_url: string) => Promise.resolve(jsonResponse([])));
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(jsonResponse([])),
+    );
     vi.stubGlobal('fetch', fetchMock);
     render(
       <Wrapper>
@@ -117,7 +119,9 @@ describe('TagRow', () => {
   });
 
   it('Enter with an empty name shows an inline error and does not call PATCH', async () => {
-    const fetchMock = vi.fn((_url: string) => Promise.resolve(jsonResponse([])));
+    const fetchMock = vi.fn((_url: string, _init?: RequestInit) =>
+      Promise.resolve(jsonResponse([])),
+    );
     vi.stubGlobal('fetch', fetchMock);
     render(
       <Wrapper>

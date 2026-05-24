@@ -117,7 +117,7 @@ describe('BulkActionBar', () => {
   });
 
   it('"Mark done" fires POST /tasks/:id/state once per selected row', async () => {
-    const fetchMock = vi.fn((url: string) => {
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
       if (url.endsWith('/tasks') || url.includes('/tasks?')) {
         return Promise.resolve(jsonResponse([]));
       }
@@ -143,7 +143,7 @@ describe('BulkActionBar', () => {
   });
 
   it('"Stage" fires POST /tasks/:id/stage for each selected row', async () => {
-    const fetchMock = vi.fn((url: string) => {
+    const fetchMock = vi.fn((url: string, _init?: RequestInit) => {
       // useTasks() expects an array; mutations expect any object.
       if (url.endsWith('/tasks') || url.includes('/tasks?')) {
         return Promise.resolve(jsonResponse([]));

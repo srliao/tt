@@ -114,7 +114,7 @@ export function BulkActionBar({
   // suspenders runtime check for JS callers / loose any.
   const [confirmDeleteLocal, setConfirmDeleteLocal] = useState(false);
   const [confirmCancelLocal, setConfirmCancelLocal] = useState(false);
-  if (process.env.NODE_ENV !== 'production') {
+  if (import.meta.env.DEV) {
     if ((confirmDeleteProp === undefined) !== (onConfirmDeleteChange === undefined)) {
       console.warn(
         'BulkActionBar: confirmDelete and onConfirmDeleteChange must be passed together (both controlled or both omitted).',

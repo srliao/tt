@@ -180,7 +180,7 @@ export function CommandPalette() {
   const openBulkTagEditor = useCallback(() => {
     void navigate({
       to: '/tasks',
-      search: (prev) => ({ ...(prev as Record<string, unknown>), openBulkTagEditor: 1 }),
+      search: (prev) => ({ ...(prev as Record<string, unknown>), openBulkTagEditor: true }),
     });
     setOpen(false);
   }, [navigate]);
@@ -203,7 +203,7 @@ export function CommandPalette() {
     // duplicating the AlertDialog inside the palette.
     void navigate({
       to: '/tasks',
-      search: (prev) => ({ ...(prev as Record<string, unknown>), confirmBulkCancel: 1 }),
+      search: (prev) => ({ ...(prev as Record<string, unknown>), confirmBulkCancel: true }),
     });
     setOpen(false);
   }, [navigate]);
@@ -211,7 +211,7 @@ export function CommandPalette() {
   const requestBulkDelete = useCallback(() => {
     void navigate({
       to: '/tasks',
-      search: (prev) => ({ ...(prev as Record<string, unknown>), confirmBulkDelete: 1 }),
+      search: (prev) => ({ ...(prev as Record<string, unknown>), confirmBulkDelete: true }),
     });
     setOpen(false);
   }, [navigate]);

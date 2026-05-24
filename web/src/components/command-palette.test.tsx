@@ -97,7 +97,7 @@ function renderPalette(opts: Parameters<typeof makeFetchMock>[0] = {}, initial =
   return { router, ...result };
 }
 
-function dispatchKey(target: EventTarget, init: KeyboardEventInit) {
+function dispatchKey(target: Element | Document | Window, init: KeyboardEventInit) {
   // Use a real KeyboardEvent dispatched at the target so it bubbles up to the
   // palette's `document.addEventListener('keydown')`. `fireEvent.keyDown`
   // does this for us via Testing Library's wrapper.
