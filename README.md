@@ -78,16 +78,16 @@ version stamping, use `just build-release`.
 ### Run
 
 ```sh
-./bin/tt                              # default port 8080, default data dir
+./bin/tt                              # default port 8080
 ./bin/tt --port 9000                  # custom port
-./bin/tt --data-dir ~/notes/tt        # custom data directory
-./bin/tt --db /path/to/db.sqlite      # custom database path
+./bin/tt --data-dir ~/notes/tt        # custom location for db.sqlite
 ```
 
-Data defaults to `$XDG_DATA_HOME/tt/db.sqlite` (Linux/macOS:
-`~/.local/share/tt/db.sqlite`). The schema is migrated automatically on
-startup using embedded migrations. Backups: just copy the `.sqlite`
-file.
+`--data-dir` is where `tt` keeps its SQLite database (`db.sqlite`). It
+defaults to `$XDG_DATA_HOME/tt` (Linux/macOS:
+`~/.local/share/tt/`). The directory is created on first run, and the
+schema is migrated automatically using embedded migrations. To back up
+or move your data, copy the `db.sqlite` file.
 
 ## Userscript example
 
