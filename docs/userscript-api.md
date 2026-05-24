@@ -217,6 +217,40 @@ if (prev && ctx.daysSince(prev.created_at) >= FOLLOWUP_DAYS) {
 Schedule: `daily`. Uses `ctx.lastSpawn` to chain a follow-up off the
 previous spawn.
 
+### Cool-down: spawn N days after the last one is completed
+
+```js
+// Re-spawn "water the plants" 3 days after the previous one was
+// completed, but only on weekdays so it lands in the work week.
+const COOLDOWN_DAYS = 3;
+
+const wd = ctx.weekday();
+if (wd === "saturday" || wd === "sunday") {
+  // skip — try again Monday
+} else {
+  const prev = ctx.lastSpawn;
+  const cooldownExpired =
+    prev?.completed_at && ctx.daysSince(prev.completed_at) >= COOLDOWN_DAYS;
+
+  // Bootstrap: spawn the very first one if we've never spawned before
+  // OR the previous one is completed and cool-down has elapsed.
+  // (If prev exists and is *not* yet completed, do nothing — waiting on you.)
+  if (!prev || cooldownExpired) {
+    ctx.queueTask({
+      title:    "Water the plants",
+      tags:     ["home"],
+      due_date: ctx.today(),
+    });
+  }
+}
+```
+
+Schedule: `daily`. `ctx.lastSpawn.completed_at` is the load-bearing
+field — when a task gets marked `not_done` again later, its
+`completed_at` is cleared (per the schema), so the script naturally
+pauses again until you re-complete it. No `ctx.state` needed; all the
+truth lives in the task store.
+
 ### Rotating focus area (state used for real)
 
 ```js
