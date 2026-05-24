@@ -264,7 +264,7 @@ function TagsSection() {
         />
       )}
 
-      <ul className="flex max-h-[40vh] flex-col gap-px overflow-y-auto">
+      <ul className="flex flex-col gap-px">
         {/* Pinned Untagged row — always visible regardless of the filter
             input, since it is a UI affordance rather than a real tag. */}
         <li>
