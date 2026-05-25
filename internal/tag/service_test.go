@@ -16,6 +16,49 @@ func newSvc(t *testing.T) *tag.Impl {
 	return tag.New(store)
 }
 
+// TestCreateAssignsLeastUsedHue exercises the collision-avoidance rule:
+// the first 12 tags on a fresh database must each pick a distinct hue
+// from the 12-slot palette, and only the 13th (or later) is allowed to
+// reuse one. Breaking this means the user gets identical-looking pills
+// for unrelated tags — the bug this whole feature exists to fix.
+func TestCreateAssignsLeastUsedHue(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+
+	hues := make(map[int64]int, 12)
+	for i := 0; i < 12; i++ {
+		name := "tag" + string(rune('a'+i))
+		tg, err := svc.Create(ctx, name)
+		if err != nil {
+			t.Fatalf("Create(%s): %v", name, err)
+		}
+		if tg.ColorHue%30 != 0 || tg.ColorHue < 0 || tg.ColorHue > 330 {
+			t.Errorf("Create(%s) hue = %d, want a multiple of 30 in [0, 330]", name, tg.ColorHue)
+		}
+		hues[tg.ColorHue]++
+	}
+	if len(hues) != 12 {
+		t.Errorf("12 creates produced %d distinct hues, want 12 (%v)", len(hues), hues)
+	}
+
+	// 13th creates must reuse some hue (pigeonhole), but the least-used
+	// slot still has count 1, not 2 — so total max should stay at 2.
+	tg13, err := svc.Create(ctx, "extra")
+	if err != nil {
+		t.Fatalf("Create(extra): %v", err)
+	}
+	hues[tg13.ColorHue]++
+	maxCount := 0
+	for _, c := range hues {
+		if c > maxCount {
+			maxCount = c
+		}
+	}
+	if maxCount != 2 {
+		t.Errorf("after 13 creates, max hue count = %d, want exactly 2 (%v)", maxCount, hues)
+	}
+}
+
 func TestCreateAndListSorted(t *testing.T) {
 	ctx := context.Background()
 	svc := newSvc(t)

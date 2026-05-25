@@ -14,6 +14,7 @@
 
 import type * as React from 'react';
 
+import { useTagHueMap } from '@/api/tags';
 import { useTheme } from '@/components/theme-provider';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { tagColor, tagColorDark } from '@/lib/tag-color';
@@ -27,7 +28,9 @@ export interface TagGlyphProps {
 
 export function TagGlyph({ name, initial, onClick }: TagGlyphProps) {
   const { resolvedTheme } = useTheme();
-  const palette = resolvedTheme === 'dark' ? tagColorDark(name) : tagColor(name);
+  const hueMap = useTagHueMap();
+  const hue = hueMap.get(name);
+  const palette = resolvedTheme === 'dark' ? tagColorDark(name, hue) : tagColor(name, hue);
 
   return (
     <Tooltip delayDuration={120}>

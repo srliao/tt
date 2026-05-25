@@ -15,6 +15,8 @@ Step-by-step trails for typical modifications. Use these as scaffolding — adap
 9. **Frontend forms/displays**: `web/src/features/tasks/edit-task-modal.tsx` (full edit surface), `web/src/features/tasks/add-task-modal.tsx` (title-only create modal triggered by `n` / "+ New task"), `task-row.tsx`, etc.
 10. **Tests**: extend `internal/task/service_test.go`, `internal/httpapi/tasks_test.go`, frontend `task-table.test.tsx`.
 
+The same steps work for `tags` / `scripts` columns — substitute the relevant package. If the new column has a server-derived enum/palette that the frontend also needs to know about (e.g. `tags.color_hue` and `HuePalette` vs `web/src/lib/tag-color.ts` `HUES`), declare it on **both** sides and call out the duplication where it is most likely to be missed.
+
 ## Add a new ctx method to userscripts
 
 1. **Pick or create file** in `internal/runtime/` (`ctx_dates.go`, `ctx_state.go`, `ctx_queue.go`, or new).

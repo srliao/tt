@@ -194,6 +194,15 @@ Server response is intentionally not used to update the order — invalidation d
 
 react-hook-form + zod resolver. See `web/src/features/scripts/editor-page.tsx` for the canonical example (discriminated-union schema for schedules, `useBlocker` for unsaved-changes guard, Controller for non-`register`able fields).
 
+## Tag chip color
+
+Each `Tag` carries a persisted `color_hue: number` (server picks the least-used hue; see [04-backend-services.md](./04-backend-services.md)). Render path:
+
+- `api/tags.ts` exports `useTagHueMap(): Map<string, number>` — name → hue lookup, backed by `useTags()`.
+- `lib/tag-color.ts` `tagColor(name, hue?)` / `tagColorDark(name, hue?)` accept an optional explicit hue. **With a hue: zero-collision.** Without: legacy name-hash fallback (used by mid-typing previews that don't yet have a `Tag` object).
+- `components/ui/tag-chip.tsx`, `components/ui/tag-glyph.tsx`, and `features/tasks/filter-sidebar.tsx` (`RealTagSwatch`) call `useTagHueMap()` internally and thread the resolved hue into `tagColor*` — callers don't need to plumb hue themselves.
+- The 12-hue palette is **duplicated** in `web/src/lib/tag-color.ts` (`HUES`) and `internal/tag/types.go` (`HuePalette`). Keep both in sync.
+
 ## Type mirrors
 
 `web/src/types/*.ts` are hand-written mirrors of Go DTOs (`internal/<domain>/types.go`). **Keep in sync manually** — there is no codegen. JSON tags on Go structs are the source of truth; `omitempty` is not used so optional fields become `T | null` on the wire.

@@ -13,6 +13,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { api } from '@/lib/api';
 import type { Tag, TagWithCount } from '@/types/tag';
 
@@ -21,6 +22,23 @@ export function useTags() {
     queryKey: ['tags'],
     queryFn: () => api<Tag[]>('/tags'),
   });
+}
+
+/**
+ * Returns a stable `name → color_hue` lookup for every known tag. Used by
+ * `<TagChip>` / `<TagGlyph>` so chips render the backend-assigned hue
+ * (collision-free via least-used-hue) instead of falling back to the
+ * legacy name-hash, which is only a 12-bucket palette and collides past
+ * ~5 tags. Returns an empty map while the underlying query is still
+ * loading; chips fall back to the hash in that case.
+ */
+export function useTagHueMap(): Map<string, number> {
+  const { data } = useTags();
+  return useMemo(() => {
+    const m = new Map<string, number>();
+    for (const t of data ?? []) m.set(t.name, t.color_hue);
+    return m;
+  }, [data]);
 }
 
 /**

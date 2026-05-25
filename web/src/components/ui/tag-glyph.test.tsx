@@ -6,6 +6,7 @@
  * trigger button + aria-label rather than poking inside the portal.
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -14,10 +15,17 @@ import { TAG_GLYPH_MAX, TagGlyph, TagGlyphList } from '@/components/ui/tag-glyph
 import { TooltipProvider } from '@/components/ui/tooltip';
 
 function renderWithTheme(node: React.ReactNode) {
+  // TagGlyph pulls per-tag hue via useTagHueMap → useTags; wrap in a
+  // QueryClient so the underlying useQuery call doesn't throw. The query
+  // itself never resolves in these tests and that's fine — the glyph
+  // falls back to the name hash when the map is empty.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <ThemeProvider>
-      <TooltipProvider>{node}</TooltipProvider>
-    </ThemeProvider>,
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>
+        <TooltipProvider>{node}</TooltipProvider>
+      </ThemeProvider>
+    </QueryClientProvider>,
   );
 }
 

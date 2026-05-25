@@ -40,7 +40,7 @@ File: `internal/tag/service.go`.
 
 | Method | Notes |
 |---|---|
-| `Create` | Idempotent — normalizes (trim + lowercase) and looks up by name first to dodge UNIQUE constraint. Empty name → error. |
+| `Create` | Idempotent — normalizes (trim + lowercase) and looks up by name first to dodge UNIQUE constraint. Empty name → error. Assigns `color_hue` via private `pickLeastUsedHue` (least-used hue from `HuePalette`, ties → lower hue). |
 | `Rename` / `Delete` / `List` / `GetByName` | Straightforward; `Rename` and `GetByName` also normalize their name input. |
 | `ListWithCounts` | Same ordering as `List` plus `count` (distinct task ids via `task_tags` LEFT JOIN). Tags with no tasks come back with `count=0`. Backs `GET /tags?counts=1`. |
 | `Resolve(names, autoCreate)` | Normalize (trim + lowercase), dedupe-preserve-order, lookup each. With `autoCreate=true`, insert missing. With `false`, return `"tag: unknown tags: a, b"` error containing every missing name. |
@@ -48,6 +48,8 @@ File: `internal/tag/service.go`.
 All tag-name entry points funnel through a single `normalize` helper, so stored names are always lowercase regardless of user input. Lookups (`GetByName`, `Resolve`) lowercase before querying, keeping case-insensitive matches in sync.
 
 The runtime uses `Resolve(..., autoCreate: true)` when flushing `ctx.queueTask` so userscripts can introduce new tags without ceremony. The HTTP layer uses `false` when filtering — a typo should fail loud.
+
+The `color_hue` column (12-hue palette in `HuePalette`, `internal/tag/types.go`) is the persisted source of truth for tag chip color. Both `Create` and `Resolve(autoCreate=true)` route inserts through `pickLeastUsedHue`, backed by `CountTagsByHue` — so the first 12 tags on a fresh DB get unique hues and additions thereafter stay balanced. The palette is **duplicated** on the frontend (`web/src/lib/tag-color.ts` `HUES`); change both together.
 
 ## script
 

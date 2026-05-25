@@ -40,6 +40,7 @@ type Tag struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
 	CreatedAt string `json:"created_at"`
+	ColorHue  int64  `json:"color_hue"`
 }
 
 type Task struct {

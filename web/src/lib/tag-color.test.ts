@@ -34,6 +34,29 @@ describe('tagColor()', () => {
   });
 });
 
+describe('tagColor() with explicit hue', () => {
+  it('uses the supplied hue instead of hashing the name', () => {
+    // Two unrelated names get the same color when the same hue is forced,
+    // proving the hash is bypassed. Backend assigns hues via least-used-hue
+    // so the frontend must honor them verbatim — otherwise we lose the
+    // collision-free guarantee.
+    const a = tagColor('foo', 90);
+    const b = tagColor('bar', 90);
+    expect(a).toEqual(b);
+  });
+
+  it('snaps unknown hues into the oklch() output verbatim', () => {
+    const c = tagColor('whatever', 210);
+    expect(c.bg).toContain('210');
+    expect(c.fg).toContain('210');
+    expect(c.dot).toContain('210');
+  });
+
+  it('falls back to the name hash when hue is undefined', () => {
+    expect(tagColor('foo', undefined)).toEqual(tagColor('foo'));
+  });
+});
+
 describe('tagColorDark()', () => {
   it('is stable and case-insensitive', () => {
     expect(tagColorDark('Foo')).toEqual(tagColorDark('foo'));

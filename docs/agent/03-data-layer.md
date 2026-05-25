@@ -8,7 +8,7 @@ SQLite (pure-Go `modernc.org/sqlite`, no cgo) + `goose` migrations + `sqlc`-gene
 tasks        ── id, title, notes, state, due_date, priority (REAL),
                 staged_order (REAL nullable), spawned_by_script_id,
                 created_at, completed_at, cancelled_at, updated_at
-tags         ── id, name UNIQUE, created_at
+tags         ── id, name UNIQUE, color_hue (INTEGER NOT NULL DEFAULT 0), created_at
 task_tags    ── (task_id, tag_id) PK, both ON DELETE CASCADE
 scripts      ── id, name, code, enabled, schedule_kind, schedule_config JSON,
                 user_state JSON, last_run_at, created_at, updated_at
@@ -36,6 +36,7 @@ Migrations are embedded via `internal/db/migrations/embed.go`. They run on every
 - Config: `emit_pointers_for_null_types: true` → nullable columns map to `*string` / `*float64` / `*int64`.
 - `RETURNING *` is used everywhere a row is needed back after a write.
 - Use `s.q.WithTx(tx)` to bind queries inside a transaction (see `RebalancePriority`, `SetTagsByID`, `BulkTag`).
+- `tags.color_hue` is the persisted per-tag chip color (HSL hue, 0-330 in 30° steps). The canonical 12-hue palette is **duplicated** between `internal/tag/types.go` (`HuePalette`) and `web/src/lib/tag-color.ts` (`HUES`) — keep both in sync if expanded. Service `Create`/`Resolve(autoCreate=true)` assign via `pickLeastUsedHue` (see [04-backend-services.md](./04-backend-services.md)).
 - Multi-task tag mutations go through `task.Impl.BulkTag` (one tx for the whole selection). Handler in `internal/httpapi/tasks.go:handleBulkTag` resolves names → ids (autoCreate for add/set, `ResolveExisting` for remove so unknown names are silently ignored), service operates on ids only. The slice-based `DeleteTaskTagsForTask` query uses `sqlc.slice('tag_ids')` for the remove path. Service validation requires non-empty `TagIDs` only for `add`; `remove` with empty `TagIDs` is a silent no-op (the all-unknown case, returns 200 with unchanged tasks), and `set` with empty `TagIDs` is the explicit clear-all pathway. The handler still rejects an empty raw `tags` array at the boundary.
 
 ## When dynamic SQL is needed

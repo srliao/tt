@@ -17,7 +17,7 @@
  */
 
 import { Fragment, type ReactNode, useMemo, useState } from 'react';
-import { useTagsWithCounts } from '@/api/tags';
+import { useTagHueMap, useTagsWithCounts } from '@/api/tags';
 import { useTasks } from '@/api/tasks';
 import { useTheme } from '@/components/theme-provider';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -372,7 +372,9 @@ function Swatch({ name }: { name: string }) {
 
 function RealTagSwatch({ name }: { name: string }) {
   const { resolvedTheme } = useTheme();
-  const palette = resolvedTheme === 'dark' ? tagColorDark(name) : tagColor(name);
+  const hueMap = useTagHueMap();
+  const hue = hueMap.get(name);
+  const palette = resolvedTheme === 'dark' ? tagColorDark(name, hue) : tagColor(name, hue);
   return (
     <span
       aria-hidden="true"

@@ -60,11 +60,41 @@ func (s *Impl) Create(ctx context.Context, name string) (Tag, error) {
 		return *existing, nil
 	}
 
-	row, err := s.q.CreateTag(ctx, normalized)
+	hue, err := s.pickLeastUsedHue(ctx)
+	if err != nil {
+		return Tag{}, err
+	}
+	row, err := s.q.CreateTag(ctx, sqlcgen.CreateTagParams{Name: normalized, ColorHue: hue})
 	if err != nil {
 		return Tag{}, fmt.Errorf("tag: create %q: %w", normalized, err)
 	}
 	return rowToTag(row), nil
+}
+
+// pickLeastUsedHue returns the palette hue currently used by the fewest
+// existing tags. The first 12 tags on a fresh database therefore span
+// all 12 palette slots with no collisions; past that, additions stay
+// balanced (max count differs from min count by at most 1). Ties break
+// toward the lower hue value for determinism.
+func (s *Impl) pickLeastUsedHue(ctx context.Context) (int64, error) {
+	rows, err := s.q.CountTagsByHue(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("tag: count by hue: %w", err)
+	}
+	used := make(map[int64]int64, len(rows))
+	for _, r := range rows {
+		used[r.ColorHue] = r.Count
+	}
+	var bestHue int64
+	bestCount := int64(-1)
+	for _, h := range HuePalette {
+		c := used[h]
+		if bestCount == -1 || c < bestCount {
+			bestHue = h
+			bestCount = c
+		}
+	}
+	return bestHue, nil
 }
 
 // Rename updates the name of tag id. The new name is normalized (trimmed +
@@ -119,6 +149,7 @@ func (s *Impl) ListWithCounts(ctx context.Context) ([]TagWithCount, error) {
 			Tag: Tag{
 				ID:        r.ID,
 				Name:      r.Name,
+				ColorHue:  r.ColorHue,
 				CreatedAt: parseSqliteTime(r.CreatedAt),
 			},
 			Count: r.Count,
@@ -184,7 +215,11 @@ func (s *Impl) Resolve(ctx context.Context, names []string, autoCreate bool) ([]
 			missing = append(missing, n)
 			continue
 		}
-		row, err := s.q.CreateTag(ctx, n)
+		hue, err := s.pickLeastUsedHue(ctx)
+		if err != nil {
+			return nil, err
+		}
+		row, err := s.q.CreateTag(ctx, sqlcgen.CreateTagParams{Name: n, ColorHue: hue})
 		if err != nil {
 			return nil, fmt.Errorf("tag: resolve create %q: %w", n, err)
 		}
@@ -262,6 +297,7 @@ func rowToTag(r sqlcgen.Tag) Tag {
 	return Tag{
 		ID:        r.ID,
 		Name:      r.Name,
+		ColorHue:  r.ColorHue,
 		CreatedAt: parseSqliteTime(r.CreatedAt),
 	}
 }
