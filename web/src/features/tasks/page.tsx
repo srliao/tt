@@ -132,7 +132,7 @@ export function TasksPage() {
       <FilterSidebar />
       <section className="flex-1 px-4 py-4">
         <header className="mb-3 flex items-center justify-between">
-          <h1 className="font-heading text-xl font-medium">Tasks</h1>
+          <h1 className="font-heading text-xl font-medium">Tasks (showing: {tasks.length})</h1>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={() => setCreating(true)}>
               <PlusIcon /> New task
