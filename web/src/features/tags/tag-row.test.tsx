@@ -23,7 +23,7 @@ function Wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-const tag: Tag = { id: 7, name: 'home', created_at: '2026-05-01T00:00:00Z' };
+const tag: Tag = { id: 7, name: 'home', color_hue: 0, created_at: '2026-05-01T00:00:00Z' };
 
 describe('TagRow', () => {
   afterEach(() => vi.restoreAllMocks());

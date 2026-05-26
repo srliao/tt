@@ -40,9 +40,9 @@ describe('TagsPage', () => {
 
   it('lists tags alphabetically', async () => {
     const tags: Tag[] = [
-      { id: 1, name: 'work', created_at: '' },
-      { id: 2, name: 'home', created_at: '' },
-      { id: 3, name: 'errands', created_at: '' },
+      { id: 1, name: 'work', color_hue: 0, created_at: '' },
+      { id: 2, name: 'home', color_hue: 30, created_at: '' },
+      { id: 3, name: 'errands', color_hue: 60, created_at: '' },
     ];
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse(tags)));
     render(
