@@ -42,7 +42,7 @@ export function TagGlyph({ name, initial, onClick }: TagGlyphProps) {
           data-tag={name}
           data-slot="tag-glyph"
           className={cn(
-            'inline-flex size-4 items-center justify-center rounded-[4px]',
+            'inline-flex size-4 items-center justify-center rounded-lg',
             'font-mono text-[9px] font-semibold leading-none tracking-tight',
             'transition-[transform,box-shadow]',
             'hover:scale-110 hover:shadow-sm',
@@ -76,7 +76,7 @@ export function TagGlyphList({ tags, initialMap, onTagClick }: TagGlyphListProps
 
   return (
     <TooltipProvider>
-      <div className="inline-flex items-center gap-[3px]" data-tag-cell>
+      <div className="inline-flex items-center gap-0.75" data-tag-cell>
         {visible.map((name) => (
           <TagGlyph
             key={name}
@@ -93,7 +93,7 @@ export function TagGlyphList({ tags, initialMap, onTagClick }: TagGlyphListProps
                 aria-label={`${overflow} more tag${overflow === 1 ? '' : 's'}`}
                 data-slot="tag-glyph-overflow"
                 className={cn(
-                  'inline-flex h-4 min-w-4 items-center justify-center rounded-[4px] px-1',
+                  'inline-flex h-4 min-w-4 items-center justify-center rounded-lg px-1',
                   'bg-muted text-muted-foreground',
                   'font-mono text-[9px] font-semibold leading-none tracking-tight',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',

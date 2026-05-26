@@ -231,7 +231,7 @@ export function TagCombobox({
               data-slot="tag-combobox-input"
               autoComplete="off"
               spellCheck={false}
-              className="min-w-[60px] flex-1 bg-transparent text-sm placeholder:text-muted-foreground outline-none"
+              className="min-w-15 flex-1 bg-transparent text-sm placeholder:text-muted-foreground outline-none"
             />
           </div>
         </PopoverAnchor>
@@ -290,7 +290,7 @@ export function TagCombobox({
                       <span
                         aria-hidden
                         className={cn(
-                          'flex size-4 shrink-0 items-center justify-center rounded-[4px] border',
+                          'flex size-4 shrink-0 items-center justify-center rounded-lg border',
                           selected
                             ? 'border-primary bg-primary text-primary-foreground'
                             : 'border-input',

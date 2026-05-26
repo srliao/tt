@@ -61,7 +61,7 @@ export function AddTaskModal({ open, onOpenChange, stageAfterCreate }: AddTaskMo
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="top-[20%] -translate-y-0 gap-0 p-0 sm:max-w-lg"
+        className="top-[20%] translate-y-0 gap-0 p-0 sm:max-w-lg"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           inputRef.current?.focus();
