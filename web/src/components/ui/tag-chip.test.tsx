@@ -9,6 +9,7 @@
  *     dashed border, dashed swatch, no hash-derived color.
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -16,7 +17,14 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { TagChip } from '@/components/ui/tag-chip';
 
 function renderWithTheme(node: React.ReactNode) {
-  return render(<ThemeProvider>{node}</ThemeProvider>);
+  // TagChip pulls the backend-assigned hue via useTagHueMap → useTags, so
+  // we need a QueryClient even though no test asserts on the network call.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <ThemeProvider>{node}</ThemeProvider>
+    </QueryClientProvider>,
+  );
 }
 
 describe('<TagChip>', () => {

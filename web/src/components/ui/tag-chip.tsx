@@ -1,6 +1,7 @@
 import { XIcon } from 'lucide-react';
 import type * as React from 'react';
 
+import { useTagHueMap } from '@/api/tags';
 import { useTheme } from '@/components/theme-provider';
 import { UNTAGGED_TOKEN } from '@/features/tasks/use-task-list-search';
 import { tagColor, tagColorDark } from '@/lib/tag-color';
@@ -43,15 +44,17 @@ export function TagChip({
   ariaLabel,
 }: TagChipProps) {
   const { resolvedTheme } = useTheme();
+  const hueMap = useTagHueMap();
   const isUntagged = name === UNTAGGED_TOKEN;
   // Visible label: the `@untagged` sentinel is a wire token only — render the
   // friendly "Untagged" string anywhere it would surface as body copy.
   const displayName = isUntagged ? 'Untagged' : name;
+  const hue = hueMap.get(name);
   const palette = isUntagged
     ? null
     : resolvedTheme === 'dark'
-      ? tagColorDark(name)
-      : tagColor(name);
+      ? tagColorDark(name, hue)
+      : tagColor(name, hue);
 
   // Solid chips fill the background with the tag's hue. Outline chips drop the
   // fill and use a neutral border so the dot is the sole color cue — useful in

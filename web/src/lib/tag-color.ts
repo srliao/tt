@@ -34,22 +34,34 @@ function hash(s: string): number {
   return h >>> 0;
 }
 
+/**
+ * Resolve a hue: the backend-assigned value when present, otherwise the
+ * legacy name hash. New code should always thread the backend hue through
+ * so two unrelated tags can't collide; the hash fallback only exists for
+ * call sites that still render from a bare name (sentinel pickers,
+ * mid-typing previews in comboboxes).
+ */
+function resolveHue(name: string, explicit?: number): number {
+  if (explicit !== undefined) return explicit;
+  return HUES[hash(name.toLowerCase()) % HUES.length];
+}
+
 /** Color palette used by light themes. */
-export function tagColor(name: string): { bg: string; fg: string; dot: string } {
-  const hue = HUES[hash(name.toLowerCase()) % HUES.length];
+export function tagColor(name: string, hue?: number): { bg: string; fg: string; dot: string } {
+  const h = resolveHue(name, hue);
   return {
-    bg: `oklch(0.94 0.04 ${hue})`,
-    fg: `oklch(0.40 0.12 ${hue})`,
-    dot: `oklch(0.55 0.14 ${hue})`,
+    bg: `oklch(0.94 0.04 ${h})`,
+    fg: `oklch(0.40 0.12 ${h})`,
+    dot: `oklch(0.55 0.14 ${h})`,
   };
 }
 
 /** Color palette used by dark themes — same hue, inverted lightness. */
-export function tagColorDark(name: string): { bg: string; fg: string; dot: string } {
-  const hue = HUES[hash(name.toLowerCase()) % HUES.length];
+export function tagColorDark(name: string, hue?: number): { bg: string; fg: string; dot: string } {
+  const h = resolveHue(name, hue);
   return {
-    bg: `oklch(0.28 0.05 ${hue})`,
-    fg: `oklch(0.85 0.08 ${hue})`,
-    dot: `oklch(0.70 0.14 ${hue})`,
+    bg: `oklch(0.28 0.05 ${h})`,
+    fg: `oklch(0.85 0.08 ${h})`,
+    dot: `oklch(0.70 0.14 ${h})`,
   };
 }

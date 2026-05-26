@@ -5,6 +5,13 @@
 export interface Tag {
   id: number;
   name: string;
+  /**
+   * OKLCH hue angle in degrees, snapped to the 12-step palette (multiples
+   * of 30, range [0, 330]). Assigned at creation time by the backend's
+   * least-used-hue rule. When threaded into `tagColor()`/`tagColorDark()`
+   * it short-circuits the hash so two unrelated tags can't collide.
+   */
+  color_hue: number;
   /** RFC3339 timestamp. */
   created_at: string;
 }

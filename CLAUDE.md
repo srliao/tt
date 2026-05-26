@@ -85,6 +85,10 @@ Dev data lives in `./.dev-data/db.sqlite`. Delete to wipe state.
   Parsers accept both.
 - **Type mirrors are hand-maintained** in `web/src/types/`. No codegen
   between Go and TS — update both when changing DTOs.
+- **Tag hue palette is duplicated** between `internal/tag/types.go`
+  (`HuePalette`) and `web/src/lib/tag-color.ts` (`HUES`). Both must
+  change together if expanded. Tags get a hue server-side via
+  `pickLeastUsedHue` on `Service.Create` / `Resolve(autoCreate=true)`.
 - **Task selection lives in `sessionStorage` (`tt:selection`), not the
   URL.** Single source of truth via `useSelection` in
   `web/src/features/tasks/use-selection.ts` (module-level store +

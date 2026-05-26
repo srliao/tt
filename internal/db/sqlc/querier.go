@@ -14,9 +14,10 @@ type Querier interface {
 	ClearFinishedFromStage(ctx context.Context) error
 	ClearStage(ctx context.Context) error
 	CountScriptRuns(ctx context.Context) (int64, error)
+	CountTagsByHue(ctx context.Context) ([]CountTagsByHueRow, error)
 	CreateScript(ctx context.Context, arg CreateScriptParams) (Script, error)
 	CreateScriptRun(ctx context.Context, arg CreateScriptRunParams) (ScriptRun, error)
-	CreateTag(ctx context.Context, name string) (Tag, error)
+	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
 	DeleteOldestScriptRuns(ctx context.Context, limit int64) error
 	DeleteScript(ctx context.Context, id int64) error

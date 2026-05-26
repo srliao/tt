@@ -9,14 +9,58 @@ import (
 	"context"
 )
 
-const createTag = `-- name: CreateTag :one
-INSERT INTO tags (name) VALUES (?) RETURNING id, name, created_at
+const countTagsByHue = `-- name: CountTagsByHue :many
+SELECT color_hue, COUNT(*) AS count
+FROM tags
+GROUP BY color_hue
 `
 
-func (q *Queries) CreateTag(ctx context.Context, name string) (Tag, error) {
-	row := q.db.QueryRowContext(ctx, createTag, name)
+type CountTagsByHueRow struct {
+	ColorHue int64 `json:"color_hue"`
+	Count    int64 `json:"count"`
+}
+
+func (q *Queries) CountTagsByHue(ctx context.Context) ([]CountTagsByHueRow, error) {
+	rows, err := q.db.QueryContext(ctx, countTagsByHue)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CountTagsByHueRow
+	for rows.Next() {
+		var i CountTagsByHueRow
+		if err := rows.Scan(&i.ColorHue, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const createTag = `-- name: CreateTag :one
+INSERT INTO tags (name, color_hue) VALUES (?, ?) RETURNING id, name, created_at, color_hue
+`
+
+type CreateTagParams struct {
+	Name     string `json:"name"`
+	ColorHue int64  `json:"color_hue"`
+}
+
+func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error) {
+	row := q.db.QueryRowContext(ctx, createTag, arg.Name, arg.ColorHue)
 	var i Tag
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.ColorHue,
+	)
 	return i, err
 }
 
@@ -30,29 +74,39 @@ func (q *Queries) DeleteTag(ctx context.Context, id int64) error {
 }
 
 const getTagByID = `-- name: GetTagByID :one
-SELECT id, name, created_at FROM tags WHERE id = ?
+SELECT id, name, created_at, color_hue FROM tags WHERE id = ?
 `
 
 func (q *Queries) GetTagByID(ctx context.Context, id int64) (Tag, error) {
 	row := q.db.QueryRowContext(ctx, getTagByID, id)
 	var i Tag
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.ColorHue,
+	)
 	return i, err
 }
 
 const getTagByName = `-- name: GetTagByName :one
-SELECT id, name, created_at FROM tags WHERE name = ?
+SELECT id, name, created_at, color_hue FROM tags WHERE name = ?
 `
 
 func (q *Queries) GetTagByName(ctx context.Context, name string) (Tag, error) {
 	row := q.db.QueryRowContext(ctx, getTagByName, name)
 	var i Tag
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.ColorHue,
+	)
 	return i, err
 }
 
 const listTags = `-- name: ListTags :many
-SELECT id, name, created_at FROM tags ORDER BY name ASC
+SELECT id, name, created_at, color_hue FROM tags ORDER BY name ASC
 `
 
 func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
@@ -64,7 +118,12 @@ func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
 	var items []Tag
 	for rows.Next() {
 		var i Tag
-		if err := rows.Scan(&i.ID, &i.Name, &i.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.ColorHue,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -79,7 +138,7 @@ func (q *Queries) ListTags(ctx context.Context) ([]Tag, error) {
 }
 
 const listTagsWithCounts = `-- name: ListTagsWithCounts :many
-SELECT t.id, t.name, t.created_at, COALESCE(c.cnt, 0) AS count
+SELECT t.id, t.name, t.color_hue, t.created_at, COALESCE(c.cnt, 0) AS count
 FROM tags t
 LEFT JOIN (
   SELECT tag_id, COUNT(DISTINCT task_id) AS cnt
@@ -92,6 +151,7 @@ ORDER BY t.name ASC
 type ListTagsWithCountsRow struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
+	ColorHue  int64  `json:"color_hue"`
 	CreatedAt string `json:"created_at"`
 	Count     int64  `json:"count"`
 }
@@ -108,6 +168,7 @@ func (q *Queries) ListTagsWithCounts(ctx context.Context) ([]ListTagsWithCountsR
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
+			&i.ColorHue,
 			&i.CreatedAt,
 			&i.Count,
 		); err != nil {
@@ -125,7 +186,7 @@ func (q *Queries) ListTagsWithCounts(ctx context.Context) ([]ListTagsWithCountsR
 }
 
 const renameTag = `-- name: RenameTag :one
-UPDATE tags SET name = ? WHERE id = ? RETURNING id, name, created_at
+UPDATE tags SET name = ? WHERE id = ? RETURNING id, name, created_at, color_hue
 `
 
 type RenameTagParams struct {
@@ -136,6 +197,11 @@ type RenameTagParams struct {
 func (q *Queries) RenameTag(ctx context.Context, arg RenameTagParams) (Tag, error) {
 	row := q.db.QueryRowContext(ctx, renameTag, arg.Name, arg.ID)
 	var i Tag
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.ColorHue,
+	)
 	return i, err
 }

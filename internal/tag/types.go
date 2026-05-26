@@ -8,9 +8,15 @@ package tag
 import "time"
 
 // Tag is the domain-layer representation of a row in the tags table.
+//
+// ColorHue is the OKLCH hue angle in degrees, snapped to a 12-step palette
+// (multiples of 30, range [0, 330]). Assigned at create time by the
+// least-used-hue rule so collisions only occur once every palette slot is
+// already in use. See service.Create.
 type Tag struct {
 	ID        int64     `json:"id"`
 	Name      string    `json:"name"`
+	ColorHue  int64     `json:"color_hue"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -21,3 +27,8 @@ type TagWithCount struct {
 	Tag
 	Count int64 `json:"count"`
 }
+
+// HuePalette is the canonical 12-hue palette: OKLCH hue angles in degrees
+// at 30° increments. Mirrored client-side in `web/src/lib/tag-color.ts`;
+// keep the two in sync if either is ever expanded.
+var HuePalette = []int64{0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330}
