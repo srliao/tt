@@ -1,0 +1,13 @@
+# Litestream config. All values are injected via environment variables at
+# container start (Litestream expands ${VAR}). See docker-compose.yml / .env.
+dbs:
+  - path: /data/db.sqlite
+    replicas:
+      - type: s3
+        endpoint: ${LITESTREAM_ENDPOINT}
+        bucket: ${LITESTREAM_BUCKET}
+        path: ${LITESTREAM_PATH}
+        region: ${LITESTREAM_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        force-path-style: true
