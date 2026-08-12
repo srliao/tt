@@ -237,6 +237,10 @@ cd ~/tt
 docker compose down
 
 # 2. Delete the local data volume (simulates disk loss)
+# Docker Compose prefixes the volume with the project name, which defaults to
+# the working directory's name. Confirm the exact name first:
+#   docker volume ls
+# e.g., if your directory is named "tt" the volume will be "tt_tt-data".
 docker volume rm tt_tt-data
 
 # 3. Bring the stack back up — Litestream restores from R2 before the app starts
