@@ -87,6 +87,18 @@ These are load-bearing — violating them breaks tests or causes subtle bugs.
 - **Embedded assets**: `internal/web/dist/` (SPA, populated by `just build`) and `internal/db/migrations/*.sql` (always present).
 - **Schema-ahead detection**: if DB migration version > what binary knows, goose aborts startup. Intentional.
 
+## Container deployment mode
+
+In production the binary runs inside a container image (`Dockerfile`) with Litestream streaming SQLite to Cloudflare R2. The process model is unchanged — single binary, same three subsystems — but startup is wrapped:
+
+```
+docker/entrypoint.sh
+  └─ litestream replicate -exec "tt --data-dir /data --port 8080"
+         └─ (replication side-channel to R2)
+```
+
+The image is multi-arch (linux/amd64 + linux/arm64), built by `.github/workflows/build.yml` and pushed to `ghcr.io/srliao/tt`. `docker-compose.yml` adds a `cloudflared` sidecar for tunnel access; no host ports are exposed. See `docs/deployment.md` for the operator runbook.
+
 ## What's NOT here (designed-for but unbuilt)
 
 Listed in the spec §10. Common gotchas to avoid wasting time:

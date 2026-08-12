@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Local-only single-user task tracker with userscript automation. Ships as one statically-linked Go binary with an embedded React SPA.
+Local-only single-user task tracker with userscript automation. Ships as one statically-linked Go binary with an embedded React SPA. Also ships as a multi-arch container image with Litestream backup (`ghcr.io/srliao/tt`) — see `docs/deployment.md`.
 
 ## Agent Documentation — READ FIRST
 
@@ -108,11 +108,24 @@ Dev data lives in `./.dev-data/db.sqlite`. Delete to wipe state.
 - Added a UI shortcut → update `web/src/components/shortcut-cheatsheet.tsx`
   so users can discover it.
 
+## Deployment (container)
+
+Deployment artifacts live at the repo root:
+
+- `Dockerfile` — multi-stage build: Node → pnpm SPA build → copies `web/dist/` into `internal/web/dist/` → `go build`; bundles Litestream for SQLite backup.
+- `docker/entrypoint.sh`, `docker/litestream.yml` — entrypoint restores from R2 then runs `litestream replicate -exec "tt --data-dir /data --port 8080"`.
+- `docker-compose.yml`, `.env.example` — deployment stack: `tt` + `cloudflared` sidecar. Required env: `LITESTREAM_ENDPOINT/BUCKET/PATH/REGION/ACCESS_KEY_ID/SECRET_ACCESS_KEY`, `TUNNEL_TOKEN`.
+- `.github/workflows/build.yml` — CI builds multi-arch (linux/amd64 + linux/arm64) on push to `main`; pushes `:latest` + `:sha-<short>` to `ghcr.io/srliao/tt`.
+
+Operator runbook: `docs/deployment.md`.
+
 ## Don't
 
 - Don't edit `internal/db/sqlc/*.sql.go` or `web/src/routeTree.gen.ts` —
   both are generated.
 - Don't add `setTimeout`/`fetch`/network access to the userscript runtime —
   sandbox is intentional.
-- Don't bypass `just build` when producing a binary — the SPA embed step
-  must run.
+- Don't bypass `just build` when producing a local binary — the SPA embed
+  step must run. The `Dockerfile` is **not** a bypass: it performs the
+  equivalent embed (copies `web/dist/` into `internal/web/dist/`) before
+  `go build` inside the container.

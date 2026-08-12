@@ -84,6 +84,19 @@ Quick locator tables. When you need to read code, start here.
 | TanStack Router config | `web/tsr.config.json` |
 | shadcn components.json | `web/components.json` |
 
+## Deployment / container
+
+| Concept | File |
+|---|---|
+| Container image build | `Dockerfile` |
+| Container ignore rules | `.dockerignore` |
+| Container entrypoint (restore + replicate) | `docker/entrypoint.sh` |
+| Litestream R2 config | `docker/litestream.yml` |
+| Compose stack (tt + cloudflared sidecar) | `docker-compose.yml` |
+| Env contract template | `.env.example` |
+| CI multi-arch image build + push | `.github/workflows/build.yml` |
+| Operator runbook | `docs/deployment.md` |
+
 ## Tests by location
 
 Every Go file has a `_test.go` sibling. Every frontend `.tsx`/`.ts` typically has a `.test.tsx`/`.test.ts` sibling. Examples:

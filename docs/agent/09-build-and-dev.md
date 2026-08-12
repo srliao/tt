@@ -62,6 +62,14 @@ Embedded via `internal/db/migrations/embed.go`. Applied on startup with goose. A
 
 Pure-Go SQLite (`modernc.org/sqlite`) means no cgo. `CGO_ENABLED=0` build (release mode) is portable across darwin/linux/windows × amd64/arm64.
 
+## Container image (production deployment)
+
+The `Dockerfile` is a multi-stage build that performs the **same SPA-embed step** as `just build` (pnpm build → copy into `internal/web/dist/` → `go build`), then bundles Litestream. It is **not** a bypass of `just build`; it is an equivalent self-contained pipeline for CI.
+
+CI (`.github/workflows/build.yml`) builds linux/amd64 + linux/arm64 on push to `main` via native runners and pushes to `ghcr.io/srliao/tt` (`:latest` + `:sha-<short>`).
+
+Run locally with `docker-compose.yml` + `.env.example`; see `docs/deployment.md` for the full operator runbook.
+
 ## Data path
 
 Default: `$XDG_DATA_HOME/tt/db.sqlite` or `~/.local/share/tt/db.sqlite`. Override with `--data-dir` or `--db`. See `internal/config/config.go:resolveDataDir`.

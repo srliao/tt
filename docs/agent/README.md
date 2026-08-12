@@ -24,5 +24,6 @@ Concise, navigation-first docs for AI agents working on this repo. Each file is 
 
 - **README** (positioning, build commands): repo root
 - **Userscript API** (public reference for the `ctx` surface): `docs/userscript-api.md`
+- **Deployment runbook** (container image, Litestream, Compose, CI): `docs/deployment.md`
 
 When in doubt about "what changed recently?", use `git log`. When in doubt about a design rule, the file under `docs/agent/` that owns the layer is the canonical answer.
