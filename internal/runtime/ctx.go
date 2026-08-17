@@ -108,7 +108,7 @@ func installCtx(d ctxDeps) error {
 	// last entry of lastSpawns, or null when the array is empty.
 	spawnObjs := make([]map[string]any, 0, len(d.lastTasks))
 	for _, t := range d.lastTasks {
-		spawnObjs = append(spawnObjs, taskToJSObject(t))
+		spawnObjs = append(spawnObjs, taskToJSObject(t, d.loc))
 	}
 	if err := ctxObj.Set("lastSpawns", spawnObjs); err != nil {
 		return fmt.Errorf("runtime: set ctx.lastSpawns: %w", err)
@@ -138,19 +138,27 @@ func installCtx(d ctxDeps) error {
 }
 
 // taskToJSObject renders a Task as the plain JS object exposed via
-// ctx.lastSpawn. Time fields use the SQLite "YYYY-MM-DD HH:MM:SS" UTC layout
-// for consistency with ctx.script.lastRunAt; nullable fields emit JS null.
-func taskToJSObject(t task.Task) map[string]any {
+// ctx.lastSpawn. Time fields use the SQLite "YYYY-MM-DD HH:MM:SS" layout;
+// nullable fields emit JS null.
+//
+// Those fields are rendered in loc, matching ctx.script.lastRunAt and the
+// ctx.* date helpers. Scripts measure intervals with
+// ctx.daysSince(task.created_at), which compares against today in the app
+// zone — so a UTC rendering makes a task created at 20:05 EDT carry the next
+// day's date and turns a 14-day interval into 15. The stored columns remain
+// UTC instants; only this view is localized.
+func taskToJSObject(t task.Task, loc *time.Location) map[string]any {
 	const ts = "2006-01-02 15:04:05"
+	loc = ctxLocation(loc)
 	obj := map[string]any{
 		"id":           t.ID,
 		"title":        t.Title,
 		"notes":        t.Notes,
 		"state":        string(t.State),
 		"due_date":     nilString(t.DueDate),
-		"created_at":   t.CreatedAt.UTC().Format(ts),
-		"completed_at": nilTime(t.CompletedAt, ts),
-		"cancelled_at": nilTime(t.CancelledAt, ts),
+		"created_at":   t.CreatedAt.In(loc).Format(ts),
+		"completed_at": nilTime(t.CompletedAt, loc, ts),
+		"cancelled_at": nilTime(t.CancelledAt, loc, ts),
 		"tags":         t.Tags,
 	}
 	return obj
@@ -165,10 +173,10 @@ func nilString(p *string) any {
 	return *p
 }
 
-// nilTime mirrors nilString for *time.Time.
-func nilTime(p *time.Time, layout string) any {
+// nilTime mirrors nilString for *time.Time, rendering in loc.
+func nilTime(p *time.Time, loc *time.Location, layout string) any {
 	if p == nil {
 		return nil
 	}
-	return p.UTC().Format(layout)
+	return p.In(loc).Format(layout)
 }
