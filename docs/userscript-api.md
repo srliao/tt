@@ -67,13 +67,16 @@ always agree with each other:
   report.
 
 So a `daily` script that calls `ctx.today()` always sees the same date the
-scheduler used to decide it was due. `ctx.script.lastRunAt` is rendered in
-that zone too, so comparing it against `ctx.today()` or feeding it to
-`ctx.daysSince` is consistent.
+scheduler used to decide it was due. The timestamps `ctx` hands you are
+rendered in that zone too — `ctx.script.lastRunAt`, and the `created_at` /
+`completed_at` / `cancelled_at` of `ctx.lastSpawn` / `ctx.lastSpawns` — so
+comparing them against `ctx.today()` or feeding them to `ctx.daysSince` is
+consistent.
 
-Stored timestamps are unaffected — `created_at`, `completed_at` and the
-`last_run_at` column stay UTC instants. The web UI derives "today" from
-**your browser's** zone, so set `TT_TIMEZONE` to the zone you actually live in.
+Stored columns are unaffected — `tasks.created_at`, `tasks.completed_at`,
+`scripts.last_run_at` and friends stay UTC instants; only the `ctx` view is
+localized. The web UI derives "today" from **your browser's** zone, so set
+`TT_TIMEZONE` to the zone you actually live in.
 
 ## `ctx` API (v1)
 
@@ -137,6 +140,12 @@ Task shape:
   tags: ["work", "weekly"]
 }
 ```
+
+`created_at`, `completed_at` and `cancelled_at` are `"YYYY-MM-DD HH:MM:SS"`
+wall-clock strings **in the app time zone** (see [Time zone](#time-zone)), so
+`ctx.daysSince(ctx.lastSpawn.created_at)` counts the days you'd count on a
+calendar. `completed_at` / `cancelled_at` are `null` unless the task reached
+that state.
 
 Failed and timed-out runs are skipped — `lastSpawns` always reflects
 the last `ok` invocation's batch.

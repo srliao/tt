@@ -90,7 +90,7 @@ Two separate concerns, easy to conflate:
 
 The arg forms `isFirstOfMonth(date)` / `isLastOfMonth(date)` are unaffected — they answer about the supplied date, parsed via `acceptedDateLayouts`.
 
-`ctx.script.lastRunAt` (installed in `ctx.go`) is rendered in `loc` too, not UTC. Scripts compare it against `ctx.today()` and pass it to `ctx.daysSince`, both of which resolve days in `loc`; a UTC rendering puts a late-evening run on tomorrow's date and makes `daysSince` return `-1` for the same local day. The `scripts.last_run_at` column itself is unchanged — a UTC instant; only the ctx view is localized. `ctxLocation(loc)` in `ctx.go` is the shared nil→UTC normalizer used by both this rendering and `dateBindings`.
+**Every timestamp `ctx` renders goes through `loc`, not UTC** — `ctx.script.lastRunAt`, and `created_at` / `completed_at` / `cancelled_at` in `taskToJSObject(t, loc)` (via `nilTime(p, loc, layout)`), which back `ctx.lastSpawn` and each entry of `ctx.lastSpawns`. All of these are installed in `ctx.go`. Scripts compare them against `ctx.today()` and pass them to `ctx.daysSince`, both of which resolve days in `loc`; a UTC rendering puts a late-evening event on tomorrow's date — `daysSince(lastRunAt)` returns `-1` for a run earlier the same local day, and `daysSince(lastSpawn.created_at) >= 14` silently waits 15 days for a task created at 20:05 EDT. The stored columns (`scripts.last_run_at`, `tasks.created_at`, …) are unchanged — UTC instants; only the ctx view is localized. **Add a timestamp to the ctx surface and it must be localized too; don't localize one of these without the others.** `ctxLocation(loc)` in `ctx.go` is the shared nil→UTC normalizer used by these renderings and `dateBindings`.
 
 ## Sandbox
 
@@ -106,8 +106,8 @@ See spec §5 for the full list. Key categories:
 | Category | Methods |
 |---|---|
 | Date helpers | `ctx.today/weekday/dayOfMonth/month/year/isFirstOfMonth/isLastOfMonth/isWeekday/daysSince/daysBetween/addDays/formatDate/parseDate` — "which day" is answered in the app time zone; values stay UTC-midnight-anchored |
-| Script metadata | `ctx.script.{id,name,trigger,lastRunAt}` — `lastRunAt` is a `"YYYY-MM-DD HH:MM:SS"` wall-clock string rendered **in the app time zone** (see below) |
-| Spawn lookup | `ctx.lastSpawns` — array of task objects from the most recent successful run, in **spawn order** (the order `queueTask` was called; `[]` when no such run). `ctx.lastSpawn` — last element of that array, or `null` when empty (back-compat with the prior single-task surface). |
+| Script metadata | `ctx.script.{id,name,trigger,lastRunAt}` — `lastRunAt` is a `"YYYY-MM-DD HH:MM:SS"` wall-clock string rendered **in the app time zone** (see above) |
+| Spawn lookup | `ctx.lastSpawns` — array of task objects from the most recent successful run, in **spawn order** (the order `queueTask` was called; `[]` when no such run). `ctx.lastSpawn` — last element of that array, or `null` when empty (back-compat with the prior single-task surface). Their `created_at`/`completed_at`/`cancelled_at` are `"YYYY-MM-DD HH:MM:SS"` strings rendered **in the app time zone** (see above) |
 | State | `ctx.state.{get,set,delete,all}` |
 | Logging | `ctx.log(msg)`, `ctx.log.{debug,info,warn,error}`, `console.{log,info,warn,error}` |
 | Mutation | `ctx.queueTask({title, notes?, tags?, due_date?})` |

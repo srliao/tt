@@ -52,10 +52,10 @@ Current display name of the running script.
 How this run was triggered: `"scheduled"` or `"manual"`.
 
 ## ctx.script.lastRunAt
-The previous run's start time as a `Date`, or `null` if this is the first run.
+The previous run's start time as a `"YYYY-MM-DD HH:MM:SS"` string in the app time zone, or `null` if this is the first run. Not a `Date` — pass it to `ctx.parseDate` if you need one.
 
 ## ctx.lastSpawn
-The last `Task` queued by this script's most recent successful run, or `null`. Shape: `{ id, title, notes, state, due_date, created_at, completed_at, cancelled_at, tags: [...] }`.
+The last `Task` queued by this script's most recent successful run, or `null`. Shape: `{ id, title, notes, state, due_date, created_at, completed_at, cancelled_at, tags: [...] }`. The three timestamps are `"YYYY-MM-DD HH:MM:SS"` strings in the app time zone, so `ctx.daysSince(prev.created_at)` lines up with `ctx.today()`.
 
 ## ctx.state.get(key)
 Reads a persistent value from this script's state blob.
