@@ -65,11 +65,13 @@ Don't replicate this for simple filters — prefer adding a named query.
 
 - `tasks.priority` (main-list order, NOT NULL DEFAULT 0).
 - `tasks.staged_order` (stage order, NULL when not staged).
-- Created at next `MAX(...) + 1.0`.
+- **Both axes render ascending; new keys are minted at the LOW end.** `MinPriority` / `MinStagedOrder` in `internal/db/queries/tasks.sql` are `COALESCE(MIN(...), 1.0)`, and `task.Impl.Create` / `Stage` subtract `1.0` — so a new task sorts above everything, and the first row in an empty list lands on `0.0`. Keys drift negative; fine for float64.
 - Reorder picks midpoint between visible neighbors. See `internal/task/reorder.go`:
   - `Midpoint(before, after *float64) float64` — nil = top/bottom edge.
   - `NeedsRebalance(a, b float64) bool` — true when `|b-a| < 1e-9`.
-  - `RebalancePriority` / `RebalanceStage` — re-spread to `0, 1, 2, ...` inside a tx.
+  - `RebalancePriority` / `RebalanceStage` — re-spread to `0, 1, 2, ...` ascending inside a tx.
+
+Because minting runs downward, **rowid order is the reverse of list order.** Any query that wants logical order must sort on the key, not on `id`. `ListLatestSpawnedTasksByScript` is the live example: it orders by `j.key ASC` (position inside `script_runs.spawned_task_ids`), not `t.id ASC`.
 
 State transitions **do not change `staged_order`** — done/cancelled tasks stay visible in the stage so users see progress through the batch.
 

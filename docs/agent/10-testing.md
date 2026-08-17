@@ -27,7 +27,7 @@ In-memory DB uses `SetMaxOpenConns(1)` to pin all calls to the same connection (
 
 Real DB, real service. Hit every state-transition path, every filter axis, every reorder edge case. Examples:
 
-- `internal/task/service_test.go` — CRUD, state transitions, filter+sort matrix, reorder midpoint correctness.
+- `internal/task/service_test.go` — CRUD, state transitions, filter+sort matrix, reorder midpoint correctness, newest-first key minting (`Create` / `Stage` land at the top of the ascending list).
 - `internal/task/reorder_test.go` — pure-math tests on `Midpoint`, `NeedsRebalance`, `EvenSpread`.
 - `internal/tag/service_test.go` — Resolve (autoCreate=true / false), dedupe, unknown-tag error message.
 - `internal/script/service_test.go` — CRUD, run lifecycle, retention pruning, orphan recovery.
@@ -35,7 +35,7 @@ Real DB, real service. Hit every state-transition path, every filter axis, every
 
 ### Runtime tests
 
-`internal/runtime/runner_test.go` — real `goja`, real services on `dbtest.New`. Each ctx.* method has a test that builds a tiny script string, runs it, and asserts on the DB state / log rows. Also exercises the 5s timeout path, error handling, state buffer atomicity (queue/state discarded on error/timeout).
+`internal/runtime/runner_test.go` — real `goja`, real services on `dbtest.New`. Each ctx.* method has a test that builds a tiny script string, runs it, and asserts on the DB state / log rows. Also exercises the 5s timeout path, error handling, state buffer atomicity (queue/state discarded on error/timeout), and the reverse flush (a multi-item `ctx.queueTask` batch must read top-down in spawn order while `ctx.lastSpawns` stays in spawn order).
 
 Use `runtime.WithTimeout(d)` and `runtime.WithClock(fn)` to make tests fast and deterministic.
 

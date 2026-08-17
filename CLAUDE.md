@@ -73,9 +73,14 @@ Dev data lives in `./.dev-data/db.sqlite`. Delete to wipe state.
 - **`ctx` API never calls SQL directly** — it goes through task/tag/script
   services. Mutating effects are deferred-buffered, flushed only on
   `RunStatusOK`.
-- **Fractional ordering keys** (priority, staged_order). Reorder = midpoint;
-  rebalance when neighbors are within `1e-9`. See
-  `internal/task/reorder.go`.
+- **Fractional ordering keys** (priority, staged_order). **Display is
+  ascending; NEW keys are minted at the low end** (`MIN(...) - 1.0`, see
+  `minPriority`/`minStagedOrder` in `internal/task/service.go`) so a new /
+  newly staged task lands at the TOP. Keys drift negative — fine for float64.
+  Reorder = midpoint; rebalance when neighbors are within `1e-9`. See
+  `internal/task/reorder.go`. Corollary: rowid order no longer tracks list
+  order — `Runner.flushQueue` persists a queued batch in reverse so it stacks
+  top-down in spawn order.
 - **One scheduler worker.** All script execution is sequential.
 - **JSON error envelope** for all non-2xx. Codes in
   `internal/httpapi/errors.go`. Service errors map via substring match in

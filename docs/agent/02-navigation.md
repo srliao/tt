@@ -15,6 +15,7 @@ Quick locator tables. When you need to read code, start here.
 | Test helper (in-memory store) | `internal/db/dbtest/dbtest.go` |
 | Task CRUD, reorder, list with filters | `internal/task/service.go` |
 | Task fractional-key math (Midpoint, rebalance) | `internal/task/reorder.go` |
+| New-key minting (newest-first: `MIN(key) - 1`) | `internal/db/queries/tasks.sql` (`MinPriority`, `MinStagedOrder`) + `minPriority` / `minStagedOrder` in `internal/task/service.go` |
 | Task domain types, enums (State, DueRange, SortAxis) | `internal/task/types.go` |
 | Tag CRUD + Resolve (auto-create) | `internal/tag/service.go` |
 | Tag domain types | `internal/tag/types.go` |

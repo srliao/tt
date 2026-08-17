@@ -20,16 +20,16 @@ File: `internal/task/service.go`.
 
 | Method | Notes |
 |---|---|
-| `Create` | New row gets `priority = max + 1.0`. Tag attach is caller's responsibility via `SetTagsByID`. |
+| `Create` | New row gets `priority = MIN(priority) - 1.0` → sorts **above** every existing task (lists are ascending). Tag attach is caller's responsibility via `SetTagsByID`. |
 | `Get` / `Update` / `Delete` | CRUD; `Update` accepts full new state (PATCH semantics live at HTTP). |
 | `SetState` | Stamps `completed_at` / `cancelled_at`; clears them on transition to `not_done`. Does NOT change `staged_order`. |
-| `Stage` / `Unstage` | Assigns `MAX+1.0` or NULL. |
+| `Stage` / `Unstage` | Assigns `MIN(staged_order) - 1.0` (top of the focused batch) or NULL. |
 | `ClearStage` / `ClearFinishedFromStage` | One-statement bulk ops. |
 | `ReorderMain` / `ReorderStage` | Compute midpoint; trigger rebalance if neighbors within 1e-9. |
 | `RebalancePriority` / `RebalanceStage` | Wraps a tx, reassigns to `float64(i)` in current ascending order. |
 | `List(FilterSort)` | Dynamic SQL — see [03-data-layer.md](./03-data-layer.md). |
 | `ByScript(scriptID, limit, offset)` | Used by `/scripts/:id/tasks` and the spawned-tasks panel. |
-| `LatestBySpawningScripts` | Returns the full batch of tasks created by the most recent successful (`status='ok'`) run for the script, ordered by `tasks.id ASC`. Empty slice (not an error) when no such run exists. Powers runtime `ctx.lastSpawns` / `ctx.lastSpawn`. |
+| `LatestBySpawningScripts` | Returns the full batch of tasks created by the most recent successful (`status='ok'`) run for the script, in **spawn order** — the query sorts by position in `spawned_task_ids`, not `tasks.id`. Empty slice (not an error) when no such run exists. Powers runtime `ctx.lastSpawns` / `ctx.lastSpawn`. |
 | `SetTagsByID` | Replace-all in a tx. Caller resolves names via `tag.Service.Resolve`. |
 
 **Always set tags via `SetTagsByID` after creating/updating** — `Create`/`Update` themselves do not touch tags.

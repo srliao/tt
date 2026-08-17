@@ -92,8 +92,8 @@ ctx.script.lastRunAt           // string ("YYYY-MM-DD HH:MM:SS" UTC) | null
 
 ```js
 ctx.lastSpawns                 // Task[] — every task created by the most
-                               // recent successful run, ordered by id ASC
-                               // (insertion order). [] if no successful run.
+                               // recent successful run, in the order you
+                               // called queueTask. [] if no successful run.
 ctx.lastSpawn                  // last element of lastSpawns, or null
                                // (back-compat with the prior single-task API)
 ```
@@ -162,6 +162,11 @@ you queued via `ctx.lastSpawn` on the next run, or the run detail page.
 Per-item persistence is best-effort: if one item fails to insert, the
 remaining items still apply. Tags that don't exist are silently created
 in the managed tag list.
+
+New tasks land at the **top** of the task list. A batch queued in one run
+stacks top-down in the order you queued it — `queueTask(a)`, `queueTask(b)`,
+`queueTask(c)` reads a, b, c downward. Drag them wherever you want
+afterwards; that's an ordinary reorder.
 
 ## Examples
 

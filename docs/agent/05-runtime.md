@@ -22,7 +22,7 @@ JS execution engine for userscripts. One run = one fresh `goja.Runtime` + 5s tim
 4. Load user_state into stateBuffer (overlay; never mutates persisted blob).
 5. Create taskQueue (in-memory buffer for ctx.queueTask).
 6. Load lastTasks = LatestBySpawningScripts(scriptID) — the entire batch
-   spawned by the most recent successful run, ordered by tasks.id ASC.
+   spawned by the most recent successful run, in spawn order.
 7. goja.New(); installCtx(...) — see ctx.go.
    - Date helpers, ctx.log + console, ctx.state, ctx.queueTask,
      ctx.script metadata, ctx.lastSpawns (array) + ctx.lastSpawn
@@ -38,7 +38,7 @@ JS execution engine for userscripts. One run = one fresh `goja.Runtime` + 5s tim
 
 Important: **logs are immediate**, not deferred. `ctx.log` writes through `script.Service.AppendLog` synchronously, so timeouts and errors still leave a post-mortem trail.
 
-`ctx.lastSpawns` derives from `script_runs.spawned_task_ids` (JSON array, written by `FinishRun` on `ok`). The query `ListLatestSpawnedTasksByScript` in `internal/db/queries/tasks.sql` JOINs `tasks` with `json_each(spawned_task_ids)` of the latest `status='ok'` row for the script, so failed/timeout runs are skipped and the batch reflects exactly what the previous successful invocation produced.
+`ctx.lastSpawns` derives from `script_runs.spawned_task_ids` (JSON array, written by `FinishRun` on `ok`). The query `ListLatestSpawnedTasksByScript` in `internal/db/queries/tasks.sql` JOINs `tasks` with `json_each(spawned_task_ids)` of the latest `status='ok'` row for the script, so failed/timeout runs are skipped and the batch reflects exactly what the previous successful invocation produced. It orders by `j.key ASC` (position in the JSON array = spawn order) — **not** `t.id ASC`, because task ids now descend as the list ascends (see the flush note below).
 
 ## Effect persistence model
 
@@ -73,7 +73,9 @@ A corrupt or unparseable `user_state` blob falls back to an empty map — histor
 - `due_date` (if present) must be `YYYY-MM-DD`.
 - `tags` must be an array of strings; duplicates removed; empty entries dropped.
 
-Persistence: per item, resolve tags via `tag.Service.Resolve(..., autoCreate: true)` then `task.Service.Create(...)` then `task.Service.SetTagsByID(...)`. **One failure does NOT abort the rest** — partial-spawn is preferred to nothing.
+Persistence (`Runner.flushQueue` in `runner.go`): per item, resolve tags via `tag.Service.Resolve(..., autoCreate: true)` then `task.Service.Create(...)` then `task.Service.SetTagsByID(...)`. **One failure does NOT abort the rest** — partial-spawn is preferred to nothing.
+
+**The drained queue is walked BACKWARDS on purpose.** `task.Service.Create` inserts each row above everything already present, so persisting the last-queued item first leaves the batch stacked top-down in spawn order — `queueTask(a); queueTask(b); queueTask(c)` reads a, b, c downward at the top of the list. The returned id slice is flipped back into spawn order (`slices.Reverse`) before it becomes `spawned_task_ids`, so the userscript-visible `ctx.lastSpawns` / `ctx.lastSpawn` contracts are unchanged. Don't "simplify" this loop into a forward walk without also reversing the enqueue order.
 
 ## Sandbox
 
@@ -90,7 +92,7 @@ See spec §5 for the full list. Key categories:
 |---|---|
 | Date helpers | `ctx.today/weekday/dayOfMonth/month/year/isFirstOfMonth/isLastOfMonth/isWeekday/daysSince/daysBetween/addDays/formatDate/parseDate` |
 | Script metadata | `ctx.script.{id,name,trigger,lastRunAt}` — `lastRunAt` is a string in `"YYYY-MM-DD HH:MM:SS"` UTC layout |
-| Spawn lookup | `ctx.lastSpawns` — array of task objects from the most recent successful run (ordered by `tasks.id ASC` = insertion order; `[]` when no such run). `ctx.lastSpawn` — last element of that array, or `null` when empty (back-compat with the prior single-task surface). |
+| Spawn lookup | `ctx.lastSpawns` — array of task objects from the most recent successful run, in **spawn order** (the order `queueTask` was called; `[]` when no such run). `ctx.lastSpawn` — last element of that array, or `null` when empty (back-compat with the prior single-task surface). |
 | State | `ctx.state.{get,set,delete,all}` |
 | Logging | `ctx.log(msg)`, `ctx.log.{debug,info,warn,error}`, `console.{log,info,warn,error}` |
 | Mutation | `ctx.queueTask({title, notes?, tags?, due_date?})` |
