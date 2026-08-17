@@ -34,6 +34,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"time"
 
 	"github.com/dop251/goja"
@@ -271,6 +272,12 @@ func (r *Runner) loadStateBuffer(ctx context.Context, scriptID int64) *stateBuff
 // resolved (auto-create) and attached. Persistence is best-effort: a single
 // failed task is logged but does not abort the rest, so a partially-spawned
 // batch is preferable to nothing.
+//
+// The queue is walked BACKWARDS on purpose. task.Create inserts each row above
+// everything already present, so persisting the last entry first leaves the
+// batch stacked top-down in spawn order. The returned id slice is rebuilt in
+// spawn order regardless, since it becomes script_runs.spawned_task_ids and
+// backs ctx.lastSpawns / ctx.lastSpawn.
 func (r *Runner) flushQueue(ctx context.Context, scriptID int64, q *taskQueue) []int64 {
 	items := q.Drain()
 	if len(items) == 0 {
@@ -278,7 +285,8 @@ func (r *Runner) flushQueue(ctx context.Context, scriptID int64, q *taskQueue) [
 	}
 	ids := make([]int64, 0, len(items))
 	sid := scriptID
-	for _, it := range items {
+	for i := len(items) - 1; i >= 0; i-- {
+		it := items[i]
 		tagIDs, err := r.tags.Resolve(ctx, it.Tags, true)
 		if err != nil {
 			r.logger.Error("resolve tags", "script_id", scriptID, "err", err)
@@ -301,6 +309,8 @@ func (r *Runner) flushQueue(ctx context.Context, scriptID int64, q *taskQueue) [
 		}
 		ids = append(ids, created.ID)
 	}
+	// Collected back-to-front by the reverse walk above; flip to spawn order.
+	slices.Reverse(ids)
 	return ids
 }
 

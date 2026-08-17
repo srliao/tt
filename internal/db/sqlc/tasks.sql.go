@@ -244,15 +244,19 @@ func (q *Queries) ListAllStagedAsc(ctx context.Context) ([]ListAllStagedAscRow, 
 }
 
 const listLatestSpawnedTasksByScript = `-- name: ListLatestSpawnedTasksByScript :many
+
 SELECT t.id, t.title, t.notes, t.state, t.due_date, t.priority, t.staged_order, t.spawned_by_script_id, t.created_at, t.completed_at, t.cancelled_at, t.updated_at FROM tasks t
 JOIN json_each((
     SELECT spawned_task_ids FROM script_runs
     WHERE script_id = ? AND status = 'ok' AND spawned_task_ids != '[]'
     ORDER BY started_at DESC, id DESC LIMIT 1
 )) j ON t.id = CAST(j.value AS INTEGER)
-ORDER BY t.id ASC
+ORDER BY j.key ASC
 `
 
+// Ordered by the position in spawned_task_ids (j.key), NOT by rowid: a
+// spawning run inserts its batch in reverse so the tasks stack top-down in
+// spawn order, which leaves rowids running opposite to logical batch order.
 func (q *Queries) ListLatestSpawnedTasksByScript(ctx context.Context, scriptID int64) ([]Task, error) {
 	rows, err := q.db.QueryContext(ctx, listLatestSpawnedTasksByScript, scriptID)
 	if err != nil {
@@ -330,23 +334,27 @@ func (q *Queries) ListTasksByScript(ctx context.Context, spawnedByScriptID *int6
 	return items, nil
 }
 
-const maxPriority = `-- name: MaxPriority :one
-SELECT COALESCE(MAX(priority), -1.0) FROM tasks
+const minPriority = `-- name: MinPriority :one
+
+SELECT COALESCE(MIN(priority), 1.0) FROM tasks
 `
 
-func (q *Queries) MaxPriority(ctx context.Context) (interface{}, error) {
-	row := q.db.QueryRowContext(ctx, maxPriority)
+// New rows are minted at MIN(key) - 1 so they sort above everything already
+// present on the ascending-key axis. The 1.0 fallback makes the first row in
+// an empty list land on 0.0.
+func (q *Queries) MinPriority(ctx context.Context) (interface{}, error) {
+	row := q.db.QueryRowContext(ctx, minPriority)
 	var coalesce interface{}
 	err := row.Scan(&coalesce)
 	return coalesce, err
 }
 
-const maxStagedOrder = `-- name: MaxStagedOrder :one
-SELECT COALESCE(MAX(staged_order), -1.0) FROM tasks WHERE staged_order IS NOT NULL
+const minStagedOrder = `-- name: MinStagedOrder :one
+SELECT COALESCE(MIN(staged_order), 1.0) FROM tasks WHERE staged_order IS NOT NULL
 `
 
-func (q *Queries) MaxStagedOrder(ctx context.Context) (interface{}, error) {
-	row := q.db.QueryRowContext(ctx, maxStagedOrder)
+func (q *Queries) MinStagedOrder(ctx context.Context) (interface{}, error) {
+	row := q.db.QueryRowContext(ctx, minStagedOrder)
 	var coalesce interface{}
 	err := row.Scan(&coalesce)
 	return coalesce, err

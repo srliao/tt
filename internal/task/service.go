@@ -62,9 +62,10 @@ func New(store *db.Store) *Impl {
 	return &Impl{store: store, q: store.Queries()}
 }
 
-// Create inserts a new task with the next ascending priority key. Tag
-// attachment is the caller's responsibility via SetTagsByID after they
-// resolve tag names to ids through the tag service.
+// Create inserts a new task above every existing one. Lists render by
+// ascending priority, so the new key is MIN(priority) - 1 and the newest task
+// shows up first. Tag attachment is the caller's responsibility via
+// SetTagsByID after they resolve tag names to ids through the tag service.
 func (s *Impl) Create(ctx context.Context, in CreateInput) (Task, error) {
 	title := strings.TrimSpace(in.Title)
 	if title == "" {
@@ -76,11 +77,11 @@ func (s *Impl) Create(ctx context.Context, in CreateInput) (Task, error) {
 		return Task{}, err
 	}
 
-	maxP, err := s.maxPriority(ctx)
+	minP, err := s.minPriority(ctx)
 	if err != nil {
-		return Task{}, fmt.Errorf("task: read max priority: %w", err)
+		return Task{}, fmt.Errorf("task: read min priority: %w", err)
 	}
-	newPriority := maxP + 1.0
+	newPriority := minP - 1.0
 
 	row, err := s.q.CreateTask(ctx, sqlcgen.CreateTaskParams{
 		Title:             title,
@@ -133,13 +134,14 @@ func (s *Impl) SetState(ctx context.Context, id int64, st State) (Task, error) {
 	return rowToTask(row, tags), nil
 }
 
-// Stage assigns the next ascending staged_order key to the task.
+// Stage puts the task at the top of the focused batch. The stage renders by
+// ascending staged_order, so the new key is MIN(staged_order) - 1.
 func (s *Impl) Stage(ctx context.Context, id int64) (Task, error) {
-	maxS, err := s.maxStagedOrder(ctx)
+	minS, err := s.minStagedOrder(ctx)
 	if err != nil {
-		return Task{}, fmt.Errorf("task: read max staged_order: %w", err)
+		return Task{}, fmt.Errorf("task: read min staged_order: %w", err)
 	}
-	newStaged := maxS + 1.0
+	newStaged := minS - 1.0
 	row, err := s.q.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
 		StagedOrder: &newStaged,
 		ID:          id,
@@ -607,19 +609,20 @@ func (s *Impl) loadTags(ctx context.Context, taskID int64) ([]string, error) {
 	return out, nil
 }
 
-// maxStagedOrder reads the current MAX(staged_order); -1.0 when no task is
-// staged.
-func (s *Impl) maxStagedOrder(ctx context.Context) (float64, error) {
-	v, err := s.q.MaxStagedOrder(ctx)
+// minStagedOrder reads the current MIN(staged_order); 1.0 when no task is
+// staged, so the first staged task lands on 0.0.
+func (s *Impl) minStagedOrder(ctx context.Context) (float64, error) {
+	v, err := s.q.MinStagedOrder(ctx)
 	if err != nil {
 		return 0, err
 	}
 	return coerceFloat(v), nil
 }
 
-// maxPriority reads the current max(priority); -1.0 when the table is empty.
-func (s *Impl) maxPriority(ctx context.Context) (float64, error) {
-	v, err := s.q.MaxPriority(ctx)
+// minPriority reads the current MIN(priority); 1.0 when the table is empty,
+// so the first task lands on 0.0.
+func (s *Impl) minPriority(ctx context.Context) (float64, error) {
+	v, err := s.q.MinPriority(ctx)
 	if err != nil {
 		return 0, err
 	}

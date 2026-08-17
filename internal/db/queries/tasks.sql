@@ -43,11 +43,15 @@ WHERE staged_order IS NOT NULL;
 UPDATE tasks SET staged_order = NULL, updated_at = datetime('now')
 WHERE staged_order IS NOT NULL AND state IN ('done','cancelled');
 
--- name: MaxPriority :one
-SELECT COALESCE(MAX(priority), -1.0) FROM tasks;
+-- New rows are minted at MIN(key) - 1 so they sort above everything already
+-- present on the ascending-key axis. The 1.0 fallback makes the first row in
+-- an empty list land on 0.0.
 
--- name: MaxStagedOrder :one
-SELECT COALESCE(MAX(staged_order), -1.0) FROM tasks WHERE staged_order IS NOT NULL;
+-- name: MinPriority :one
+SELECT COALESCE(MIN(priority), 1.0) FROM tasks;
+
+-- name: MinStagedOrder :one
+SELECT COALESCE(MIN(staged_order), 1.0) FROM tasks WHERE staged_order IS NOT NULL;
 
 -- name: ListAllPrioritiesAsc :many
 SELECT id, priority FROM tasks ORDER BY priority ASC, id ASC;
@@ -59,6 +63,10 @@ SELECT id, staged_order FROM tasks WHERE staged_order IS NOT NULL ORDER BY stage
 SELECT * FROM tasks WHERE spawned_by_script_id = ?
 ORDER BY created_at DESC, id DESC;
 
+-- Ordered by the position in spawned_task_ids (j.key), NOT by rowid: a
+-- spawning run inserts its batch in reverse so the tasks stack top-down in
+-- spawn order, which leaves rowids running opposite to logical batch order.
+
 -- name: ListLatestSpawnedTasksByScript :many
 SELECT t.* FROM tasks t
 JOIN json_each((
@@ -66,7 +74,7 @@ JOIN json_each((
     WHERE script_id = ? AND status = 'ok' AND spawned_task_ids != '[]'
     ORDER BY started_at DESC, id DESC LIMIT 1
 )) j ON t.id = CAST(j.value AS INTEGER)
-ORDER BY t.id ASC;
+ORDER BY j.key ASC;
 
 -- name: AddTaskTag :exec
 INSERT OR IGNORE INTO task_tags (task_id, tag_id) VALUES (?, ?);

@@ -3,6 +3,7 @@ package task_test
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"testing"
 	"time"
 
@@ -78,7 +79,9 @@ func insertTag(t *testing.T, store *db.Store, ctx context.Context, name string) 
 	return id
 }
 
-func TestCreate_AssignsAscendingPriority(t *testing.T) {
+// Lists render by ascending priority, so a newer task must receive a SMALLER
+// key than every existing task in order to appear at the top.
+func TestCreate_PlacesNewTaskAboveExisting(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)
 
@@ -90,8 +93,21 @@ func TestCreate_AssignsAscendingPriority(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create(second): %v", err)
 	}
-	if !(b.Priority > a.Priority) {
-		t.Fatalf("expected b.Priority (%v) > a.Priority (%v)", b.Priority, a.Priority)
+	if !(b.Priority < a.Priority) {
+		t.Fatalf("expected b.Priority (%v) < a.Priority (%v)", b.Priority, a.Priority)
+	}
+}
+
+func TestCreate_FirstTaskGetsZeroPriority(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	got, err := svc.Create(ctx, task.CreateInput{Title: "only"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if got.Priority != 0 {
+		t.Fatalf("Priority = %v, want 0 for the first task in an empty table", got.Priority)
 	}
 }
 
@@ -236,7 +252,9 @@ func TestSetState_DoesNotTouchStagedOrder(t *testing.T) {
 	}
 }
 
-func TestStage_AssignsAscendingStagedOrder(t *testing.T) {
+// The stage renders by ascending staged_order, so the most recently staged
+// task must take the smallest key and land at the top of the batch.
+func TestStage_PlacesTaskAtTopOfStage(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)
 
@@ -259,8 +277,25 @@ func TestStage_AssignsAscendingStagedOrder(t *testing.T) {
 	if sa.StagedOrder == nil || sb.StagedOrder == nil {
 		t.Fatalf("StagedOrder nil: a=%v b=%v", sa.StagedOrder, sb.StagedOrder)
 	}
-	if !(*sb.StagedOrder > *sa.StagedOrder) {
-		t.Fatalf("expected sb.StagedOrder (%v) > sa.StagedOrder (%v)", *sb.StagedOrder, *sa.StagedOrder)
+	if !(*sb.StagedOrder < *sa.StagedOrder) {
+		t.Fatalf("expected sb.StagedOrder (%v) < sa.StagedOrder (%v)", *sb.StagedOrder, *sa.StagedOrder)
+	}
+}
+
+func TestStage_FirstStagedTaskGetsZeroStagedOrder(t *testing.T) {
+	t.Parallel()
+	svc, ctx := newService(t)
+
+	a, err := svc.Create(ctx, task.CreateInput{Title: "a"})
+	if err != nil {
+		t.Fatalf("Create(a): %v", err)
+	}
+	got, err := svc.Stage(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("Stage(a): %v", err)
+	}
+	if got.StagedOrder == nil || *got.StagedOrder != 0 {
+		t.Fatalf("StagedOrder = %v, want 0 for the first staged task", got.StagedOrder)
 	}
 }
 
@@ -412,6 +447,36 @@ func TestLatestBySpawningScripts_ReturnsLatestBatch(t *testing.T) {
 	}
 	if len(got) != 2 || got[0].ID != a.ID || got[1].ID != b.ID {
 		t.Fatalf("got = %+v, want [%d, %d]", got, a.ID, b.ID)
+	}
+}
+
+// The batch is returned in the order recorded in spawned_task_ids, not in
+// rowid order. Inserts land newest-first on the priority axis, so a spawning
+// run writes rows whose ids run opposite to their logical spawn order.
+func TestLatestBySpawningScripts_FollowsRecordedBatchOrder(t *testing.T) {
+	t.Parallel()
+	svc, store, ctx := newServiceWithStore(t)
+
+	sid := insertScript(t, store, ctx, "s1")
+
+	first, err := svc.Create(ctx, task.CreateInput{Title: "first", SpawnedByScriptID: &sid})
+	if err != nil {
+		t.Fatalf("Create(first): %v", err)
+	}
+	second, err := svc.Create(ctx, task.CreateInput{Title: "second", SpawnedByScriptID: &sid})
+	if err != nil {
+		t.Fatalf("Create(second): %v", err)
+	}
+	// Recorded batch order is the reverse of insertion (and therefore rowid)
+	// order.
+	insertOKRun(t, store, ctx, sid, []int64{second.ID, first.ID})
+
+	got, err := svc.LatestBySpawningScripts(ctx, sid)
+	if err != nil {
+		t.Fatalf("LatestBySpawningScripts: %v", err)
+	}
+	if len(got) != 2 || got[0].ID != second.ID || got[1].ID != first.ID {
+		t.Fatalf("got ids = %+v, want [%d, %d]", got, second.ID, first.ID)
 	}
 }
 
@@ -874,7 +939,9 @@ func TestList_FilterByTagsExclude(t *testing.T) {
 	}
 }
 
-func TestList_DefaultSortByPriority(t *testing.T) {
+// Default sort is the priority axis, and Create mints keys so newer tasks
+// sort first — the list therefore reads newest → oldest out of the box.
+func TestList_DefaultSortPutsNewestFirst(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)
 
@@ -889,7 +956,7 @@ func TestList_DefaultSortByPriority(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("len = %d, want 3", len(got))
 	}
-	wantIDs := []int64{a.ID, b.ID, c.ID}
+	wantIDs := []int64{c.ID, b.ID, a.ID}
 	for i, tk := range got {
 		if tk.ID != wantIDs[i] {
 			t.Fatalf("got[%d].ID = %d, want %d", i, tk.ID, wantIDs[i])
@@ -1002,25 +1069,27 @@ func TestRebalancePriority_AssignsIntegerKeys(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)
 
-	ids := make([]int64, 0, 5)
 	for i := 0; i < 5; i++ {
-		c, err := svc.Create(ctx, task.CreateInput{Title: "t"})
-		if err != nil {
+		if _, err := svc.Create(ctx, task.CreateInput{Title: "t"}); err != nil {
 			t.Fatalf("Create: %v", err)
 		}
-		ids = append(ids, c.ID)
+	}
+	// Snapshot the visible order first: a rebalance must reassign keys
+	// without moving any row.
+	before, err := svc.List(ctx, task.FilterSort{})
+	if err != nil {
+		t.Fatalf("List before: %v", err)
 	}
 	if err := svc.RebalancePriority(ctx); err != nil {
 		t.Fatalf("RebalancePriority: %v", err)
 	}
-	// Re-fetch each task in creation order; priorities should now be 0..4.
-	for i, id := range ids {
-		got, err := svc.Get(ctx, id)
+	for i, want := range before {
+		got, err := svc.Get(ctx, want.ID)
 		if err != nil {
-			t.Fatalf("Get(%d): %v", id, err)
+			t.Fatalf("Get(%d): %v", want.ID, err)
 		}
 		if got.Priority != float64(i) {
-			t.Fatalf("task %d Priority = %v, want %v", id, got.Priority, float64(i))
+			t.Fatalf("task %d Priority = %v, want %v", want.ID, got.Priority, float64(i))
 		}
 	}
 }
@@ -1029,7 +1098,6 @@ func TestRebalanceStage_AssignsIntegerKeys(t *testing.T) {
 	t.Parallel()
 	svc, ctx := newService(t)
 
-	ids := make([]int64, 0, 5)
 	for i := 0; i < 5; i++ {
 		c, err := svc.Create(ctx, task.CreateInput{Title: "t"})
 		if err != nil {
@@ -1038,26 +1106,40 @@ func TestRebalanceStage_AssignsIntegerKeys(t *testing.T) {
 		if _, err := svc.Stage(ctx, c.ID); err != nil {
 			t.Fatalf("Stage: %v", err)
 		}
-		ids = append(ids, c.ID)
 	}
+	// Snapshot the stage order (ascending staged_order) before rebalancing:
+	// the keys must become 0..4 without any row changing position.
+	before := stagedInOrder(t, svc, ctx)
 	if err := svc.RebalanceStage(ctx); err != nil {
 		t.Fatalf("RebalanceStage: %v", err)
 	}
-	// Re-fetch each task to verify the staged_order keys are 0..4 in the
-	// original stage order (creation order).
-	staged := make([]task.Task, 0, len(ids))
-	for _, id := range ids {
-		got, err := svc.Get(ctx, id)
+	for i, want := range before {
+		got, err := svc.Get(ctx, want.ID)
 		if err != nil {
-			t.Fatalf("Get(%d): %v", id, err)
+			t.Fatalf("Get(%d): %v", want.ID, err)
 		}
-		staged = append(staged, got)
-	}
-	for i, tk := range staged {
-		if tk.StagedOrder == nil || *tk.StagedOrder != float64(i) {
-			t.Fatalf("staged[%d].StagedOrder = %v, want %v", i, tk.StagedOrder, float64(i))
+		if got.StagedOrder == nil || *got.StagedOrder != float64(i) {
+			t.Fatalf("task %d StagedOrder = %v, want %v", want.ID, got.StagedOrder, float64(i))
 		}
 	}
+}
+
+// stagedInOrder returns every staged task sorted by ascending staged_order —
+// the same order the stage screen renders.
+func stagedInOrder(t *testing.T, svc *task.Impl, ctx context.Context) []task.Task {
+	t.Helper()
+	all, err := svc.List(ctx, task.FilterSort{})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	out := make([]task.Task, 0, len(all))
+	for _, tk := range all {
+		if tk.StagedOrder != nil {
+			out = append(out, tk)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return *out[i].StagedOrder < *out[j].StagedOrder })
+	return out
 }
 
 func TestReorderMain_BetweenNeighbors(t *testing.T) {
@@ -1067,14 +1149,15 @@ func TestReorderMain_BetweenNeighbors(t *testing.T) {
 	a, _ := svc.Create(ctx, task.CreateInput{Title: "a"})
 	b, _ := svc.Create(ctx, task.CreateInput{Title: "b"})
 	c, _ := svc.Create(ctx, task.CreateInput{Title: "c"})
+	// Newest-first, so the list reads c, b, a.
 
-	// Move c between a and b.
-	got, err := svc.ReorderMain(ctx, c.ID, &a.ID, &b.ID)
+	// Move a up between c and b.
+	got, err := svc.ReorderMain(ctx, a.ID, &c.ID, &b.ID)
 	if err != nil {
 		t.Fatalf("ReorderMain: %v", err)
 	}
-	if !(got.Priority > a.Priority && got.Priority < b.Priority) {
-		t.Fatalf("Priority %v not strictly between %v and %v", got.Priority, a.Priority, b.Priority)
+	if !(got.Priority > c.Priority && got.Priority < b.Priority) {
+		t.Fatalf("Priority %v not strictly between %v and %v", got.Priority, c.Priority, b.Priority)
 	}
 }
 
@@ -1117,27 +1200,29 @@ func TestReorderStage_BetweenNeighbors(t *testing.T) {
 	a, _ := svc.Create(ctx, task.CreateInput{Title: "a"})
 	b, _ := svc.Create(ctx, task.CreateInput{Title: "b"})
 	c, _ := svc.Create(ctx, task.CreateInput{Title: "c"})
-	sa, err := svc.Stage(ctx, a.ID)
-	if err != nil {
+	if _, err := svc.Stage(ctx, a.ID); err != nil {
 		t.Fatalf("Stage(a): %v", err)
 	}
 	sb, err := svc.Stage(ctx, b.ID)
 	if err != nil {
 		t.Fatalf("Stage(b): %v", err)
 	}
-	if _, err := svc.Stage(ctx, c.ID); err != nil {
+	sc, err := svc.Stage(ctx, c.ID)
+	if err != nil {
 		t.Fatalf("Stage(c): %v", err)
 	}
+	// Each Stage lands on top, so the stage reads c, b, a.
 
-	got, err := svc.ReorderStage(ctx, c.ID, &a.ID, &b.ID)
+	// Move a up between c and b.
+	got, err := svc.ReorderStage(ctx, a.ID, &c.ID, &b.ID)
 	if err != nil {
 		t.Fatalf("ReorderStage: %v", err)
 	}
 	if got.StagedOrder == nil {
 		t.Fatalf("StagedOrder = nil")
 	}
-	if !(*got.StagedOrder > *sa.StagedOrder && *got.StagedOrder < *sb.StagedOrder) {
-		t.Fatalf("StagedOrder %v not strictly between %v and %v", *got.StagedOrder, *sa.StagedOrder, *sb.StagedOrder)
+	if !(*got.StagedOrder > *sc.StagedOrder && *got.StagedOrder < *sb.StagedOrder) {
+		t.Fatalf("StagedOrder %v not strictly between %v and %v", *got.StagedOrder, *sc.StagedOrder, *sb.StagedOrder)
 	}
 }
 

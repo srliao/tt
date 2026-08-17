@@ -36,6 +36,9 @@ type Querier interface {
 	ListAllScriptRuns(ctx context.Context, arg ListAllScriptRunsParams) ([]ScriptRun, error)
 	ListAllStagedAsc(ctx context.Context) ([]ListAllStagedAscRow, error)
 	ListEnabledScripts(ctx context.Context) ([]Script, error)
+	// Ordered by the position in spawned_task_ids (j.key), NOT by rowid: a
+	// spawning run inserts its batch in reverse so the tasks stack top-down in
+	// spawn order, which leaves rowids running opposite to logical batch order.
 	ListLatestSpawnedTasksByScript(ctx context.Context, scriptID int64) ([]Task, error)
 	ListScriptLogsByRun(ctx context.Context, scriptRunID int64) ([]ScriptLog, error)
 	ListScriptRunsByScript(ctx context.Context, arg ListScriptRunsByScriptParams) ([]ScriptRun, error)
@@ -44,8 +47,11 @@ type Querier interface {
 	ListTagsWithCounts(ctx context.Context) ([]ListTagsWithCountsRow, error)
 	ListTasksByScript(ctx context.Context, spawnedByScriptID *int64) ([]Task, error)
 	MarkOrphanedRunsAsError(ctx context.Context) error
-	MaxPriority(ctx context.Context) (interface{}, error)
-	MaxStagedOrder(ctx context.Context) (interface{}, error)
+	// New rows are minted at MIN(key) - 1 so they sort above everything already
+	// present on the ascending-key axis. The 1.0 fallback makes the first row in
+	// an empty list land on 0.0.
+	MinPriority(ctx context.Context) (interface{}, error)
+	MinStagedOrder(ctx context.Context) (interface{}, error)
 	RenameTag(ctx context.Context, arg RenameTagParams) (Tag, error)
 	ReplaceTaskTags(ctx context.Context, taskID int64) error
 	SetScriptLastRunAt(ctx context.Context, arg SetScriptLastRunAtParams) error
