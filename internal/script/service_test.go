@@ -151,7 +151,7 @@ func TestDueAtFiltersEnabledAndMatching(t *testing.T) {
 	}
 
 	monday := time.Date(2026, 5, 25, 9, 0, 0, 0, time.UTC) // Monday
-	due, err := svc.DueAt(ctx, monday)
+	due, err := svc.DueAt(ctx, monday, time.UTC)
 	if err != nil {
 		t.Fatalf("DueAt: %v", err)
 	}
@@ -160,6 +160,45 @@ func TestDueAtFiltersEnabledAndMatching(t *testing.T) {
 	}
 	if due[0].ID != mon.ID {
 		t.Errorf("DueAt id = %d, want %d", due[0].ID, mon.ID)
+	}
+}
+
+// TestDueAtUsesLocationForDayBoundary checks that DueAt hands its location to
+// the schedule matcher rather than evaluating the day in UTC.
+func TestDueAtUsesLocationForDayBoundary(t *testing.T) {
+	ctx := context.Background()
+	svc := newSvc(t)
+
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+
+	if _, err := svc.Create(ctx, script.CreateInput{
+		Name:     "weekly mon",
+		Enabled:  true,
+		Schedule: script.Schedule{Kind: script.KindWeekly, Weekday: script.Monday},
+	}); err != nil {
+		t.Fatalf("Create weekly mon: %v", err)
+	}
+
+	// 02:00 UTC Tuesday May 26 is 22:00 EDT Monday May 25.
+	lateMonday := time.Date(2026, 5, 26, 2, 0, 0, 0, time.UTC)
+
+	due, err := svc.DueAt(ctx, lateMonday, ny)
+	if err != nil {
+		t.Fatalf("DueAt: %v", err)
+	}
+	if len(due) != 1 {
+		t.Fatalf("DueAt in New York = %d scripts, want 1", len(due))
+	}
+
+	due, err = svc.DueAt(ctx, lateMonday, time.UTC)
+	if err != nil {
+		t.Fatalf("DueAt: %v", err)
+	}
+	if len(due) != 0 {
+		t.Fatalf("DueAt in UTC = %d scripts, want 0 (already Tuesday)", len(due))
 	}
 }
 

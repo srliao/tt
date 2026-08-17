@@ -19,7 +19,12 @@ fe-lint:
 
 # ── backend ──────────────────────────────────────────────
 be-dev:
-    go run ./cmd/tt --port 8080 --data-dir ./.dev-data
+    # Default the app timezone to this machine's zone so local dev agrees with
+    # the browser about what "today" is. Without it dev would silently run UTC
+    # (TZ is usually unset on macOS) and reproduce the very bug the setting
+    # exists to fix. Export TT_TIMEZONE yourself to override.
+    TT_TIMEZONE="${TT_TIMEZONE:-$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')}" \
+        go run ./cmd/tt --port 8080 --data-dir ./.dev-data
 
 be-test:
     go test ./...

@@ -69,8 +69,9 @@ func newTestServer(t *testing.T, pinger httpapi.Pinger) *serverFixture {
 		tasks, tags, scripts, enq, pinger,
 		httpapi.Options{
 			Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
-			Version: "test-1.2.3",
-			BuiltAt: "2026-05-21T00:00:00Z",
+			Version:  "test-1.2.3",
+			BuiltAt:  "2026-05-21T00:00:00Z",
+			Timezone: "America/New_York",
 		},
 	)
 	ts := httptest.NewServer(srv.Routes())
@@ -151,8 +152,9 @@ func TestVersion(t *testing.T) {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
 	var body struct {
-		Version string `json:"version"`
-		BuiltAt string `json:"built_at"`
+		Version  string `json:"version"`
+		BuiltAt  string `json:"built_at"`
+		Timezone string `json:"timezone"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -162,6 +164,11 @@ func TestVersion(t *testing.T) {
 	}
 	if body.BuiltAt != "2026-05-21T00:00:00Z" {
 		t.Fatalf("built_at = %q", body.BuiltAt)
+	}
+	// The resolved zone is reported so a schedule firing on the wrong day
+	// can be diagnosed without shelling into the container.
+	if body.Timezone != "America/New_York" {
+		t.Fatalf("timezone = %q, want America/New_York", body.Timezone)
 	}
 }
 

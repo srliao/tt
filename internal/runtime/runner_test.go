@@ -379,3 +379,109 @@ func TestRunner_NoSetTimeoutOrFetch(t *testing.T) {
 		}
 	}
 }
+
+// End-to-end check that the configured app timezone reaches a running script:
+// at 2026-05-21 02:00 UTC a New-York-configured runner must report May 20.
+func TestRunner_DateHelpersUseConfiguredLocation(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+	now := time.Date(2026, 5, 21, 2, 0, 0, 0, time.UTC) // 22:00 EDT May 20
+
+	h := newHarness(t,
+		runtime.WithClock(func() time.Time { return now }),
+		runtime.WithLocation(ny),
+	)
+	sid := h.createScript(`ctx.queueTask({title: ctx.today()});`)
+	rid := h.startRun(sid, script.TriggerManual)
+
+	if err := h.runner.Run(context.Background(), sid, rid, script.TriggerManual); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	run, err := h.scripts.GetRun(context.Background(), rid)
+	if err != nil {
+		t.Fatalf("GetRun: %v", err)
+	}
+	if run.Status != script.RunStatusOK {
+		t.Fatalf("status = %q, want ok (err=%q)", run.Status, run.ErrorMessage)
+	}
+	got, err := h.tasks.Get(context.Background(), run.SpawnedTaskIDs[0])
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if got.Title != "2026-05-20" {
+		t.Errorf("ctx.today() inside script = %q, want 2026-05-20", got.Title)
+	}
+}
+
+// Without WithLocation the runner must keep its previous UTC behavior.
+func TestRunner_DateHelpersDefaultToUTC(t *testing.T) {
+	now := time.Date(2026, 5, 21, 2, 0, 0, 0, time.UTC)
+
+	h := newHarness(t, runtime.WithClock(func() time.Time { return now }))
+	sid := h.createScript(`ctx.queueTask({title: ctx.today()});`)
+	rid := h.startRun(sid, script.TriggerManual)
+
+	if err := h.runner.Run(context.Background(), sid, rid, script.TriggerManual); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	run, err := h.scripts.GetRun(context.Background(), rid)
+	if err != nil {
+		t.Fatalf("GetRun: %v", err)
+	}
+	got, err := h.tasks.Get(context.Background(), run.SpawnedTaskIDs[0])
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if got.Title != "2026-05-21" {
+		t.Errorf("ctx.today() inside script = %q, want 2026-05-21", got.Title)
+	}
+}
+
+// ctx.script.lastRunAt is a wall-clock string scripts compare against
+// ctx.today() and feed to ctx.daysSince. It must therefore be rendered in the
+// same zone those helpers use, or a run late in the local evening records
+// tomorrow's date and daysSince comes back -1 instead of 0.
+func TestRunner_LastRunAtRenderedInConfiguredLocation(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+	// 20:00 EDT on 2026-08-17, which is already 2026-08-18 in UTC.
+	firstRun := time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC)
+
+	h := newHarness(t,
+		runtime.WithClock(func() time.Time { return firstRun }),
+		runtime.WithLocation(ny),
+	)
+	sid := h.createScript(`ctx.queueTask({title: String(ctx.script.lastRunAt) + " | " + String(ctx.daysSince(ctx.script.lastRunAt ?? ctx.today()))});`)
+
+	// First run stamps last_run_at; ctx.script.lastRunAt is null here.
+	rid := h.startRun(sid, script.TriggerManual)
+	if err := h.runner.Run(context.Background(), sid, rid, script.TriggerManual); err != nil {
+		t.Fatalf("Run 1: %v", err)
+	}
+
+	// Second run, same instant, now sees the stamp from run 1.
+	rid2 := h.startRun(sid, script.TriggerManual)
+	if err := h.runner.Run(context.Background(), sid, rid2, script.TriggerManual); err != nil {
+		t.Fatalf("Run 2: %v", err)
+	}
+
+	run, err := h.scripts.GetRun(context.Background(), rid2)
+	if err != nil {
+		t.Fatalf("GetRun: %v", err)
+	}
+	if run.Status != script.RunStatusOK {
+		t.Fatalf("status = %q, want ok (err=%q)", run.Status, run.ErrorMessage)
+	}
+	got, err := h.tasks.Get(context.Background(), run.SpawnedTaskIDs[0])
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if want := "2026-08-17 20:00:00 | 0"; got.Title != want {
+		t.Errorf("ctx.script.lastRunAt | daysSince = %q, want %q", got.Title, want)
+	}
+}

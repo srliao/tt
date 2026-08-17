@@ -17,38 +17,48 @@ import (
 //	monthly    → !sch.Day.Valid → false
 //	             sch.Day.IsLast → isLastOfMonth(now) AND notRunToday(now, last)
 //	             else           → now.Day() == sch.Day.N AND notRunToday(now, last)
-func (sch Schedule) Matches(now time.Time, lastRunAt *time.Time) bool {
+//
+// Every calendar-day question above — which weekday it is, which day of the
+// month, and whether the script already ran "today" — is answered in loc, the
+// configured app timezone (see config.Config.Location). Stored timestamps stay
+// UTC instants; only the day boundary moves. A nil loc means UTC.
+func (sch Schedule) Matches(now time.Time, lastRunAt *time.Time, loc *time.Location) bool {
+	if loc == nil {
+		loc = time.UTC
+	}
+	now = now.In(loc)
+
 	switch sch.Kind {
 	case KindEveryTick:
 		return true
 	case KindDaily:
-		return notRunToday(now, lastRunAt)
+		return notRunToday(now, lastRunAt, loc)
 	case KindWeekly:
-		return weekdayMatches(now, sch.Weekday) && notRunToday(now, lastRunAt)
+		return weekdayMatches(now, sch.Weekday) && notRunToday(now, lastRunAt, loc)
 	case KindMonthly:
 		if !sch.Day.Valid {
 			return false
 		}
 		if sch.Day.IsLast {
-			return isLastOfMonth(now) && notRunToday(now, lastRunAt)
+			return isLastOfMonth(now) && notRunToday(now, lastRunAt, loc)
 		}
-		return now.Day() == sch.Day.N && notRunToday(now, lastRunAt)
+		return now.Day() == sch.Day.N && notRunToday(now, lastRunAt, loc)
 	}
 	return false
 }
 
-// notRunToday returns true when last is nil or falls on a different local
-// calendar day than now.
-func notRunToday(now time.Time, last *time.Time) bool {
+// notRunToday returns true when last is nil or falls on a different calendar
+// day than now when both are read in loc.
+func notRunToday(now time.Time, last *time.Time, loc *time.Location) bool {
 	if last == nil {
 		return true
 	}
-	return !sameLocalDate(now, *last)
+	return !sameDateIn(now, *last, loc)
 }
 
-// sameLocalDate compares two times by their local-zone year/year-day.
-func sameLocalDate(a, b time.Time) bool {
-	la, lb := a.Local(), b.Local()
+// sameDateIn compares two instants by their year/year-day in loc.
+func sameDateIn(a, b time.Time, loc *time.Location) bool {
+	la, lb := a.In(loc), b.In(loc)
 	return la.Year() == lb.Year() && la.YearDay() == lb.YearDay()
 }
 

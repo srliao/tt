@@ -16,6 +16,7 @@ import (
 type ctxDeps struct {
 	rt        *goja.Runtime
 	now       time.Time
+	loc       *time.Location
 	sc        script.Script
 	trigger   script.Trigger
 	state     *stateBuffer
@@ -23,6 +24,16 @@ type ctxDeps struct {
 	logFn     func(context.Context, script.LogLevel, string) error
 	runCtx    context.Context
 	lastTasks []task.Task
+}
+
+// ctxLocation normalizes a possibly-nil location to UTC, so a zero-valued
+// ctxDeps (tests, future call sites) behaves as it did before the app zone
+// became configurable.
+func ctxLocation(loc *time.Location) *time.Location {
+	if loc == nil {
+		return time.UTC
+	}
+	return loc
 }
 
 // installCtx builds the ctx object exposed to every userscript. Order of
@@ -44,7 +55,7 @@ func installCtx(d ctxDeps) error {
 
 	// Date helpers (ctx.today, weekday, …) — keep at the top because they
 	// touch no other state.
-	for name, fn := range dateBindings(rt, d.now) {
+	for name, fn := range dateBindings(rt, d.now, d.loc) {
 		if err := ctxObj.Set(name, fn); err != nil {
 			return fmt.Errorf("runtime: set ctx.%s: %w", name, err)
 		}
@@ -67,15 +78,21 @@ func installCtx(d ctxDeps) error {
 	}
 
 	// ctx.script metadata. lastRunAt is rendered as "YYYY-MM-DD HH:MM:SS"
-	// UTC (the SQLite layout) so scripts can compare it as a string without
+	// (the SQLite layout) so scripts can compare it as a string without
 	// pulling in a parser.
+	//
+	// It is rendered in the configured app zone, not UTC: scripts compare it
+	// against ctx.today() and pass it to ctx.daysSince, both of which resolve
+	// days in that zone. Rendering it in UTC would put a run late in the
+	// local evening on tomorrow's date and make daysSince report -1.
+	// The stored column stays a UTC instant; only this view is localized.
 	scriptMeta := map[string]any{
 		"id":      d.sc.ID,
 		"name":    d.sc.Name,
 		"trigger": string(d.trigger),
 	}
 	if d.sc.LastRunAt != nil {
-		scriptMeta["lastRunAt"] = d.sc.LastRunAt.UTC().Format("2006-01-02 15:04:05")
+		scriptMeta["lastRunAt"] = d.sc.LastRunAt.In(ctxLocation(d.loc)).Format("2006-01-02 15:04:05")
 	} else {
 		scriptMeta["lastRunAt"] = nil
 	}

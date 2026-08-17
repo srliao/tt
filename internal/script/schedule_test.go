@@ -21,12 +21,25 @@ func at(t *testing.T, s string) time.Time {
 // ptr is a tiny helper to turn a time.Time into a *time.Time literal.
 func ptr(t time.Time) *time.Time { return &t }
 
+// nyc loads America/New_York, the zone used by the day-boundary cases. It is
+// deliberately a fixed-offset-with-DST zone so the tests exercise both the
+// UTC offset and a DST transition.
+func nyc(t *testing.T) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+	return loc
+}
+
 func TestScheduleMatches(t *testing.T) {
 	cases := []struct {
 		name string
 		sch  script.Schedule
 		now  time.Time
 		last *time.Time
+		loc  *time.Location // nil means UTC
 		want bool
 	}{
 		{
@@ -118,11 +131,116 @@ func TestScheduleMatches(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			got := tc.sch.Matches(tc.now, tc.last)
+			loc := tc.loc
+			if loc == nil {
+				loc = time.UTC
+			}
+			got := tc.sch.Matches(tc.now, tc.last, loc)
 			if got != tc.want {
 				t.Errorf("Matches() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestScheduleMatchesInZone pins the behavior the configured timezone exists
+// for: the calendar day must roll over at local midnight, not UTC midnight.
+// Every case here produces the opposite answer under UTC.
+func TestScheduleMatchesInZone(t *testing.T) {
+	ny := nyc(t)
+
+	cases := []struct {
+		name string
+		sch  script.Schedule
+		now  time.Time
+		last *time.Time
+		want bool
+	}{
+		{
+			// 00:30 EDT May 21 vs 23:00 EDT May 20 — a new local day, even
+			// though both instants fall on May 21 in UTC.
+			name: "daily fires after local midnight",
+			sch:  script.Schedule{Kind: script.KindDaily},
+			now:  at(t, "2026-05-21 04:30"),
+			last: ptr(at(t, "2026-05-21 03:00")),
+			want: true,
+		},
+		{
+			// 22:00 EDT May 20 vs 16:00 EDT May 20 — still the same local
+			// day, though UTC has already rolled over to May 21.
+			name: "daily holds until local midnight",
+			sch:  script.Schedule{Kind: script.KindDaily},
+			now:  at(t, "2026-05-21 02:00"),
+			last: ptr(at(t, "2026-05-20 20:00")),
+			want: false,
+		},
+		{
+			// 22:00 EDT Monday May 25; UTC already reads Tuesday.
+			name: "weekly monday matches late local monday",
+			sch:  script.Schedule{Kind: script.KindWeekly, Weekday: script.Monday},
+			now:  at(t, "2026-05-26 02:00"),
+			last: nil,
+			want: true,
+		},
+		{
+			// 22:00 EDT May 31; UTC already reads June 1.
+			name: "monthly last matches late local last day",
+			sch:  script.Schedule{Kind: script.KindMonthly, Day: script.MonthlyDay{IsLast: true, Valid: true}},
+			now:  at(t, "2026-06-01 02:00"),
+			last: nil,
+			want: true,
+		},
+		{
+			// 22:00 EST May 20 local is the 20th; UTC reads the 21st.
+			name: "monthly day-of-month uses local day",
+			sch:  script.Schedule{Kind: script.KindMonthly, Day: script.MonthlyDay{N: 20, Valid: true}},
+			now:  at(t, "2026-05-21 02:00"),
+			last: nil,
+			want: true,
+		},
+		{
+			// Spring forward: 2026-03-08 skips 02:00-03:00 local. now is
+			// 03:30 EDT March 8, last is 23:00 EST March 7 — a new local day
+			// on a 23-hour calendar day. UTC sees both on March 8.
+			name: "daily fires across spring-forward boundary",
+			sch:  script.Schedule{Kind: script.KindDaily},
+			now:  at(t, "2026-03-08 07:30"),
+			last: ptr(at(t, "2026-03-08 04:00")),
+			want: true,
+		},
+		{
+			// Fall back: November 1 repeats 01:00-02:00 local, making it a
+			// 25-hour day. now is 00:30 EDT November 1, last is 23:00 EDT
+			// October 31 — a new local day. UTC sees both on November 1.
+			name: "daily fires across fall-back boundary",
+			sch:  script.Schedule{Kind: script.KindDaily},
+			now:  at(t, "2026-11-01 04:30"),
+			last: ptr(at(t, "2026-11-01 03:00")),
+			want: true,
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.sch.Matches(tc.now, tc.last, ny); got != tc.want {
+				t.Errorf("Matches() in %v = %v, want %v", ny, got, tc.want)
+			}
+			// Guard against a vacuous test: each case must disagree with the
+			// UTC answer, otherwise it proves nothing about zone handling.
+			if got := tc.sch.Matches(tc.now, tc.last, time.UTC); got == tc.want {
+				t.Errorf("case does not discriminate: UTC also returns %v", got)
+			}
+		})
+	}
+}
+
+// TestScheduleMatchesNilLocation guards the zero value: callers that have not
+// been wired for a location must behave as they did before, not panic.
+func TestScheduleMatchesNilLocation(t *testing.T) {
+	sch := script.Schedule{Kind: script.KindDaily}
+	if !sch.Matches(at(t, "2026-05-21 09:30"), ptr(at(t, "2026-05-20 23:50")), nil) {
+		t.Errorf("Matches with nil location = false, want true (UTC fallback)")
 	}
 }
 

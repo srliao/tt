@@ -46,7 +46,7 @@ type Runner interface {
 // Keeping it separate decouples the scheduler from CRUD/log methods and
 // makes test stubs trivial.
 type ScriptLookup interface {
-	DueAt(ctx context.Context, now time.Time) ([]script.Script, error)
+	DueAt(ctx context.Context, now time.Time, loc *time.Location) ([]script.Script, error)
 	RecoverOrphanedRuns(ctx context.Context) error
 	StartRun(ctx context.Context, scriptID int64, trigger script.Trigger) (script.Run, error)
 }
@@ -66,6 +66,7 @@ type Scheduler struct {
 	runner   Runner
 	scripts  ScriptLookup
 	clock    func() time.Time
+	loc      *time.Location
 	interval time.Duration
 	queue    chan job
 	logger   *slog.Logger
@@ -99,6 +100,18 @@ func WithClock(f func() time.Time) Option {
 	}
 }
 
+// WithLocation sets the timezone in which schedules resolve calendar days —
+// which weekday it is, which day of the month, and whether a script already
+// ran "today". Defaults to UTC; production passes config.Config.Location.
+// A nil location is ignored so the default can't be accidentally cleared.
+func WithLocation(loc *time.Location) Option {
+	return func(s *Scheduler) {
+		if loc != nil {
+			s.loc = loc
+		}
+	}
+}
+
 // WithQueueSize overrides the default queue depth. Sizes <= 0 are
 // ignored so callers can't accidentally disable the buffer.
 func WithQueueSize(n int) Option {
@@ -116,6 +129,7 @@ func New(runner Runner, scripts ScriptLookup, logger *slog.Logger, opts ...Optio
 		runner:   runner,
 		scripts:  scripts,
 		clock:    time.Now,
+		loc:      time.UTC,
 		interval: defaultInterval,
 		queue:    make(chan job, defaultQueueSize),
 		logger:   logger,
@@ -225,7 +239,7 @@ func (s *Scheduler) tryPush(j job) error {
 // from Start (initial sweep) and from the ticker loop. Errors are logged;
 // the scheduler retries on the next tick.
 func (s *Scheduler) sweep(ctx context.Context) {
-	scripts, err := s.scripts.DueAt(ctx, s.clock())
+	scripts, err := s.scripts.DueAt(ctx, s.clock(), s.loc)
 	if err != nil {
 		s.logger.Error("scheduler: DueAt", "err", err)
 		return
