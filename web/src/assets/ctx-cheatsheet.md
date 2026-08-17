@@ -55,7 +55,7 @@ How this run was triggered: `"scheduled"` or `"manual"`.
 The previous run's start time as a `Date`, or `null` if this is the first run.
 
 ## ctx.lastSpawn
-The most recent `Task` spawned by this script, or `null`. Shape: `{ id, title, notes, state, due_date, created_at, completed_at, cancelled_at, tags: [...] }`.
+The last `Task` queued by this script's most recent successful run, or `null`. Shape: `{ id, title, notes, state, due_date, created_at, completed_at, cancelled_at, tags: [...] }`.
 
 ## ctx.state.get(key)
 Reads a persistent value from this script's state blob.
@@ -88,4 +88,4 @@ Writes an error-level log line.
 Aliases for the matching `ctx.log[level]` methods.
 
 ## ctx.queueTask({ title, notes?, tags?, due_date? })
-Queues a task to be created. Validated immediately; persisted only if the run finishes successfully. Tag names that don't exist yet are auto-created.
+Queues a task to be created. Validated immediately; persisted only if the run finishes successfully. Tag names that don't exist yet are auto-created. New tasks land at the top of the task list; a batch queued in one run stacks top-down in the order you queued it.

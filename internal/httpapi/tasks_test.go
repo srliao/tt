@@ -496,9 +496,10 @@ func TestTasks_ReorderMain(t *testing.T) {
 	b, _ := fx.tasks.Create(ctx, task.CreateInput{Title: "b"})
 	c, _ := fx.tasks.Create(ctx, task.CreateInput{Title: "c"})
 
+	// Newest-first, so the list reads c, b, a. Move a up between c and b.
 	resp := doJSON(t, http.MethodPost, fx.server.URL+"/api/v1/tasks/reorder", map[string]any{
-		"task_id":   c.ID,
-		"before_id": a.ID,
+		"task_id":   a.ID,
+		"before_id": c.ID,
 		"after_id":  b.ID,
 	})
 	defer func() { _ = resp.Body.Close() }()
@@ -507,8 +508,8 @@ func TestTasks_ReorderMain(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", resp.StatusCode, string(body))
 	}
 	got := decodeTask(t, resp)
-	if !(got.Priority > a.Priority && got.Priority < b.Priority) {
-		t.Fatalf("priority = %v, expected between %v and %v", got.Priority, a.Priority, b.Priority)
+	if !(got.Priority > c.Priority && got.Priority < b.Priority) {
+		t.Fatalf("priority = %v, expected between %v and %v", got.Priority, c.Priority, b.Priority)
 	}
 }
 

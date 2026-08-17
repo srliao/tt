@@ -174,6 +174,44 @@ func TestRunner_StateBuffersUntilOK(t *testing.T) {
 	}
 }
 
+// A spawned batch lands above everything already in the list, and reads in
+// spawn order within itself: [a, b, c, <older task>].
+func TestRunner_SpawnedBatchLandsAtTopInSpawnOrder(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	older, err := h.tasks.Create(ctx, task.CreateInput{Title: "older"})
+	if err != nil {
+		t.Fatalf("Create(older): %v", err)
+	}
+
+	sid := h.createScript(`
+		ctx.queueTask({title: "a"});
+		ctx.queueTask({title: "b"});
+		ctx.queueTask({title: "c"});
+	`)
+	rid := h.startRun(sid, script.TriggerManual)
+	if err := h.runner.Run(ctx, sid, rid, script.TriggerManual); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	got, err := h.tasks.List(ctx, task.FilterSort{})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	titles := make([]string, 0, len(got))
+	for _, tk := range got {
+		titles = append(titles, tk.Title)
+	}
+	want := []string{"a", "b", "c", "older"}
+	if strings.Join(titles, ",") != strings.Join(want, ",") {
+		t.Fatalf("list order = %v, want %v", titles, want)
+	}
+	if got[3].ID != older.ID {
+		t.Fatalf("last row id = %d, want the pre-existing task %d", got[3].ID, older.ID)
+	}
+}
+
 func TestRunner_LastSpawnPopulated(t *testing.T) {
 	h := newHarness(t)
 	// First run spawns a task.

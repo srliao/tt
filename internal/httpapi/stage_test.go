@@ -23,9 +23,11 @@ func TestStage_Reorder(t *testing.T) {
 		}
 	}
 
+	// Each Stage lands on top, so the stage reads c, b, a. Move a up between
+	// c and b.
 	resp := doJSON(t, http.MethodPost, fx.server.URL+"/api/v1/stage/reorder", map[string]any{
-		"task_id":   c.ID,
-		"before_id": a.ID,
+		"task_id":   a.ID,
+		"before_id": c.ID,
 		"after_id":  b.ID,
 	})
 	defer func() { _ = resp.Body.Close() }()
@@ -37,20 +39,20 @@ func TestStage_Reorder(t *testing.T) {
 		t.Fatalf("staged_order is nil")
 	}
 
-	// Re-fetch a and b to get the original staged_order values for comparison.
-	aReloaded, err := fx.tasks.Get(ctx, a.ID)
+	// Re-fetch the neighbors to get their staged_order values for comparison.
+	cReloaded, err := fx.tasks.Get(ctx, c.ID)
 	if err != nil {
-		t.Fatalf("reload a: %v", err)
+		t.Fatalf("reload c: %v", err)
 	}
 	bReloaded, err := fx.tasks.Get(ctx, b.ID)
 	if err != nil {
 		t.Fatalf("reload b: %v", err)
 	}
-	if aReloaded.StagedOrder == nil || bReloaded.StagedOrder == nil {
+	if cReloaded.StagedOrder == nil || bReloaded.StagedOrder == nil {
 		t.Fatalf("neighbor staged_order is nil")
 	}
-	if !(*got.StagedOrder > *aReloaded.StagedOrder && *got.StagedOrder < *bReloaded.StagedOrder) {
-		t.Fatalf("staged_order %v not between %v and %v", *got.StagedOrder, *aReloaded.StagedOrder, *bReloaded.StagedOrder)
+	if !(*got.StagedOrder > *cReloaded.StagedOrder && *got.StagedOrder < *bReloaded.StagedOrder) {
+		t.Fatalf("staged_order %v not between %v and %v", *got.StagedOrder, *cReloaded.StagedOrder, *bReloaded.StagedOrder)
 	}
 }
 

@@ -95,7 +95,7 @@ The HTTP error mapper is `writeServiceError` in `internal/httpapi/tasks.go`. It 
 - Tag inclusion uses a single `tag_filter=` param of the form `<mode>:<csv>` where mode is `any` or `all` and the CSV may include the `@untagged` sentinel (e.g. `tag_filter=any:work,errand`, `tag_filter=all:work,urgent`, `tag_filter=any:@untagged`, `tag_filter=any:@untagged,work`). The `all:@untagged,…real` combination is an impossible set and returns an empty list (never 500). Malformed strings (no colon / unknown mode / empty list) degrade to "no filter" silently; unknown tag NAMES still surface as 400. The legacy `tag=` (repeated) + `tag_mode=` reader was removed in Phase 6 and is now silently ignored.
 - `tags_exclude=` is **CSV** (`?tags_exclude=a,b`) and drops any task carrying at least one excluded tag. Inclusion and exclusion compose with AND.
 - Tag names starting with `@` are reserved for sentinel tokens (currently only `@untagged`) and rejected by `POST /tags` and the `tag.Service.Resolve` path with a 400.
-- `sort` defaults to `priority`; priority always sorts ASC regardless of `asc`.
+- `sort` defaults to `priority`; priority always sorts ASC regardless of `asc`. Keys are minted newest-first (`MIN - 1`), so a task created via `POST /tasks` comes back at the **head** of the default list — no reorder call needed.
 - Date filters (`from`, `to` on `/runs`) are RFC3339.
 
 ## Manual script run
