@@ -20,7 +20,7 @@ The same steps work for `tags` / `scripts` columns — substitute the relevant p
 ## Add a new ctx method to userscripts
 
 1. **Pick or create file** in `internal/runtime/` (`ctx_dates.go`, `ctx_state.go`, `ctx_queue.go`, or new).
-2. **Implement the Go binding** as a closure or method on a struct. Use `rt.NewGoError(err)` to raise JS-visible errors.
+2. **Implement the Go binding** as a closure or method on a struct. Use `rt.NewGoError(err)` to raise JS-visible errors. Date-shaped helpers: read "which day it is" off the `loc`-converted now, but anchor returned date values at UTC midnight via `civilDate` — see [05-runtime.md](./05-runtime.md#date-helpers-and-the-app-time-zone).
 3. **Wire into `installCtx`** in `internal/runtime/ctx.go` (or via a sub-installer like `installState`).
 4. **Decide deferred vs immediate**:
    - Mutating? Defer through a buffer (like `taskQueue`) and flush only on `RunStatusOK`.
@@ -50,7 +50,7 @@ See [07-http-api.md](./07-http-api.md) for the step-by-step. TL;DR:
 1. **Schema**: extend the `CHECK (schedule_kind IN (...))` constraint via migration.
 2. **Domain**: add the constant in `internal/script/types.go` (`Kind` enum). If config has fields, extend `Schedule` struct + `MonthlyDay`-style tagged-union if needed.
 3. **Parse**: update `ParseSchedule` + `Schedule.MarshalConfig` in `internal/script/schedule.go`.
-4. **Match**: add the case in `Schedule.Matches`.
+4. **Match**: add the case in `Schedule.Matches(now, lastRunAt, loc)` — `now` is already converted to `loc`, so ask calendar-day questions off it directly and reuse `notRunToday` for the once-per-day guard.
 5. **HTTP wire format**: update `parseSchedule` in `internal/httpapi/scripts.go`.
 6. **Frontend**: extend `scheduleSchema` (zod) in `web/src/features/scripts/editor-page.tsx` and the schedule sub-form `schedule-sub-form.tsx`.
 7. **Type mirror**: `web/src/types/script.ts`.

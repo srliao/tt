@@ -157,6 +157,7 @@ nano .env      # or your preferred editor
 Fill in every blank variable. The completed `.env` should look like:
 
 ```dotenv
+TT_TIMEZONE=America/New_York            # optional; defaults to UTC
 TUNNEL_TOKEN=eyJ...                     # from Section 3
 LITESTREAM_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
 LITESTREAM_BUCKET=tt-backup
@@ -165,6 +166,25 @@ LITESTREAM_REGION=auto
 LITESTREAM_ACCESS_KEY_ID=abc123
 LITESTREAM_SECRET_ACCESS_KEY=supersecret
 ```
+
+**`TT_TIMEZONE` — set this to the zone you actually live in.** It is the IANA
+zone name that decides **when a calendar day starts** for the app:
+`daily` / `weekly` / `monthly` userscripts become due after local midnight in
+this zone, and `ctx.today()` inside a userscript reports this zone's date.
+Leave it unset and everything happens on UTC days — a "daily" script fires at
+7pm the previous evening if you're in `America/New_York`.
+
+- Values are IANA names (`America/New_York`, `Europe/Berlin`, `Asia/Tokyo`),
+  not offsets or abbreviations. DST is handled for you.
+- The zone database is compiled into the binary, so named zones work even
+  though the image is alpine-based with no system tzdata package.
+- **A misspelled zone name fails startup** rather than silently falling back to
+  UTC. If the `tt` container refuses to come up after an edit here, check
+  `docker compose logs tt` for `unknown time zone "..."`.
+- Only the day boundary moves. Stored timestamps stay UTC, and the **web UI
+  still shows "today" using your browser's zone** — so a `TT_TIMEZONE` that
+  disagrees with the browser you use makes the two disagree about the date.
+- Changing it takes effect on restart: edit `.env`, then `docker compose up -d`.
 
 **Start the stack:**
 
@@ -222,6 +242,18 @@ docker compose exec tt wget -qO- http://localhost:8080/api/v1/health
 ```
 
 Expected response: `{"status":"ok"}` (or similar 200 JSON body).
+
+Confirm the app picked up the time zone you configured:
+
+```bash
+docker compose exec tt wget -qO- http://localhost:8080/api/v1/version
+```
+
+Expected: `{"version":"...","built_at":"...","timezone":"America/New_York"}`.
+A `timezone` of `UTC` when you set something else means the variable never
+reached the container — check `.env` and re-run `docker compose up -d`. The
+resolved zone is also logged once at startup (`timezone=` in
+`docker compose logs tt`).
 
 ---
 

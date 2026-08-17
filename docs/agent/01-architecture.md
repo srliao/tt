@@ -70,7 +70,7 @@ These are load-bearing — violating them breaks tests or causes subtle bugs.
 
 6. **One scheduler worker.** All script execution is sequential — local single-user; race conditions in user scripts are not a concern. Queue is size-100; manual-trigger overflow returns 503, scheduled overflow is silently dropped + counted.
 
-7. **All timestamps as TEXT.** Code uses SQLite's `datetime('now')` ("YYYY-MM-DD HH:MM:SS") OR RFC3339 — every parse path accepts both. See `parseSqliteTime` in `task/service.go`, `tag/service.go`, `script/service.go` (intentionally duplicated to keep packages self-contained).
+7. **All timestamps as TEXT, always UTC instants.** Code uses SQLite's `datetime('now')` ("YYYY-MM-DD HH:MM:SS") OR RFC3339 — every parse path accepts both. See `parseSqliteTime` in `task/service.go`, `tag/service.go`, `script/service.go` (intentionally duplicated to keep packages self-contained). Storage is unaffected by the app time zone (rule 11) — only *which calendar day it is* moves.
 
 8. **JSON error envelope.** All non-2xx responses share `{"error": {"code", "message", "details?"}}`. Codes are stable strings; see `internal/httpapi/errors.go`. The mapper is `writeServiceError` in `tasks.go` — string-based to avoid importing the scheduler/sqlite packages.
 
@@ -78,7 +78,9 @@ These are load-bearing — violating them breaks tests or causes subtle bugs.
 
 10. **Bulk-tag is one transaction.** `task.Impl.BulkTag` (see `internal/task/service.go`) opens a single tx and runs INSERT OR IGNORE / DELETE / REPLACE per op across the supplied task ids, then reloads the affected rows in request-order. Tag name → id resolution happens at the HTTP boundary (`handleBulkTag` in `internal/httpapi/tasks.go`): `tag.Resolve` (auto-create) for add/set, `tag.ResolveExisting` (silently drop unknown) for remove. Service operates on ids only.
 
-11. **Document-level keydown for the task table.** `useTableShortcuts` in `web/src/features/tasks/task-table.tsx` binds to `document` (not the table element) so j/k/x/⌘A fire regardless of focus. Guards: a `disabled` flag, `isEditableTarget(target)`, and an open Radix dialog probe (`[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]`). Replicate this guard set when adding any document-scoped shortcut on a page.
+11. **The app time zone decides when a day starts, and the runner + scheduler MUST share it.** `config.Config.Location` (resolved in `internal/config/config.go`: `--timezone` flag → `$TT_TIMEZONE` → `$TZ` → UTC; unknown zone = hard startup error, never a silent UTC fallback). `cmd/tt/main.go` passes it to **both** `runtime.New(..., runtime.WithLocation(loc))` and `scheduler.New(..., scheduler.WithLocation(loc))` — if they disagree, a `daily` script and the `ctx.today()` it calls disagree about the date. Both options default to UTC and ignore a nil location. The package imports `_ "time/tzdata"` so named zones resolve in the alpine container image (no system tzdata). Stored timestamps stay UTC (rule 7); the frontend still derives "today" from the browser zone (`localDateKey` in `web/src/features/tasks/use-task-list-search.ts`), so the operator must set `TT_TIMEZONE` to match the browser they use. See [04-backend-services.md](./04-backend-services.md) (schedule matching), [05-runtime.md](./05-runtime.md) (`ctx.*` date helpers).
+
+12. **Document-level keydown for the task table.** `useTableShortcuts` in `web/src/features/tasks/task-table.tsx` binds to `document` (not the table element) so j/k/x/⌘A fire regardless of focus. Guards: a `disabled` flag, `isEditableTarget(target)`, and an open Radix dialog probe (`[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]`). Replicate this guard set when adding any document-scoped shortcut on a page.
 
 ## Cross-cutting concerns
 

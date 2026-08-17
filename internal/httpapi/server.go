@@ -98,6 +98,10 @@ type Options struct {
 	Version string
 	// BuiltAt is the build timestamp string returned by /version. Optional.
 	BuiltAt string
+	// Timezone is the resolved app time zone name returned by /version, so a
+	// schedule firing on an unexpected day can be diagnosed from outside the
+	// process. Optional; empty means it was never configured.
+	Timezone string
 	// SPA is the handler that serves the front-end SPA. Phase 09 wires in
 	// the embed.FS; phase 06 tests can pass a plain "404 not found" handler.
 	SPA http.Handler
@@ -113,6 +117,7 @@ type Server struct {
 	logger   *slog.Logger
 	version  string
 	builtAt  string
+	timezone string
 	spa      http.Handler
 }
 
@@ -143,6 +148,7 @@ func New(
 		logger:   logger,
 		version:  opts.Version,
 		builtAt:  opts.BuiltAt,
+		timezone: opts.Timezone,
 		spa:      spa,
 	}
 }

@@ -23,6 +23,7 @@ type stubLookup struct {
 	due      []script.Script
 	dueErr   error
 	dueCalls int
+	dueLocs  []*time.Location
 
 	startErr     error
 	startCalls   []startCall
@@ -41,10 +42,11 @@ func newStubLookup() *stubLookup {
 	return &stubLookup{}
 }
 
-func (s *stubLookup) DueAt(_ context.Context, _ time.Time) ([]script.Script, error) {
+func (s *stubLookup) DueAt(_ context.Context, _ time.Time, loc *time.Location) ([]script.Script, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.dueCalls++
+	s.dueLocs = append(s.dueLocs, loc)
 	if s.dueErr != nil {
 		return nil, s.dueErr
 	}
@@ -421,5 +423,62 @@ func TestRunnerPanicRecovered(t *testing.T) {
 	}
 	if calls[1].runID != 200 {
 		t.Fatalf("second runner call runID = %d, want 200", calls[1].runID)
+	}
+}
+
+// TestSchedulerPassesLocationToDueAt pins that the configured app timezone
+// reaches the schedule matcher — without it, DueAt would evaluate calendar
+// days in UTC no matter how the binary was configured.
+func TestSchedulerPassesLocationToDueAt(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+
+	scripts := newStubLookup()
+	runner := newStubRunner()
+	s := scheduler.New(runner, scripts, silentLogger(),
+		scheduler.WithInterval(time.Hour),
+		scheduler.WithLocation(ny),
+	)
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Stop()
+
+	scripts.mu.Lock()
+	locs := append([]*time.Location(nil), scripts.dueLocs...)
+	scripts.mu.Unlock()
+
+	if len(locs) == 0 {
+		t.Fatalf("DueAt was never called")
+	}
+	for i, loc := range locs {
+		if loc != ny {
+			t.Errorf("DueAt call %d location = %v, want %v", i, loc, ny)
+		}
+	}
+}
+
+// TestSchedulerDefaultsToUTC guards the zero-config path: a scheduler built
+// without WithLocation must hand DueAt a usable location, not nil.
+func TestSchedulerDefaultsToUTC(t *testing.T) {
+	scripts := newStubLookup()
+	runner := newStubRunner()
+	s := scheduler.New(runner, scripts, silentLogger(), scheduler.WithInterval(time.Hour))
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer s.Stop()
+
+	scripts.mu.Lock()
+	locs := append([]*time.Location(nil), scripts.dueLocs...)
+	scripts.mu.Unlock()
+
+	if len(locs) == 0 {
+		t.Fatalf("DueAt was never called")
+	}
+	if locs[0] != time.UTC {
+		t.Errorf("default DueAt location = %v, want UTC", locs[0])
 	}
 }

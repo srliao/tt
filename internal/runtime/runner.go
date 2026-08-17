@@ -61,6 +61,7 @@ type Runner struct {
 	scripts script.Service
 	logger  *slog.Logger
 	now     func() time.Time
+	loc     *time.Location
 	timeout time.Duration
 }
 
@@ -88,6 +89,19 @@ func WithClock(now func() time.Time) Option {
 	}
 }
 
+// WithLocation sets the timezone the ctx.* date helpers use to decide what
+// "today" is — ctx.today, weekday, dayOfMonth, month, year, isWeekday and the
+// bare isFirstOfMonth / isLastOfMonth. Defaults to UTC; production passes
+// config.Config.Location. A nil location is ignored so the default can't be
+// accidentally cleared.
+func WithLocation(loc *time.Location) Option {
+	return func(r *Runner) {
+		if loc != nil {
+			r.loc = loc
+		}
+	}
+}
+
 // New constructs a Runner backed by the supplied services. The logger is
 // used only for runtime-internal diagnostics (panic recovery, persistence
 // failures); user script output flows through ctx.log instead.
@@ -104,6 +118,7 @@ func New(
 		scripts: scripts,
 		logger:  logger,
 		now:     time.Now,
+		loc:     time.UTC,
 		timeout: defaultTimeout,
 	}
 	for _, opt := range opts {
@@ -181,6 +196,7 @@ func (r *Runner) Run(ctx context.Context, scriptID, runID int64, trigger script.
 	if err := installCtx(ctxDeps{
 		rt:        rt,
 		now:       now,
+		loc:       r.loc,
 		sc:        sc,
 		trigger:   trigger,
 		state:     stateBuf,

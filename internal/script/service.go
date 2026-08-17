@@ -28,7 +28,7 @@ type Service interface {
 	List(ctx context.Context) ([]Script, error)
 
 	// Scheduling
-	DueAt(ctx context.Context, now time.Time) ([]Script, error)
+	DueAt(ctx context.Context, now time.Time, loc *time.Location) ([]Script, error)
 	SetLastRunAt(ctx context.Context, id int64, t time.Time) error
 
 	// User state
@@ -143,9 +143,10 @@ func (s *Impl) List(ctx context.Context) ([]Script, error) {
 	return out, nil
 }
 
-// DueAt returns every enabled script whose schedule says "run" at now. The
-// scheduler can iterate this list directly to launch runs.
-func (s *Impl) DueAt(ctx context.Context, now time.Time) ([]Script, error) {
+// DueAt returns every enabled script whose schedule says "run" at now, with
+// calendar days evaluated in loc (nil means UTC). The scheduler can iterate
+// this list directly to launch runs.
+func (s *Impl) DueAt(ctx context.Context, now time.Time, loc *time.Location) ([]Script, error) {
 	rows, err := s.q.ListEnabledScripts(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("script: list enabled: %w", err)
@@ -156,7 +157,7 @@ func (s *Impl) DueAt(ctx context.Context, now time.Time) ([]Script, error) {
 		if err != nil {
 			return nil, err
 		}
-		if sc.Schedule.Matches(now, sc.LastRunAt) {
+		if sc.Schedule.Matches(now, sc.LastRunAt, loc) {
 			out = append(out, sc)
 		}
 	}

@@ -58,7 +58,7 @@ File: `internal/script/service.go` + `internal/script/schedule.go`.
 | Method | Notes |
 |---|---|
 | `Create` / `Update` / `Get` / `Delete` / `List` | CRUD. Schedule is JSON-encoded via `Schedule.MarshalConfig()` before store. |
-| `DueAt(now)` | Lists enabled scripts, filters in Go using `Schedule.Matches`. |
+| `DueAt(now, loc)` | Lists enabled scripts, filters in Go using `Schedule.Matches`. `loc` is the app time zone the scheduler passes down (nil ⇒ UTC). |
 | `SetLastRunAt` | Stamps regardless of outcome — prevents tight retry loops on broken scripts. |
 | `ReadUserState` / `WriteUserState` | Raw `[]byte` to/from `scripts.user_state`. Empty → "{}". |
 | `StartRun` / `FinishRun` / `AppendLog` | The run lifecycle. `FinishRun` JSON-encodes `spawned_task_ids`. |
@@ -68,16 +68,16 @@ File: `internal/script/service.go` + `internal/script/schedule.go`.
 
 ### Schedule matching
 
-`Schedule.Matches(now, lastRunAt)` — read `internal/script/schedule.go`. Truth table:
+`Schedule.Matches(now, lastRunAt, loc)` — read `internal/script/schedule.go`. Truth table:
 
 | Kind | Match when |
 |---|---|
 | `every_tick` | always |
-| `daily` | last run not on today's local date |
-| `weekly` | local weekday matches AND not run today |
+| `daily` | last run not on today's date **in `loc`** |
+| `weekly` | weekday **in `loc`** matches AND not run today |
 | `monthly` | day-of-month matches (int 1-31 OR "last") AND not run today |
 
-"Today" = `time.Time.Local()` year+yearday. Day boundaries at midnight local time.
+Every calendar-day question — weekday, day-of-month, is-last-of-month, and the "already ran today" check (`notRunToday` → `sameDateIn`, year+yearday in `loc`) — resolves in `loc`, the configured app time zone (`config.Config.Location`, see [01-architecture.md](./01-architecture.md) rule 11). A nil `loc` means UTC. `last_run_at` itself stays a UTC instant in storage; only the day boundary moves.
 
 `schedule_config` JSON shapes:
 - `every_tick` / `daily`: `{}`

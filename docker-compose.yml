@@ -5,6 +5,7 @@ services:
     volumes:
       - tt-data:/data
     environment:
+      TT_TIMEZONE: ${TT_TIMEZONE:-UTC}
       LITESTREAM_ENDPOINT: ${LITESTREAM_ENDPOINT}
       LITESTREAM_BUCKET: ${LITESTREAM_BUCKET}
       LITESTREAM_PATH: ${LITESTREAM_PATH}

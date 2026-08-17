@@ -56,6 +56,7 @@ func run() error {
 		slog.Int("port", cfg.Port),
 		slog.String("data_dir", cfg.DataDir),
 		slog.String("db_path", cfg.DBPath),
+		slog.String("timezone", cfg.Location.String()),
 	)
 
 	// SIGINT/SIGTERM cancel this context, which propagates into the
@@ -84,8 +85,11 @@ func run() error {
 	tags := tag.New(store)
 	scripts := script.New(store)
 
-	runner := runtime.New(tasks, tags, scripts, logger)
-	sched := scheduler.New(runner, scripts, logger)
+	// cfg.Location decides when a calendar day starts for both the ctx.*
+	// date helpers and schedule matching; the two must agree or a daily
+	// script and the ctx.today() it calls would disagree about the date.
+	runner := runtime.New(tasks, tags, scripts, logger, runtime.WithLocation(cfg.Location))
+	sched := scheduler.New(runner, scripts, logger, scheduler.WithLocation(cfg.Location))
 	if err := sched.Start(ctx); err != nil {
 		return fmt.Errorf("start scheduler: %w", err)
 	}
@@ -105,10 +109,11 @@ func run() error {
 		tasks, tags, scripts, sched,
 		httpapi.PingerFunc(store.DB().PingContext),
 		httpapi.Options{
-			Logger:  logger,
-			Version: Version,
-			BuiltAt: BuiltAt,
-			SPA:     spaHandler,
+			Logger:   logger,
+			Version:  Version,
+			BuiltAt:  BuiltAt,
+			Timezone: cfg.Location.String(),
+			SPA:      spaHandler,
 		},
 	)
 

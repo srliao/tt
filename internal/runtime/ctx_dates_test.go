@@ -12,20 +12,37 @@ import (
 var fixedNow = time.Date(2026, 5, 21, 14, 30, 0, 0, time.UTC)
 
 // newRuntimeWithDates installs ctx with date bindings only — enough to run a
-// single JS expression against the date helpers.
+// single JS expression against the date helpers. Days resolve in UTC.
 func newRuntimeWithDates(t *testing.T, now time.Time) *goja.Runtime {
+	t.Helper()
+	return newRuntimeWithDatesIn(t, now, time.UTC)
+}
+
+// newRuntimeWithDatesIn is newRuntimeWithDates with an explicit zone for the
+// calendar-day boundary.
+func newRuntimeWithDatesIn(t *testing.T, now time.Time, loc *time.Location) *goja.Runtime {
 	t.Helper()
 	rt := goja.New()
 	ctxObj := rt.NewObject()
 	if err := rt.Set("ctx", ctxObj); err != nil {
 		t.Fatalf("set ctx: %v", err)
 	}
-	for name, fn := range dateBindings(rt, now) {
+	for name, fn := range dateBindings(rt, now, loc) {
 		if err := ctxObj.Set(name, fn); err != nil {
 			t.Fatalf("set ctx.%s: %v", name, err)
 		}
 	}
 	return rt
+}
+
+// mustLoad resolves an IANA zone or fails the test.
+func mustLoad(t *testing.T, name string) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatalf("LoadLocation(%q): %v", name, err)
+	}
+	return loc
 }
 
 func runJS(t *testing.T, rt *goja.Runtime, src string) goja.Value {
@@ -251,5 +268,115 @@ func TestDateBindings_ParseDateReturnsJSDate(t *testing.T) {
 	got := runJS(t, rt, `ctx.parseDate("2026-05-21").getUTCDate()`).ToInteger()
 	if got != 21 {
 		t.Fatalf("parseDate(2026-05-21).getUTCDate() = %d, want 21", got)
+	}
+}
+
+// The ctx.* date helpers must answer "what day is it" in the configured app
+// timezone. 2026-05-21 02:00 UTC is still Wednesday the 20th in New York;
+// every helper below reports the UTC answer if the zone is ignored.
+func TestDateBindings_ResolveDayInConfiguredZone(t *testing.T) {
+	ny := mustLoad(t, "America/New_York")
+	// 22:00 EDT on Wednesday 2026-05-20.
+	now := time.Date(2026, 5, 21, 2, 0, 0, 0, time.UTC)
+	rt := newRuntimeWithDatesIn(t, now, ny)
+
+	if got := runJS(t, rt, `ctx.today()`).String(); got != "2026-05-20" {
+		t.Errorf("ctx.today() = %q, want 2026-05-20", got)
+	}
+	if got := runJS(t, rt, `ctx.weekday()`).String(); got != "wednesday" {
+		t.Errorf("ctx.weekday() = %q, want wednesday", got)
+	}
+	if got := runJS(t, rt, `ctx.dayOfMonth()`).ToInteger(); got != 20 {
+		t.Errorf("ctx.dayOfMonth() = %d, want 20", got)
+	}
+	if got := runJS(t, rt, `ctx.isWeekday("wednesday")`).ToBoolean(); !got {
+		t.Errorf(`ctx.isWeekday("wednesday") = false, want true`)
+	}
+}
+
+// Year and month roll over at local midnight too: 2027-01-01 02:00 UTC is
+// still December 2026 in New York.
+func TestDateBindings_YearAndMonthUseZone(t *testing.T) {
+	ny := mustLoad(t, "America/New_York")
+	now := time.Date(2027, 1, 1, 2, 0, 0, 0, time.UTC) // 21:00 EST Dec 31 2026
+	rt := newRuntimeWithDatesIn(t, now, ny)
+
+	if got := runJS(t, rt, `ctx.year()`).ToInteger(); got != 2026 {
+		t.Errorf("ctx.year() = %d, want 2026", got)
+	}
+	if got := runJS(t, rt, `ctx.month()`).ToInteger(); got != 12 {
+		t.Errorf("ctx.month() = %d, want 12", got)
+	}
+}
+
+// The bare (no-argument) month-boundary predicates default to "today" and so
+// must also read it in the configured zone.
+func TestDateBindings_MonthBoundaryPredicatesUseZone(t *testing.T) {
+	ny := mustLoad(t, "America/New_York")
+
+	// 22:00 EDT May 31 — last of the month locally, June 1 in UTC.
+	rtLast := newRuntimeWithDatesIn(t, time.Date(2026, 6, 1, 2, 0, 0, 0, time.UTC), ny)
+	if got := runJS(t, rtLast, `ctx.isLastOfMonth()`).ToBoolean(); !got {
+		t.Errorf("ctx.isLastOfMonth() = false, want true")
+	}
+	if got := runJS(t, rtLast, `ctx.isFirstOfMonth()`).ToBoolean(); got {
+		t.Errorf("ctx.isFirstOfMonth() = true, want false")
+	}
+
+	// 00:30 EDT June 1 — first of the month locally.
+	rtFirst := newRuntimeWithDatesIn(t, time.Date(2026, 6, 1, 4, 30, 0, 0, time.UTC), ny)
+	if got := runJS(t, rtFirst, `ctx.isFirstOfMonth()`).ToBoolean(); !got {
+		t.Errorf("ctx.isFirstOfMonth() = false, want true")
+	}
+}
+
+// daysSince measures whole calendar days between a date and today. Once today
+// is anchored to a non-UTC zone, a naive instant subtraction leaks the zone
+// offset into the division and truncates a day away — negative offsets lose
+// future dates, positive offsets lose past ones.
+func TestDateBindings_DaysSinceIsZoneStable(t *testing.T) {
+	cases := []struct {
+		zone string
+		now  time.Time
+	}{
+		// 10:30 EDT on 2026-05-21 (UTC-4).
+		{zone: "America/New_York", now: time.Date(2026, 5, 21, 14, 30, 0, 0, time.UTC)},
+		// 09:30 JST on 2026-05-21 (UTC+9).
+		{zone: "Asia/Tokyo", now: time.Date(2026, 5, 21, 0, 30, 0, 0, time.UTC)},
+		{zone: "UTC", now: time.Date(2026, 5, 21, 14, 30, 0, 0, time.UTC)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.zone, func(t *testing.T) {
+			rt := newRuntimeWithDatesIn(t, tc.now, mustLoad(t, tc.zone))
+
+			if got := runJS(t, rt, `ctx.today()`).String(); got != "2026-05-21" {
+				t.Fatalf("ctx.today() = %q, want 2026-05-21 (test setup)", got)
+			}
+			if got := runJS(t, rt, `ctx.daysSince("2026-05-19")`).ToInteger(); got != 2 {
+				t.Errorf(`daysSince("2026-05-19") = %d, want 2`, got)
+			}
+			if got := runJS(t, rt, `ctx.daysSince("2026-05-23")`).ToInteger(); got != -2 {
+				t.Errorf(`daysSince("2026-05-23") = %d, want -2`, got)
+			}
+			if got := runJS(t, rt, `ctx.daysSince("2026-05-21")`).ToInteger(); got != 0 {
+				t.Errorf(`daysSince("2026-05-21") = %d, want 0`, got)
+			}
+		})
+	}
+}
+
+// ctx.today() feeds straight back into the other helpers; that composition
+// must survive the zone change.
+func TestDateBindings_TodayComposesInZone(t *testing.T) {
+	ny := mustLoad(t, "America/New_York")
+	now := time.Date(2026, 5, 21, 2, 0, 0, 0, time.UTC) // 22:00 EDT May 20
+	rt := newRuntimeWithDatesIn(t, now, ny)
+
+	if got := runJS(t, rt, `ctx.formatDate(ctx.addDays(ctx.today(), 1))`).String(); got != "2026-05-21" {
+		t.Errorf("formatDate(addDays(today,1)) = %q, want 2026-05-21", got)
+	}
+	if got := runJS(t, rt, `ctx.daysSince(ctx.today())`).ToInteger(); got != 0 {
+		t.Errorf("daysSince(today()) = %d, want 0", got)
 	}
 }

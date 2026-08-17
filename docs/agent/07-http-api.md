@@ -75,6 +75,8 @@ The HTTP error mapper is `writeServiceError` in `internal/httpapi/tasks.go`. It 
 - `ManualRunEnqueuer` — single-method `EnqueueManual(scriptID, runID int64) error`.
 - `Pinger` — `Ping(ctx) error`. Use `PingerFunc(db.Open's *sql.DB.PingContext)`.
 
+`Options` carries the non-service knobs: `Logger`, `Version`, `BuiltAt`, `Timezone` (resolved app zone name, surfaced by `/version`), `SPA`.
+
 `Routes()` returns the `http.Handler` with all middleware mounted. Middleware chain (in order): `requestID`, `slogLog`, `recoverPanic`.
 
 ## Adding a new endpoint
@@ -124,7 +126,7 @@ The UI navigates to `/runs/$id` on success and polls.
 ## Health & version
 
 - `/health` pings the DB with a 2s timeout. Returns `{ "status": "ok", "db": "ok"|"down" }`.
-- `/version` returns `{ "version", "commit", "built_at" }` set via `-ldflags` at build time.
+- `/version` returns `{ "version", "built_at", "timezone" }` (`versionResponse` in `health.go`; empty fields are omitted). `version` / `built_at` come from `-ldflags` at build time; `timezone` is the resolved app time zone (`Options.Timezone` ← `config.Config.Location.String()`), reported so "why did my daily script fire at 8pm" is answerable with one HTTP call.
 
 ## Middleware notes
 

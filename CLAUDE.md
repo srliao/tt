@@ -54,7 +54,7 @@ or contract.
 
 ```bash
 just dev          # vite (5173) + go run (8080) in parallel
-just be-dev       # backend only
+just be-dev       # backend only (TT_TIMEZONE defaults to the host zone)
 just fe-dev       # frontend only
 just test         # be-test + fe-test
 just lint         # golangci-lint + biome check
@@ -87,7 +87,21 @@ Dev data lives in `./.dev-data/db.sqlite`. Delete to wipe state.
   `writeServiceError` — keep prefixes like `"is required"`, `"invalid"`,
   `"must be"` consistent.
 - **Timestamps as TEXT**: SQLite `datetime('now')` layout OR RFC3339.
-  Parsers accept both.
+  Parsers accept both. Stored timestamps are always UTC instants — the app
+  timezone never changes storage.
+- **App timezone decides when a day starts; runner and scheduler MUST get
+  the SAME location.** `config.Config.Location` (`--timezone` → `$TT_TIMEZONE`
+  → `$TZ` → UTC; unknown zone = hard startup error). `cmd/tt/main.go` passes
+  it to both `runtime.WithLocation` and `scheduler.WithLocation` — disagree
+  and a `daily` script and the `ctx.today()` it calls disagree about the date.
+  Both default to UTC, ignore nil. `internal/config/config.go` imports
+  `_ "time/tzdata"` so named zones resolve in the alpine image. Only *which
+  day it is* moves: `ctx.script.lastRunAt` is rendered in that zone (stored
+  column stays UTC), while every `ctx.*` date VALUE stays anchored at UTC midnight
+  (`civilDate` in `internal/runtime/ctx_dates.go`) so `daysSince`/`daysBetween`
+  stay plain subtraction — don't "fix" that anchoring. Frontend still uses the
+  browser zone (`localDateKey` in
+  `web/src/features/tasks/use-task-list-search.ts`); operator matches them.
 - **Type mirrors are hand-maintained** in `web/src/types/`. No codegen
   between Go and TS — update both when changing DTOs.
 - **Tag hue palette is duplicated** between `internal/tag/types.go`
@@ -119,7 +133,7 @@ Deployment artifacts live at the repo root:
 
 - `Dockerfile` — multi-stage build: Node → pnpm SPA build → copies `web/dist/` into `internal/web/dist/` → `go build`; bundles Litestream for SQLite backup.
 - `docker/entrypoint.sh`, `docker/litestream.yml` — entrypoint restores from R2 then runs `litestream replicate -exec "tt --data-dir /data --port 8080"`.
-- `docker-compose.yml`, `.env.example` — deployment stack: `tt` + `cloudflared` sidecar. Required env: `LITESTREAM_ENDPOINT/BUCKET/PATH/REGION/ACCESS_KEY_ID/SECRET_ACCESS_KEY`, `TUNNEL_TOKEN`.
+- `docker-compose.yml`, `.env.example` — deployment stack: `tt` + `cloudflared` sidecar. Required env: `LITESTREAM_ENDPOINT/BUCKET/PATH/REGION/ACCESS_KEY_ID/SECRET_ACCESS_KEY`, `TUNNEL_TOKEN`. Optional: `TT_TIMEZONE` (IANA zone, defaults `UTC`) — verify the running value at `GET /api/v1/version`.
 - `.github/workflows/build.yml` — CI builds multi-arch (linux/amd64 + linux/arm64) on push to `main`; pushes `:latest` + `:sha-<short>` to `ghcr.io/srliao/tt`.
 
 Operator runbook: `docs/deployment.md`.
