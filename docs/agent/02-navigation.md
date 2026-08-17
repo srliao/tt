@@ -8,6 +8,8 @@ Quick locator tables. When you need to read code, start here.
 |---|---|
 | Process entry, dependency wiring, signal handling | `cmd/tt/main.go` |
 | CLI flags, data-dir resolution | `internal/config/config.go` |
+| App time zone resolution (`--timezone` → `$TT_TIMEZONE` → `$TZ` → UTC) + embedded `time/tzdata` | `internal/config/config.go` → `resolveTimezone`, `loadLocation`, `Config.Location` |
+| Where the time zone is injected (runner + scheduler must agree) | `cmd/tt/main.go`; `runtime.WithLocation` in `internal/runtime/runner.go`; `scheduler.WithLocation` in `internal/scheduler/scheduler.go` |
 | SQLite open + WAL + goose migrations | `internal/db/store.go` |
 | Schema (DDL) | `internal/db/migrations/0001_init.sql` |
 | sqlc queries | `internal/db/queries/{tasks,tags,scripts,runs}.sql` |
@@ -20,11 +22,11 @@ Quick locator tables. When you need to read code, start here.
 | Tag CRUD + Resolve (auto-create) | `internal/tag/service.go` |
 | Tag domain types | `internal/tag/types.go` |
 | Script CRUD, run lifecycle, retention pruning | `internal/script/service.go` |
-| Script schedule parsing + matching | `internal/script/schedule.go` |
+| Script schedule parsing + matching (day boundaries in `loc`) | `internal/script/schedule.go` → `Schedule.Matches`, `notRunToday`, `sameDateIn` |
 | Script domain types (Kind, Trigger, RunStatus, LogLevel) | `internal/script/types.go` |
 | Runtime entry (one run lifecycle) | `internal/runtime/runner.go` |
-| `ctx` object installer | `internal/runtime/ctx.go` |
-| `ctx.today/weekday/parseDate/addDays/...` | `internal/runtime/ctx_dates.go` |
+| `ctx` object installer, `ctx.script.*` metadata, nil→UTC zone normalizer | `internal/runtime/ctx.go` → `installCtx`, `ctxLocation` |
+| `ctx.today/weekday/parseDate/addDays/...` | `internal/runtime/ctx_dates.go` → `dateBindings(rt, now, loc)`, `civilDate` |
 | `ctx.state.{get,set,delete,all}` + buffer | `internal/runtime/ctx_state.go` |
 | `ctx.queueTask` + buffer | `internal/runtime/ctx_queue.go` |
 | `ctx.log.*` + `console.*` install | `internal/runtime/ctx_log.go` |

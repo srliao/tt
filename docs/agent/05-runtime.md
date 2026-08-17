@@ -8,7 +8,7 @@ JS execution engine for userscripts. One run = one fresh `goja.Runtime` + 5s tim
 |---|---|
 | `runner.go` | Run orchestration: load script, install ctx, execute, flush, prune. |
 | `ctx.go` | Installs the `ctx` object tree on goja; sandbox sweep. |
-| `ctx_dates.go` | `ctx.today`, `weekday`, `daysSince`, `addDays`, `parseDate`, `formatDate`, etc. |
+| `ctx_dates.go` | `ctx.today`, `weekday`, `daysSince`, `addDays`, `parseDate`, `formatDate`, etc. Day boundaries resolve in the app time zone — see [Date helpers and the app time zone](#date-helpers-and-the-app-time-zone). |
 | `ctx_state.go` | `ctx.state.{get,set,delete,all}` + the `stateBuffer` overlay. |
 | `ctx_queue.go` | `ctx.queueTask` + the `taskQueue` validating buffer. |
 | `ctx_log.go` | `ctx.log` (callable + `.debug/.info/.warn/.error`) and `console.*` aliases. |
@@ -77,6 +77,21 @@ Persistence (`Runner.flushQueue` in `runner.go`): per item, resolve tags via `ta
 
 **The drained queue is walked BACKWARDS on purpose.** `task.Service.Create` inserts each row above everything already present, so persisting the last-queued item first leaves the batch stacked top-down in spawn order — `queueTask(a); queueTask(b); queueTask(c)` reads a, b, c downward at the top of the list. The returned id slice is flipped back into spawn order (`slices.Reverse`) before it becomes `spawned_task_ids`, so the userscript-visible `ctx.lastSpawns` / `ctx.lastSpawn` contracts are unchanged. Don't "simplify" this loop into a forward walk without also reversing the enqueue order.
 
+## Date helpers and the app time zone
+
+`dateBindings(rt, now, loc)` in `ctx_dates.go`. `loc` arrives via `runtime.WithLocation(loc)` (option in `runner.go`, defaults UTC, nil ignored) → `ctxDeps.loc` → the bindings. `cmd/tt/main.go` passes `config.Config.Location`, the **same** value the scheduler gets — see [01-architecture.md](./01-architecture.md) rule 11.
+
+Two separate concerns, easy to conflate:
+
+- **Which day it is** resolves in `loc`: `ctx.today`, `weekday`, `dayOfMonth`, `month`, `year`, `isWeekday`, and the bare (no-arg) `isFirstOfMonth` / `isLastOfMonth`.
+- **How a date value is represented** never changes: every date value — `parseDate` results, `addDays` results, `today` — is anchored at **UTC midnight** via the unexported `civilDate(t)` helper.
+
+**Gotcha — don't "fix" the anchoring.** That single shared anchor is exactly what makes `daysSince` / `daysBetween` plain subtraction. Anchor one operand at local midnight and the other at UTC midnight and the zone offset leaks into the division, truncating a whole day at some offsets. If you add a date helper, run it through `civilDate` too.
+
+The arg forms `isFirstOfMonth(date)` / `isLastOfMonth(date)` are unaffected — they answer about the supplied date, parsed via `acceptedDateLayouts`.
+
+`ctx.script.lastRunAt` (installed in `ctx.go`) is rendered in `loc` too, not UTC. Scripts compare it against `ctx.today()` and pass it to `ctx.daysSince`, both of which resolve days in `loc`; a UTC rendering puts a late-evening run on tomorrow's date and makes `daysSince` return `-1` for the same local day. The `scripts.last_run_at` column itself is unchanged — a UTC instant; only the ctx view is localized. `ctxLocation(loc)` in `ctx.go` is the shared nil→UTC normalizer used by both this rendering and `dateBindings`.
+
 ## Sandbox
 
 - `goja.New()` per run — no shared state.
@@ -90,8 +105,8 @@ See spec §5 for the full list. Key categories:
 
 | Category | Methods |
 |---|---|
-| Date helpers | `ctx.today/weekday/dayOfMonth/month/year/isFirstOfMonth/isLastOfMonth/isWeekday/daysSince/daysBetween/addDays/formatDate/parseDate` |
-| Script metadata | `ctx.script.{id,name,trigger,lastRunAt}` — `lastRunAt` is a string in `"YYYY-MM-DD HH:MM:SS"` UTC layout |
+| Date helpers | `ctx.today/weekday/dayOfMonth/month/year/isFirstOfMonth/isLastOfMonth/isWeekday/daysSince/daysBetween/addDays/formatDate/parseDate` — "which day" is answered in the app time zone; values stay UTC-midnight-anchored |
+| Script metadata | `ctx.script.{id,name,trigger,lastRunAt}` — `lastRunAt` is a `"YYYY-MM-DD HH:MM:SS"` wall-clock string rendered **in the app time zone** (see below) |
 | Spawn lookup | `ctx.lastSpawns` — array of task objects from the most recent successful run, in **spawn order** (the order `queueTask` was called; `[]` when no such run). `ctx.lastSpawn` — last element of that array, or `null` when empty (back-compat with the prior single-task surface). |
 | State | `ctx.state.{get,set,delete,all}` |
 | Logging | `ctx.log(msg)`, `ctx.log.{debug,info,warn,error}`, `console.{log,info,warn,error}` |

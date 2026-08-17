@@ -10,7 +10,10 @@ Files: `internal/scheduler/scheduler.go`, `internal/scheduler/worker.go`.
 |---|---|---|
 | `defaultInterval` | 15 minutes | `WithInterval(d)` |
 | `defaultQueueSize` | 100 | `WithQueueSize(n)` |
+| day-boundary time zone | `time.UTC` | `WithLocation(loc)` |
 | (no per-job timeout — that's the runtime's job) | | |
+
+`WithLocation` sets the zone in which `sweep` asks its calendar-day questions (which weekday, which day of month, already ran today). Nil is ignored so the default can't be cleared. `cmd/tt/main.go` passes `config.Config.Location` here **and** to `runtime.WithLocation` — the two must agree, see [01-architecture.md](./01-architecture.md) rule 11.
 
 ## Topology
 
@@ -49,7 +52,7 @@ After `Stop()` closes `s.stop`, producers observe it and return immediately so p
 ```
 Start(ctx):
   1. RecoverOrphanedRuns()   ── mark any leftover 'running' rows as error
-  2. sweep(ctx)              ── immediate DueAt pass (handles missed work)
+  2. sweep(ctx)              ── immediate DueAt(clock(), loc) pass (missed work)
   3. spawn ticker goroutine  ── 15-min sweep cadence
   4. spawn worker goroutine  ── consume queue forever
 ```
@@ -64,7 +67,7 @@ type Runner interface {
     Run(ctx context.Context, scriptID, runID int64, trigger script.Trigger) error
 }
 type ScriptLookup interface {
-    DueAt(ctx context.Context, now time.Time) ([]script.Script, error)
+    DueAt(ctx context.Context, now time.Time, loc *time.Location) ([]script.Script, error)
     RecoverOrphanedRuns(ctx context.Context) error
     StartRun(ctx context.Context, scriptID int64, trigger script.Trigger) (script.Run, error)
 }

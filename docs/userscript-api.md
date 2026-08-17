@@ -40,32 +40,55 @@ A script's `schedule_kind` is one of:
 | Kind         | Match condition                                                                  |
 |--------------|----------------------------------------------------------------------------------|
 | `every_tick` | Always due. Runs every 15 minutes (the scheduler tick interval).                 |
-| `daily`      | Due once per local-time day.                                                     |
+| `daily`      | Due once per calendar day in the app time zone.                                  |
 | `weekly`     | Due on a specific weekday (`schedule_config = { "weekday": "monday" \| ... }`). |
 | `monthly`    | Due on `{ "day": 1..31 }` or `{ "day": "last" }` for last-day-of-month.          |
 
-"Today" uses the system local timezone. Day boundaries are midnight
-local time. Daily/weekly/monthly scripts that have already run today
-are short-circuited Go-side, so they incur no JS execution cost on
-irrelevant ticks.
+"Today" is resolved in the **app time zone** — see [Time zone](#time-zone).
+Day boundaries are midnight in that zone. Daily/weekly/monthly scripts
+that have already run today are short-circuited Go-side, so they incur no
+JS execution cost on irrelevant ticks.
 
 A 15-minute global ticker drives the scheduler. On startup, a sweep
 catches up scripts that were due while the binary was off.
+
+## Time zone
+
+One zone is configured for the whole app by whoever runs it — the
+`--timezone` flag, or the `TT_TIMEZONE` / `TZ` environment variables,
+falling back to UTC. Check the running value at `GET /api/v1/version`
+(`{"timezone": "America/New_York"}`).
+
+That zone decides **when a calendar day starts** for two things, and they
+always agree with each other:
+
+- Schedule matching — when a `daily`/`weekly`/`monthly` script becomes due.
+- The `ctx.*` date helpers below — what `ctx.today()`, `ctx.weekday()`, etc.
+  report.
+
+So a `daily` script that calls `ctx.today()` always sees the same date the
+scheduler used to decide it was due. `ctx.script.lastRunAt` is rendered in
+that zone too, so comparing it against `ctx.today()` or feeding it to
+`ctx.daysSince` is consistent.
+
+Stored timestamps are unaffected — `created_at`, `completed_at` and the
+`last_run_at` column stay UTC instants. The web UI derives "today" from
+**your browser's** zone, so set `TT_TIMEZONE` to the zone you actually live in.
 
 ## `ctx` API (v1)
 
 ### Date helpers (read-only)
 
 ```js
-ctx.now()                      // JS Date — current instant (local TZ)
-ctx.today()                    // "YYYY-MM-DD"
+ctx.now()                      // JS Date — current instant
+ctx.today()                    // "YYYY-MM-DD" — today in the app time zone
 ctx.weekday()                  // "monday".."sunday"
 ctx.dayOfMonth()               // 1..31
 ctx.month()                    // 1..12
 ctx.year()                     // int
-ctx.isFirstOfMonth()           // bool — about "now"
+ctx.isFirstOfMonth()           // bool — about today
 ctx.isFirstOfMonth(date)       // bool — about a given date (any accepted form)
-ctx.isLastOfMonth()            // bool — about "now"
+ctx.isLastOfMonth()            // bool — about today
 ctx.isLastOfMonth(date)        // bool — about a given date (any accepted form)
 ctx.isWeekday("monday")        // bool
 ctx.daysSince(dateOrString)    // int (negative if future)
@@ -85,8 +108,15 @@ get full `Date.prototype` (`toISOString`, etc).
 ctx.script.id                  // number
 ctx.script.name                // string
 ctx.script.trigger             // "scheduled" | "manual"
-ctx.script.lastRunAt           // string ("YYYY-MM-DD HH:MM:SS" UTC) | null
+ctx.script.lastRunAt           // string ("YYYY-MM-DD HH:MM:SS") | null
 ```
+
+`lastRunAt` is a wall-clock string **in the app time zone**, so it lines up
+with `ctx.today()` and with `ctx.daysSince(...)` — both of which resolve days
+in that same zone. (Rendered in UTC it would put a run late in your evening on
+*tomorrow's* date, and `ctx.daysSince(ctx.script.lastRunAt)` would answer `-1`
+for a run earlier the same day.) The stored column is still a UTC instant;
+only this view is localized.
 
 ### Previous-spawn lookup
 
@@ -184,7 +214,8 @@ if (wd !== "saturday" && wd !== "sunday") {
 ```
 
 Schedule: `daily`. No in-script de-dup is needed — the runtime
-guarantees one execution per local-day for `daily` scripts. (If you
+guarantees one execution per day (in the app time zone) for `daily`
+scripts. (If you
 were on `every_tick`, you'd either filter on `ctx.lastSpawn?.created_at`
 or persist a date via `ctx.state` — but reaching for a daily-style
 schedule is almost always the cleaner answer.)

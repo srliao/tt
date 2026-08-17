@@ -37,11 +37,11 @@ Real DB, real service. Hit every state-transition path, every filter axis, every
 
 `internal/runtime/runner_test.go` — real `goja`, real services on `dbtest.New`. Each ctx.* method has a test that builds a tiny script string, runs it, and asserts on the DB state / log rows. Also exercises the 5s timeout path, error handling, state buffer atomicity (queue/state discarded on error/timeout), and the reverse flush (a multi-item `ctx.queueTask` batch must read top-down in spawn order while `ctx.lastSpawns` stays in spawn order).
 
-Use `runtime.WithTimeout(d)` and `runtime.WithClock(fn)` to make tests fast and deterministic.
+Use `runtime.WithTimeout(d)`, `runtime.WithClock(fn)`, and `runtime.WithLocation(loc)` to make tests fast and deterministic. Zone-sensitive assertions pair a fixed clock with a fixed location — pick an instant where UTC and `loc` fall on different calendar days, otherwise the test passes for the wrong reason.
 
 ### Scheduler tests
 
-`internal/scheduler/scheduler_test.go` — fake clock, fake `Runner` (struct with a slice of received jobs). Cover each schedule_kind, day-boundary, and missed-run sweep on startup.
+`internal/scheduler/scheduler_test.go` — fake clock, fake `Runner` (struct with a slice of received jobs). Cover each schedule_kind, day-boundary, and missed-run sweep on startup. `scheduler.WithLocation(loc)` fixes the zone the sweep hands to `DueAt`.
 
 ### HTTP handler tests
 
