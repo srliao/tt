@@ -96,8 +96,10 @@ Dev data lives in `./.dev-data/db.sqlite`. Delete to wipe state.
   and a `daily` script and the `ctx.today()` it calls disagree about the date.
   Both default to UTC, ignore nil. `internal/config/config.go` imports
   `_ "time/tzdata"` so named zones resolve in the alpine image. Only *which
-  day it is* moves: `ctx.script.lastRunAt` is rendered in that zone (stored
-  column stays UTC), while every `ctx.*` date VALUE stays anchored at UTC midnight
+  day it is* moves: every timestamp `ctx` renders is in that zone —
+  `ctx.script.lastRunAt` plus `created_at`/`completed_at`/`cancelled_at` on
+  `ctx.lastSpawn(s)` (`taskToJSObject`); localize any new one too. Stored
+  columns stay UTC. Every `ctx.*` date VALUE stays anchored at UTC midnight
   (`civilDate` in `internal/runtime/ctx_dates.go`) so `daysSince`/`daysBetween`
   stay plain subtraction — don't "fix" that anchoring. Frontend still uses the
   browser zone (`localDateKey` in

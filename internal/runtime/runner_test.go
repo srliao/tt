@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/srliao/tt/internal/db"
 	"github.com/srliao/tt/internal/db/dbtest"
 	"github.com/srliao/tt/internal/runtime"
 	"github.com/srliao/tt/internal/script"
@@ -21,6 +22,7 @@ import (
 // output stays focused on assertions.
 type runnerHarness struct {
 	t       *testing.T
+	store   *db.Store
 	tasks   *task.Impl
 	tags    *tag.Impl
 	scripts *script.Impl
@@ -35,7 +37,7 @@ func newHarness(t *testing.T, opts ...runtime.Option) *runnerHarness {
 	tags := tag.New(store)
 	scripts := script.New(store)
 	r := runtime.New(tasks, tags, scripts, logger, opts...)
-	return &runnerHarness{t: t, tasks: tasks, tags: tags, scripts: scripts, runner: r}
+	return &runnerHarness{t: t, store: store, tasks: tasks, tags: tags, scripts: scripts, runner: r}
 }
 
 // createScript stashes a script row with the given code and returns its id.
@@ -483,5 +485,115 @@ func TestRunner_LastRunAtRenderedInConfiguredLocation(t *testing.T) {
 	}
 	if want := "2026-08-17 20:00:00 | 0"; got.Title != want {
 		t.Errorf("ctx.script.lastRunAt | daysSince = %q, want %q", got.Title, want)
+	}
+}
+
+// setTaskCreatedAt rewrites a task's created_at, which is otherwise set by
+// SQLite's datetime('now') and so cannot be moved by the runner's fake clock.
+// Needed to reconstruct a task spawned on a specific past day.
+func (h *runnerHarness) setTaskCreatedAt(id int64, sqliteUTC string) {
+	h.t.Helper()
+	if _, err := h.store.DB().ExecContext(context.Background(),
+		`UPDATE tasks SET created_at = ? WHERE id = ?`, sqliteUTC, id); err != nil {
+		h.t.Fatalf("set created_at: %v", err)
+	}
+}
+
+// A recurring-interval script: spawn once on or after a bootstrap date, then
+// every INTERVAL_DAYS from the previous spawn's created_at. This shape — chain
+// the next occurrence off the last spawned task — is the common way to express
+// a recurrence the built-in schedule kinds don't cover.
+const intervalScript = `
+const INTERVAL_DAYS = 14;
+const BOOTSTRAP = "2026-05-25";
+
+const prev = ctx.lastSpawn;
+
+const shouldSpawn = prev
+  ? ctx.daysSince(prev.created_at) >= INTERVAL_DAYS
+  : ctx.daysSince(BOOTSTRAP) >= 0;
+
+if (shouldSpawn) {
+  ctx.queueTask({
+    title:    ` + "`recurring item for ${ctx.today()}`" + `,
+    due_date: ctx.today(),
+  });
+}
+`
+
+// An interval script measures elapsed days from a spawned task's created_at.
+// created_at is a UTC instant; ctx.today() resolves in the app zone. A task
+// spawned at 20:05 EDT carries the *next* UTC date, so a 14-day interval
+// silently becomes 15 days for the user.
+func TestRunner_IntervalScriptCountsDaysInAppZone(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+
+	cases := []struct {
+		name      string
+		createdAt string // stored UTC instant of the previous spawn
+		want      bool   // should a new task be spawned on Aug 17 EDT?
+	}{
+		{
+			// 16:05 EDT Aug 3 — same calendar day in both zones.
+			name:      "previous spawn in local afternoon",
+			createdAt: "2026-08-03 20:05:00",
+			want:      true,
+		},
+		{
+			// 20:05 EDT Aug 3 — already Aug 4 in UTC. This is when the old
+			// UTC-midnight scheduler fired, so it is what real rows look like.
+			name:      "previous spawn in local evening",
+			createdAt: "2026-08-04 00:05:00",
+			want:      true,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// 15:08 EDT on Aug 17 2026 — the reported run.
+			now := time.Date(2026, 8, 17, 19, 8, 9, 0, time.UTC)
+
+			h := newHarness(t,
+				runtime.WithClock(func() time.Time { return now }),
+				runtime.WithLocation(ny),
+			)
+			sid := h.createScript(intervalScript)
+
+			// Run 1 takes the bootstrap branch and spawns the previous task.
+			rid := h.startRun(sid, script.TriggerManual)
+			if err := h.runner.Run(context.Background(), sid, rid, script.TriggerManual); err != nil {
+				t.Fatalf("Run 1: %v", err)
+			}
+			run1, err := h.scripts.GetRun(context.Background(), rid)
+			if err != nil {
+				t.Fatalf("GetRun 1: %v", err)
+			}
+			if len(run1.SpawnedTaskIDs) != 1 {
+				t.Fatalf("bootstrap run spawned %d tasks, want 1", len(run1.SpawnedTaskIDs))
+			}
+			h.setTaskCreatedAt(run1.SpawnedTaskIDs[0], tc.createdAt)
+
+			// Run 2 is today's run: 14 days later in the user's zone.
+			rid2 := h.startRun(sid, script.TriggerManual)
+			if err := h.runner.Run(context.Background(), sid, rid2, script.TriggerManual); err != nil {
+				t.Fatalf("Run 2: %v", err)
+			}
+			run2, err := h.scripts.GetRun(context.Background(), rid2)
+			if err != nil {
+				t.Fatalf("GetRun 2: %v", err)
+			}
+			if run2.Status != script.RunStatusOK {
+				t.Fatalf("run 2 status = %q (err=%q)", run2.Status, run2.ErrorMessage)
+			}
+
+			got := len(run2.SpawnedTaskIDs) == 1
+			if got != tc.want {
+				t.Errorf("spawned=%v, want %v (prev created_at %q, today is 2026-08-17 EDT)",
+					got, tc.want, tc.createdAt)
+			}
+		})
 	}
 }
