@@ -1,6 +1,6 @@
 # Backend Services
 
-Three domain packages — `task`, `tag`, `script`. All follow the same skeleton.
+Four domain packages — `task`, `tag`, `script`, `drawing`. All follow the same skeleton.
 
 ## Common shape
 
@@ -85,6 +85,20 @@ Every calendar-day question — weekday, day-of-month, is-last-of-month, and the
 - `monthly`: `{"day": 1..31}` OR `{"day": "last"}`
 
 `MonthlyDay` is a tagged-union with custom `MarshalJSON`/`UnmarshalJSON` — read `internal/script/types.go` to understand the shape before changing wire-format.
+
+## drawing
+
+File: `internal/drawing/service.go`. Plain CRUD over Excalidraw canvases; not used by the runtime or scheduler.
+
+| Method | Notes |
+|---|---|
+| `Create` | `Create(ctx, name, scene)` takes an optional scene (nil → `{}`) so an import is one atomic insert. |
+| `Get` | Returns `Drawing` incl. `Scene json.RawMessage`. |
+| `List` | Returns `[]Summary` (no scene), most recently updated first. |
+| `Update` | `Update(ctx, id, UpdateInput{Name *string; Scene json.RawMessage})` — nil field = unchanged. **Atomic:** both fields validated before one `UpdateDrawing` write (COALESCE over `sqlc.narg`), so a bad scene never half-applies a rename. Don't split it back into per-field methods. |
+| `Delete` | Straightforward. |
+
+Shared validators: `validateName` (trimmed, empty → `"name is required"`) and `validateScene` (non-object JSON → `"must be a JSON object"` → 400; never inspects contents). `toSummary` builds `Summary` for list rows.
 
 ## Error idioms
 

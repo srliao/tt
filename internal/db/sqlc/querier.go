@@ -15,16 +15,19 @@ type Querier interface {
 	ClearStage(ctx context.Context) error
 	CountScriptRuns(ctx context.Context) (int64, error)
 	CountTagsByHue(ctx context.Context) ([]CountTagsByHueRow, error)
+	CreateDrawing(ctx context.Context, arg CreateDrawingParams) (Drawing, error)
 	CreateScript(ctx context.Context, arg CreateScriptParams) (Script, error)
 	CreateScriptRun(ctx context.Context, arg CreateScriptRunParams) (ScriptRun, error)
 	CreateTag(ctx context.Context, arg CreateTagParams) (Tag, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error)
+	DeleteDrawing(ctx context.Context, id int64) error
 	DeleteOldestScriptRuns(ctx context.Context, limit int64) error
 	DeleteScript(ctx context.Context, id int64) error
 	DeleteTag(ctx context.Context, id int64) error
 	DeleteTask(ctx context.Context, id int64) error
 	DeleteTaskTagsForTask(ctx context.Context, arg DeleteTaskTagsForTaskParams) error
 	FinishScriptRun(ctx context.Context, arg FinishScriptRunParams) error
+	GetDrawing(ctx context.Context, id int64) (Drawing, error)
 	GetScript(ctx context.Context, id int64) (Script, error)
 	GetScriptRun(ctx context.Context, id int64) (ScriptRun, error)
 	GetScriptUserState(ctx context.Context, id int64) (string, error)
@@ -35,6 +38,7 @@ type Querier interface {
 	ListAllPrioritiesAsc(ctx context.Context) ([]ListAllPrioritiesAscRow, error)
 	ListAllScriptRuns(ctx context.Context, arg ListAllScriptRunsParams) ([]ScriptRun, error)
 	ListAllStagedAsc(ctx context.Context) ([]ListAllStagedAscRow, error)
+	ListDrawings(ctx context.Context) ([]ListDrawingsRow, error)
 	ListEnabledScripts(ctx context.Context) ([]Script, error)
 	// Ordered by the position in spawned_task_ids (j.key), NOT by rowid: a
 	// spawning run inserts its batch in reverse so the tasks stack top-down in
@@ -59,6 +63,9 @@ type Querier interface {
 	SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams) (Task, error)
 	SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (Task, error)
 	SetTaskState(ctx context.Context, arg SetTaskStateParams) (Task, error)
+	// NULL leaves a column unchanged, so a PATCH of name and/or scene is one
+	// atomic statement.
+	UpdateDrawing(ctx context.Context, arg UpdateDrawingParams) (Drawing, error)
 	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
 	UpdateTaskFields(ctx context.Context, arg UpdateTaskFieldsParams) (Task, error)
 }

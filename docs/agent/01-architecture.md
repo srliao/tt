@@ -44,6 +44,7 @@ cmd/tt              ── wires everything (only place with concrete types)
         ├─ internal/task         task domain (CRUD, fractional ordering, filter/sort)
         ├─ internal/tag          tag domain (CRUD + Resolve)
         ├─ internal/script       script domain (CRUD, schedule parsing, run lifecycle)
+        ├─ internal/drawing      Excalidraw drawings (CRUD, scene as opaque JSON; HTTP-only)
         └─ internal/web          embed.FS for the built SPA
               └─ internal/db          *sql.DB, sqlc-generated queries, goose migrations
                     ├─ migrations/    *.sql (goose Up/Down)
@@ -57,7 +58,7 @@ These are load-bearing — violating them breaks tests or causes subtle bugs.
 
 1. **Consumer declares the interface.** Each downstream package defines a narrow interface naming only the methods it uses. The producer's `Impl` satisfies it structurally. Search any service file for `type Service interface` to see this pattern. Examples:
    - `internal/scheduler/scheduler.go` declares `Runner`, `ScriptLookup`
-   - `internal/httpapi/server.go` declares `TaskService`, `TagService`, `ScriptService`, `ManualRunEnqueuer`, `Pinger`
+   - `internal/httpapi/server.go` declares `TaskService`, `TagService`, `ScriptService`, `DrawingService`, `ManualRunEnqueuer`, `Pinger`
    - `internal/task/service.go` exposes the full `task.Service` interface as documentation; HTTP / runtime each declare narrower views
 
 2. **Only `cmd/tt/main.go` knows concrete types.** Every other file accepts an interface. New services must follow this — never reach into another package's `*Impl`.
@@ -70,7 +71,7 @@ These are load-bearing — violating them breaks tests or causes subtle bugs.
 
 6. **One scheduler worker.** All script execution is sequential — local single-user; race conditions in user scripts are not a concern. Queue is size-100; manual-trigger overflow returns 503, scheduled overflow is silently dropped + counted.
 
-7. **All timestamps as TEXT, always UTC instants.** Code uses SQLite's `datetime('now')` ("YYYY-MM-DD HH:MM:SS") OR RFC3339 — every parse path accepts both. See `parseSqliteTime` in `task/service.go`, `tag/service.go`, `script/service.go` (intentionally duplicated to keep packages self-contained). Storage is unaffected by the app time zone (rule 11) — only *which calendar day it is* moves.
+7. **All timestamps as TEXT, always UTC instants.** Code uses SQLite's `datetime('now')` ("YYYY-MM-DD HH:MM:SS") OR RFC3339 — every parse path accepts both. See `parseSqliteTime` in `task/service.go`, `tag/service.go`, `script/service.go`, `drawing/service.go` (intentionally duplicated to keep packages self-contained). Storage is unaffected by the app time zone (rule 11) — only *which calendar day it is* moves.
 
 8. **JSON error envelope.** All non-2xx responses share `{"error": {"code", "message", "details?"}}`. Codes are stable strings; see `internal/httpapi/errors.go`. The mapper is `writeServiceError` in `tasks.go` — string-based to avoid importing the scheduler/sqlite packages.
 
@@ -81,6 +82,8 @@ These are load-bearing — violating them breaks tests or causes subtle bugs.
 11. **The app time zone decides when a day starts, and the runner + scheduler MUST share it.** `config.Config.Location` (resolved in `internal/config/config.go`: `--timezone` flag → `$TT_TIMEZONE` → `$TZ` → UTC; unknown zone = hard startup error, never a silent UTC fallback). `cmd/tt/main.go` passes it to **both** `runtime.New(..., runtime.WithLocation(loc))` and `scheduler.New(..., scheduler.WithLocation(loc))` — if they disagree, a `daily` script and the `ctx.today()` it calls disagree about the date. Both options default to UTC and ignore a nil location. The package imports `_ "time/tzdata"` so named zones resolve in the alpine container image (no system tzdata). Stored timestamps stay UTC (rule 7); the frontend still derives "today" from the browser zone (`localDateKey` in `web/src/features/tasks/use-task-list-search.ts`), so the operator must set `TT_TIMEZONE` to match the browser they use. See [04-backend-services.md](./04-backend-services.md) (schedule matching), [05-runtime.md](./05-runtime.md) (`ctx.*` date helpers).
 
 12. **Document-level keydown for the task table.** `useTableShortcuts` in `web/src/features/tasks/task-table.tsx` binds to `document` (not the table element) so j/k/x/⌘A fire regardless of focus. Guards: a `disabled` flag, `isEditableTarget(target)`, and an open Radix dialog probe (`[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]`). Replicate this guard set when adding any document-scoped shortcut on a page.
+
+13. **`data-app-shortcuts="off"` opts a subtree out of app shortcuts.** `isShortcutOptOut` in `web/src/lib/shortcuts.ts` (`SHORTCUT_OPT_OUT_SELECTOR` = `[data-app-shortcuts="off"], .excalidraw` — Excalidraw portals its dialogs to `document.body` outside the wrapper, with class `excalidraw`) is checked by the global handler (via `isEditableTarget`) and the command palette. Embedded apps that own single-letter keys (the Excalidraw canvas in `web/src/features/drawings/editor-page.tsx`) must sit inside such a subtree.
 
 ## Cross-cutting concerns
 

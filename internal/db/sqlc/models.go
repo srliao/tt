@@ -4,6 +4,14 @@
 
 package sqlcgen
 
+type Drawing struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Scene     string `json:"scene"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
 type Script struct {
 	ID             int64   `json:"id"`
 	Name           string  `json:"name"`

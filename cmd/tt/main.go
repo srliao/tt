@@ -14,6 +14,7 @@ import (
 
 	"github.com/srliao/tt/internal/config"
 	"github.com/srliao/tt/internal/db"
+	"github.com/srliao/tt/internal/drawing"
 	"github.com/srliao/tt/internal/httpapi"
 	"github.com/srliao/tt/internal/runtime"
 	"github.com/srliao/tt/internal/scheduler"
@@ -84,6 +85,7 @@ func run() error {
 	tasks := task.New(store)
 	tags := tag.New(store)
 	scripts := script.New(store)
+	drawings := drawing.New(store)
 
 	// cfg.Location decides when a calendar day starts for both the ctx.*
 	// date helpers and schedule matching; the two must agree or a daily
@@ -106,7 +108,7 @@ func run() error {
 	spaHandler := httpapi.NewSPAHandler(distFS)
 
 	server := httpapi.New(
-		tasks, tags, scripts, sched,
+		tasks, tags, scripts, drawings, sched,
 		httpapi.PingerFunc(store.DB().PingContext),
 		httpapi.Options{
 			Logger:   logger,

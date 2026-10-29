@@ -37,7 +37,7 @@ func TestOpenInMemoryAndMigrate(t *testing.T) {
 		t.Fatalf("rows.Err: %v", err)
 	}
 
-	want := []string{"script_logs", "script_runs", "scripts", "tags", "task_tags", "tasks"}
+	want := []string{"drawings", "script_logs", "script_runs", "scripts", "tags", "task_tags", "tasks"}
 	sort.Strings(got)
 
 	if len(got) != len(want) {

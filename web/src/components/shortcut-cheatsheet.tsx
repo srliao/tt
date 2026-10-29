@@ -40,6 +40,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: 'g c', description: 'Scripts' },
       { keys: 'g g', description: 'Tags' },
       { keys: 'g r', description: 'Runs' },
+      { keys: 'g d', description: 'Drawings' },
     ],
   },
   {

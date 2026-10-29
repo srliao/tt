@@ -15,23 +15,24 @@ scripts      ── id, name, code, enabled, schedule_kind, schedule_config JSON
 script_runs  ── id, script_id FK, started_at, finished_at, status, error_message,
                 spawned_task_ids JSON, trigger
 script_logs  ── id, script_run_id FK CASCADE, level, message, logged_at
+drawings     ── id, name, scene TEXT JSON (DEFAULT '{}'), created_at, updated_at
 ```
 
-DDL source: `internal/db/migrations/0001_init.sql`. Read it directly before touching schema — it has inline comments on the load-bearing rules (fractional ordering, ON DELETE CASCADE/SET NULL choices, etc.).
+DDL source: `internal/db/migrations/0001_init.sql` (later tables/columns in `0002_tag_color.sql`, `0003_drawings.sql`). Read it directly before touching schema — it has inline comments on the load-bearing rules (fractional ordering, ON DELETE CASCADE/SET NULL choices, etc.).
 
 ## Adding columns or tables
 
 1. **New migration**: `internal/db/migrations/000N_<name>.sql` with `-- +goose Up` / `-- +goose Down` markers. Numbered sequentially.
 2. **Update sqlc queries** if needed in `internal/db/queries/*.sql`. The schema source for sqlc is the migrations directory (see `internal/db/sqlc.yaml`).
 3. **Regen**: `just db-gen`.
-4. **Update domain types** in `internal/{task,tag,script}/types.go` and `rowTo*` projectors in the service file.
+4. **Update domain types** in `internal/{task,tag,script,drawing}/types.go` and `rowTo*` projectors in the service file.
 5. **Update TypeScript mirrors** in `web/src/types/*.ts` if it's user-facing.
 
 Migrations are embedded via `internal/db/migrations/embed.go`. They run on every startup; failures abort startup with a clear error.
 
 ## sqlc conventions
 
-- Queries grouped by table: `tasks.sql`, `tags.sql`, `scripts.sql`, `runs.sql`.
+- Queries grouped by table: `tasks.sql`, `tags.sql`, `scripts.sql`, `runs.sql`, `drawings.sql`.
 - Generated code lives in `internal/db/sqlc/` — **do not edit by hand**. Always re-run `just db-gen`.
 - Config: `emit_pointers_for_null_types: true` → nullable columns map to `*string` / `*float64` / `*int64`.
 - `RETURNING *` is used everywhere a row is needed back after a write.
@@ -58,8 +59,12 @@ Don't replicate this for simple filters — prefer adding a named query.
 ## Timestamps
 
 - Stored as TEXT in SQLite's `datetime('now')` layout (`2006-01-02 15:04:05`, UTC, second precision).
-- Some code paths may write RFC3339 (e.g., `time.Time.Format` defaults). Every parser must accept both — see `parseSqliteTime` in `task/service.go`, `tag/service.go`, `script/service.go`. **Duplicated intentionally** so packages don't cross-depend; keep them in sync if you fix one.
+- Some code paths may write RFC3339 (e.g., `time.Time.Format` defaults). Every parser must accept both — see `parseSqliteTime` in `task/service.go`, `tag/service.go`, `script/service.go`, `drawing/service.go`. **Duplicated intentionally** so packages don't cross-depend; keep them in sync if you fix one.
 - `due_date` is `YYYY-MM-DD` only (no time component).
+
+## Drawings scene blob
+
+`drawings.scene` is the serialized Excalidraw scene (`{elements, appState, files}`) stored **opaquely** — the server only checks it is a JSON object. Embedded images live inside `scene.files` as data URLs, so rows can be many MB. `ListDrawings` omits `scene`; only `GetDrawing` returns it. `CreateDrawing` takes `(name, scene)` so imports insert in one statement; `UpdateDrawing` sets name and/or scene in one statement (`COALESCE(sqlc.narg(...), col)`, NULL = unchanged). Version migration of scene contents is left to Excalidraw's client-side `restore()` — the server never upgrades scenes.
 
 ## Fractional ordering keys
 

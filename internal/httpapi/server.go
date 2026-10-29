@@ -2,12 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/srliao/tt/internal/drawing"
 	"github.com/srliao/tt/internal/script"
 	"github.com/srliao/tt/internal/tag"
 	"github.com/srliao/tt/internal/task"
@@ -64,6 +66,16 @@ type ScriptService interface {
 	ListAllRuns(ctx context.Context, limit, offset int) ([]script.Run, error)
 }
 
+// DrawingService is the narrow consumer-side interface for Excalidraw
+// drawings: plain CRUD with the scene stored as opaque JSON.
+type DrawingService interface {
+	Create(ctx context.Context, name string, scene json.RawMessage) (drawing.Drawing, error)
+	Get(ctx context.Context, id int64) (drawing.Drawing, error)
+	List(ctx context.Context) ([]drawing.Summary, error)
+	Update(ctx context.Context, id int64, in drawing.UpdateInput) (drawing.Drawing, error)
+	Delete(ctx context.Context, id int64) error
+}
+
 // ManualRunEnqueuer is the slice of the scheduler the HTTP layer uses to
 // kick off manual runs. *scheduler.Scheduler satisfies this structurally.
 type ManualRunEnqueuer interface {
@@ -112,6 +124,7 @@ type Server struct {
 	tasks    TaskService
 	tags     TagService
 	scripts  ScriptService
+	drawings DrawingService
 	enqueuer ManualRunEnqueuer
 	pinger   Pinger
 	logger   *slog.Logger
@@ -127,6 +140,7 @@ func New(
 	tasks TaskService,
 	tags TagService,
 	scripts ScriptService,
+	drawings DrawingService,
 	enqueuer ManualRunEnqueuer,
 	pinger Pinger,
 	opts Options,
@@ -143,6 +157,7 @@ func New(
 		tasks:    tasks,
 		tags:     tags,
 		scripts:  scripts,
+		drawings: drawings,
 		enqueuer: enqueuer,
 		pinger:   pinger,
 		logger:   logger,
@@ -169,6 +184,7 @@ func (s *Server) Routes() http.Handler {
 		s.mountTagRoutes(r)
 		s.mountScriptRoutes(r)
 		s.mountRunRoutes(r)
+		s.mountDrawingRoutes(r)
 	})
 
 	r.Handle("/*", s.spa)

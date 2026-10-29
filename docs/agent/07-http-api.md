@@ -2,7 +2,7 @@
 
 `chi` router under `/api/v1`. SPA served from `/*` fallback.
 
-Files: `internal/httpapi/{server,middleware,errors,spa,health,tasks,stage,tags,scripts,runs}.go`.
+Files: `internal/httpapi/{server,middleware,errors,spa,health,tasks,stage,tags,scripts,runs,drawings}.go`.
 
 ## Endpoint map
 
@@ -41,6 +41,12 @@ GET    /api/v1/scripts/{id}/tasks?limit=&cursor=
 GET    /api/v1/runs?script_id=&status=&from=&to=&limit=&cursor=
 GET    /api/v1/runs/{id}            ── flattened run + logs + spawned_tasks
 
+GET    /api/v1/drawings             (summaries — no scene)
+POST   /api/v1/drawings             { name, scene? }  body ≤ 64 MiB else 413
+GET    /api/v1/drawings/{id}        (includes scene)
+PATCH  /api/v1/drawings/{id}        { name?, scene? }  body ≤ 64 MiB else 413
+DELETE /api/v1/drawings/{id}
+
 GET    /*                           ── SPA index.html (or asset under /assets/)
 ```
 
@@ -67,11 +73,12 @@ The HTTP error mapper is `writeServiceError` in `internal/httpapi/tasks.go`. It 
 
 ## Server construction
 
-`httpapi.New(tasks, tags, scripts, enqueuer, pinger, Options{...})` returns a `*Server`. Each service param is one of the consumer interfaces declared in `server.go`:
+`httpapi.New(tasks, tags, scripts, drawings, enqueuer, pinger, Options{...})` returns a `*Server`. Each service param is one of the consumer interfaces declared in `server.go`:
 
 - `TaskService` — narrow slice of `task.Service`.
 - `TagService` — narrow slice of `tag.Service`.
 - `ScriptService` — narrow slice of `script.Service`.
+- `DrawingService` — `drawing.Service` CRUD (`Create/Get/List/Update/Delete`). `handleUpdateDrawing` makes a single `Update` call for `PATCH {name?, scene?}`.
 - `ManualRunEnqueuer` — single-method `EnqueueManual(scriptID, runID int64) error`.
 - `Pinger` — `Ping(ctx) error`. Use `PingerFunc(db.Open's *sql.DB.PingContext)`.
 
@@ -81,7 +88,7 @@ The HTTP error mapper is `writeServiceError` in `internal/httpapi/tasks.go`. It 
 
 ## Adding a new endpoint
 
-1. **Pick the right file** (tasks.go, stage.go, scripts.go, tags.go, runs.go) and the right `mount*Routes` method.
+1. **Pick the right file** (tasks.go, stage.go, scripts.go, tags.go, runs.go, drawings.go) and the right `mount*Routes` method.
 2. **Add the service method** in `internal/<domain>/service.go` (interface AND impl). Update the consumer interface in `server.go` to expose it.
 3. **Decode body / parse query**. Use the package's existing helpers (`parsePathID`, `parseIntDefault`, `parseRFC3339Optional`).
 4. **Validation errors** → `writeError(w, http.StatusBadRequest, CodeValidation, msg, details)`.
@@ -99,6 +106,10 @@ The HTTP error mapper is `writeServiceError` in `internal/httpapi/tasks.go`. It 
 - Tag names starting with `@` are reserved for sentinel tokens (currently only `@untagged`) and rejected by `POST /tags` and the `tag.Service.Resolve` path with a 400.
 - `sort` defaults to `priority`; priority always sorts ASC regardless of `asc`. Keys are minted newest-first (`MIN - 1`), so a task created via `POST /tasks` comes back at the **head** of the default list — no reorder call needed.
 - Date filters (`from`, `to` on `/runs`) are RFC3339.
+
+## Large bodies
+
+`POST /drawings` and `PATCH /drawings/{id}` both decode via `decodeDrawingBody` (`internal/httpapi/drawings.go`), which wraps the body in `http.MaxBytesReader` (`maxDrawingBody`, 64 MiB — Excalidraw inlines pasted images as data URLs) and answers **413** with `code=validation_failed` on overflow. Other handlers use an uncapped decoder; reuse this pattern for any new blob-carrying endpoint.
 
 ## Manual script run
 

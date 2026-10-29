@@ -11,11 +11,11 @@ Concise, navigation-first docs for AI agents working on this repo. Each file is 
 | Anything (always) | [01-architecture.md](./01-architecture.md) — process model, layer map, dependency rules |
 | Bugs / "where does X live?" | [02-navigation.md](./02-navigation.md) — file/symbol locator tables |
 | DB schema, migrations, sqlc | [03-data-layer.md](./03-data-layer.md) |
-| Task / tag / script / run domain logic | [04-backend-services.md](./04-backend-services.md) |
+| Task / tag / script / run / drawing domain logic | [04-backend-services.md](./04-backend-services.md) |
 | Userscript execution, `ctx` API, sandbox | [05-runtime.md](./05-runtime.md) |
 | Background ticker / job queue | [06-scheduler.md](./06-scheduler.md) |
 | HTTP endpoints, validation, error shape | [07-http-api.md](./07-http-api.md) |
-| React SPA, routes, components, queries | [08-frontend.md](./08-frontend.md) |
+| React SPA, routes, components, queries, Excalidraw editor | [08-frontend.md](./08-frontend.md) |
 | Build, embed, dev loop, justfile | [09-build-and-dev.md](./09-build-and-dev.md) |
 | Writing or running tests | [10-testing.md](./10-testing.md) |
 | Common change recipes | [11-common-changes.md](./11-common-changes.md) |
