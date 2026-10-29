@@ -11,10 +11,21 @@ const NAV_KEYS: Record<string, string> = {
   c: '/scripts',
   g: '/tags',
   r: '/runs',
+  d: '/drawings',
 };
+
+/**
+ * True when the event target sits inside a `data-app-shortcuts="off"`
+ * subtree — an embedded app (the Excalidraw canvas) that owns its own
+ * single-key shortcuts. Shared with the command palette's listener.
+ */
+export function isShortcutOptOut(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[data-app-shortcuts="off"]') !== null;
+}
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
+  if (isShortcutOptOut(target)) return true;
   const tag = target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
   if (target.isContentEditable) return true;

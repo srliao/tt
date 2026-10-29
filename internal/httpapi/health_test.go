@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/srliao/tt/internal/db/dbtest"
+	"github.com/srliao/tt/internal/drawing"
 	"github.com/srliao/tt/internal/httpapi"
 	"github.com/srliao/tt/internal/script"
 	"github.com/srliao/tt/internal/tag"
@@ -59,6 +60,7 @@ func newTestServer(t *testing.T, pinger httpapi.Pinger) *serverFixture {
 	tasks := task.New(store)
 	tags := tag.New(store)
 	scripts := script.New(store)
+	drawings := drawing.New(store)
 	enq := &noopEnqueuer{}
 
 	if pinger == nil {
@@ -66,7 +68,7 @@ func newTestServer(t *testing.T, pinger httpapi.Pinger) *serverFixture {
 	}
 
 	srv := httpapi.New(
-		tasks, tags, scripts, enq, pinger,
+		tasks, tags, scripts, drawings, enq, pinger,
 		httpapi.Options{
 			Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 			Version:  "test-1.2.3",

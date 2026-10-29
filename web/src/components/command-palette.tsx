@@ -30,16 +30,18 @@ import {
 import { TagChip } from '@/components/ui/tag-chip';
 import { useSelection } from '@/features/tasks/use-selection';
 import { UNTAGGED_TOKEN } from '@/features/tasks/use-task-list-search';
+import { isShortcutOptOut } from '@/lib/shortcuts';
 
 const NAV: ReadonlyArray<{
   label: string;
-  to: '/stage' | '/tasks' | '/scripts' | '/tags' | '/runs';
+  to: '/stage' | '/tasks' | '/scripts' | '/tags' | '/runs' | '/drawings';
 }> = [
   { label: 'Stage', to: '/stage' },
   { label: 'Tasks', to: '/tasks' },
   { label: 'Scripts', to: '/scripts' },
   { label: 'Tags', to: '/tags' },
   { label: 'Runs', to: '/runs' },
+  { label: 'Drawings', to: '/drawings' },
 ];
 
 function isTypingTarget(t: EventTarget | null): boolean {
@@ -72,7 +74,7 @@ export function CommandPalette() {
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.defaultPrevented) return;
+      if (e.defaultPrevented || isShortcutOptOut(e.target)) return;
       const key = e.key;
       const cmdK = (e.metaKey || e.ctrlKey) && key.toLowerCase() === 'k';
       // Don't capture `/` when the user is typing somewhere. cmdK is captured

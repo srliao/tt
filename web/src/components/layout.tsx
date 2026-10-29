@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { to: '/scripts', label: 'Scripts' },
   { to: '/tags', label: 'Tags' },
   { to: '/runs', label: 'Runs' },
+  { to: '/drawings', label: 'Drawings' },
 ] as const;
 
 function useStagedCount() {
