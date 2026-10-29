@@ -64,7 +64,7 @@ Don't replicate this for simple filters — prefer adding a named query.
 
 ## Drawings scene blob
 
-`drawings.scene` is the serialized Excalidraw scene (`{elements, appState, files}`) stored **opaquely** — the server only checks it is a JSON object. Embedded images live inside `scene.files` as data URLs, so rows can be many MB. `ListDrawings` omits `scene`; only `GetDrawing` returns it. `CreateDrawing` takes `(name, scene)` so imports insert in one statement. Version migration of scene contents is left to Excalidraw's client-side `restore()` — the server never upgrades scenes.
+`drawings.scene` is the serialized Excalidraw scene (`{elements, appState, files}`) stored **opaquely** — the server only checks it is a JSON object. Embedded images live inside `scene.files` as data URLs, so rows can be many MB. `ListDrawings` omits `scene`; only `GetDrawing` returns it. `CreateDrawing` takes `(name, scene)` so imports insert in one statement; `UpdateDrawing` sets name and/or scene in one statement (`COALESCE(sqlc.narg(...), col)`, NULL = unchanged). Version migration of scene contents is left to Excalidraw's client-side `restore()` — the server never upgrades scenes.
 
 ## Fractional ordering keys
 

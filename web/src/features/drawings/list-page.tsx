@@ -36,17 +36,17 @@ export function drawingNameFromFile(fileName: string): string {
   return name || 'Imported drawing';
 }
 
-function useNewDrawing() {
+function useDrawingCreation() {
   const navigate = useNavigate();
   const create = useCreateDrawing();
   const [importError, setImportError] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
 
-  const open = (d: { id: number }) => {
+  const openEditor = (d: { id: number }) => {
     void navigate({ to: '/drawings/$id', params: { id: String(d.id) } });
   };
 
-  const start = () => create.mutate({ name: 'Untitled drawing' }, { onSuccess: open });
+  const createBlank = () => create.mutate({ name: 'Untitled drawing' }, { onSuccess: openEditor });
 
   const importFile = async (file: File) => {
     setImportError(null);
@@ -56,30 +56,38 @@ function useNewDrawing() {
       // Loaded on demand so the list page doesn't pull in the Excalidraw
       // bundle. loadFromBlob validates the file and runs restore(), which
       // migrates scenes saved by older Excalidraw versions.
-      const { loadFromBlob, serializeAsJSON } = await import('@excalidraw/excalidraw');
-      const data = await loadFromBlob(file, null, null);
-      scene = serializeAsJSON(data.elements, data.appState, data.files, 'local');
-    } catch {
-      setImportError(`"${file.name}" isn't an Excalidraw file.`);
-      return;
+      let excalidraw: typeof import('@excalidraw/excalidraw');
+      try {
+        excalidraw = await import('@excalidraw/excalidraw');
+      } catch {
+        setImportError("Couldn't load the drawing editor. Check your connection and try again.");
+        return;
+      }
+      try {
+        const data = await excalidraw.loadFromBlob(file, null, null);
+        scene = excalidraw.serializeAsJSON(data.elements, data.appState, data.files, 'local');
+      } catch {
+        setImportError(`"${file.name}" isn't an Excalidraw file.`);
+        return;
+      }
     } finally {
       setIsParsing(false);
     }
     create.mutate(
       { name: drawingNameFromFile(file.name), scene },
       {
-        onSuccess: open,
+        onSuccess: openEditor,
         onError: (err) => setImportError(`Import failed: ${err.message}`),
       },
     );
   };
 
-  return { start, importFile, importError, isPending: create.isPending || isParsing };
+  return { createBlank, importFile, importError, isPending: create.isPending || isParsing };
 }
 
 export function DrawingsListPage() {
   const { data: drawings = [], isLoading } = useDrawings();
-  const newDrawing = useNewDrawing();
+  const creation = useDrawingCreation();
 
   const showEmpty = !isLoading && drawings.length === 0;
   return (
@@ -87,16 +95,16 @@ export function DrawingsListPage() {
       <header className="flex items-center justify-between">
         <h1 className="font-heading text-xl font-medium">Drawings</h1>
         <div className="flex items-center gap-2">
-          <ImportButton onFile={newDrawing.importFile} disabled={newDrawing.isPending} />
-          <Button size="sm" onClick={newDrawing.start} disabled={newDrawing.isPending}>
+          <ImportButton onFile={creation.importFile} disabled={creation.isPending} />
+          <Button size="sm" onClick={creation.createBlank} disabled={creation.isPending}>
             <PlusIcon /> New drawing
           </Button>
         </div>
       </header>
 
-      {newDrawing.importError && (
+      {creation.importError && (
         <p role="alert" className="text-sm text-destructive">
-          {newDrawing.importError}
+          {creation.importError}
         </p>
       )}
 
@@ -107,7 +115,7 @@ export function DrawingsListPage() {
             Sketch diagrams, plans, and whiteboard notes with Excalidraw. Drawings are saved to the
             tt database automatically as you draw.
           </p>
-          <Button onClick={newDrawing.start} disabled={newDrawing.isPending}>
+          <Button onClick={creation.createBlank} disabled={creation.isPending}>
             <PlusIcon /> Create your first drawing
           </Button>
         </div>
@@ -161,7 +169,7 @@ function ImportButton({ onFile, disabled }: { onFile: (file: File) => void; disa
 }
 
 function DrawingRow({ drawing }: { drawing: DrawingSummary }) {
-  const del = useDeleteDrawing();
+  const deleteDrawing = useDeleteDrawing();
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   return (
@@ -200,7 +208,7 @@ function DrawingRow({ drawing }: { drawing: DrawingSummary }) {
               <AlertDialogAction
                 variant="destructive"
                 onClick={() => {
-                  del.mutate(drawing.id);
+                  deleteDrawing.mutate(drawing.id);
                   setConfirmOpen(false);
                 }}
               >

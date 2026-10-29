@@ -78,7 +78,7 @@ The HTTP error mapper is `writeServiceError` in `internal/httpapi/tasks.go`. It 
 - `TaskService` — narrow slice of `task.Service`.
 - `TagService` — narrow slice of `tag.Service`.
 - `ScriptService` — narrow slice of `script.Service`.
-- `DrawingService` — `drawing.Service` CRUD (`Create/Get/List/Rename/SetScene/Delete`).
+- `DrawingService` — `drawing.Service` CRUD (`Create/Get/List/Update/Delete`). `handleUpdateDrawing` makes a single `Update` call for `PATCH {name?, scene?}`.
 - `ManualRunEnqueuer` — single-method `EnqueueManual(scriptID, runID int64) error`.
 - `Pinger` — `Ping(ctx) error`. Use `PingerFunc(db.Open's *sql.DB.PingContext)`.
 

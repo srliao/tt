@@ -24,3 +24,9 @@ type Drawing struct {
 	Summary
 	Scene json.RawMessage `json:"scene"`
 }
+
+// UpdateInput is a partial update: nil fields are left unchanged.
+type UpdateInput struct {
+	Name  *string
+	Scene json.RawMessage
+}

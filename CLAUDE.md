@@ -117,10 +117,15 @@ Dev data lives in `./.dev-data/db.sqlite`. Delete to wipe state.
 - **`data-app-shortcuts="off"` opts a subtree out of global shortcuts +
   the command palette** (`isShortcutOptOut` in `web/src/lib/shortcuts.ts`).
   Wrap any embedded widget that owns single-letter keys (the Excalidraw
-  canvas does). New document-level key listeners must check it.
+  canvas does). Widgets that portal dialogs to `document.body` need their
+  portal class in `SHORTCUT_OPT_OUT_SELECTOR` too (`.excalidraw` is).
+  New document-level key listeners must check it.
 - **Drawings: the Excalidraw canvas owns the scene after mount.**
-  `useDrawing` never refetches; autosave uses `serializeAsJSON(..., 'local')`
-  (`'database'` drops embedded images). See `docs/agent/08-frontend.md`.
+  `useDrawing` never refetches; autosave (`useSceneAutosave` in
+  `web/src/features/drawings/use-scene-autosave.ts`) keeps one save in
+  flight and uses `serializeAsJSON(..., 'local')` (`'database'` drops
+  embedded images). Backend edits go through one atomic
+  `drawing.Impl.Update`. See `docs/agent/08-frontend.md`.
 
 ## After backend changes
 

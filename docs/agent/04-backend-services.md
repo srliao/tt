@@ -92,11 +92,13 @@ File: `internal/drawing/service.go`. Plain CRUD over Excalidraw canvases; not us
 
 | Method | Notes |
 |---|---|
-| `Create` / `Rename` | Name trimmed, empty → `"name is required"`. `Create(ctx, name, scene)` takes an optional scene (nil → `{}`) so an import is one atomic insert. |
+| `Create` | `Create(ctx, name, scene)` takes an optional scene (nil → `{}`) so an import is one atomic insert. |
 | `Get` | Returns `Drawing` incl. `Scene json.RawMessage`. |
 | `List` | Returns `[]Summary` (no scene), most recently updated first. |
-| `SetScene` | Replaces the scene. `Create` and `SetScene` share `validateScene`: rejects non-object JSON with `"must be a JSON object"` (→ 400); never inspects contents. |
+| `Update` | `Update(ctx, id, UpdateInput{Name *string; Scene json.RawMessage})` — nil field = unchanged. **Atomic:** both fields validated before one `UpdateDrawing` write (COALESCE over `sqlc.narg`), so a bad scene never half-applies a rename. Don't split it back into per-field methods. |
 | `Delete` | Straightforward. |
+
+Shared validators: `validateName` (trimmed, empty → `"name is required"`) and `validateScene` (non-object JSON → `"must be a JSON object"` → 400; never inspects contents). `toSummary` builds `Summary` for list rows.
 
 ## Error idioms
 

@@ -97,22 +97,10 @@ func (s *Server) handleUpdateDrawing(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, CodeValidation, "name or scene is required", nil)
 		return
 	}
-
-	var (
-		out drawing.Drawing
-		err error
-	)
-	if body.Name != nil {
-		if out, err = s.drawings.Rename(r.Context(), id, *body.Name); err != nil {
-			writeServiceError(w, err)
-			return
-		}
-	}
-	if body.Scene != nil {
-		if out, err = s.drawings.SetScene(r.Context(), id, body.Scene); err != nil {
-			writeServiceError(w, err)
-			return
-		}
+	out, err := s.drawings.Update(r.Context(), id, drawing.UpdateInput{Name: body.Name, Scene: body.Scene})
+	if err != nil {
+		writeServiceError(w, err)
+		return
 	}
 	writeJSON(w, http.StatusOK, out)
 }

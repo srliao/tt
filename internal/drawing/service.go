@@ -22,8 +22,7 @@ type Service interface {
 	Create(ctx context.Context, name string, scene json.RawMessage) (Drawing, error)
 	Get(ctx context.Context, id int64) (Drawing, error)
 	List(ctx context.Context) ([]Summary, error)
-	Rename(ctx context.Context, id int64, name string) (Drawing, error)
-	SetScene(ctx context.Context, id int64, scene json.RawMessage) (Drawing, error)
+	Update(ctx context.Context, id int64, in UpdateInput) (Drawing, error)
 	Delete(ctx context.Context, id int64) error
 }
 
@@ -41,9 +40,9 @@ func New(store *db.Store) *Impl {
 // scene starts the drawing empty; otherwise it must be a JSON object (used by
 // import, so the drawing and its content land in one insert).
 func (s *Impl) Create(ctx context.Context, name string, scene json.RawMessage) (Drawing, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return Drawing{}, errors.New("drawing: name is required")
+	name, err := validateName(name)
+	if err != nil {
+		return Drawing{}, err
 	}
 	stored := "{}"
 	if scene != nil {
@@ -78,38 +77,34 @@ func (s *Impl) List(ctx context.Context) ([]Summary, error) {
 	}
 	out := make([]Summary, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, Summary{
-			ID:        r.ID,
-			Name:      r.Name,
-			CreatedAt: parseSqliteTime(r.CreatedAt),
-			UpdatedAt: parseSqliteTime(r.UpdatedAt),
-		})
+		out = append(out, toSummary(r.ID, r.Name, r.CreatedAt, r.UpdatedAt))
 	}
 	return out, nil
 }
 
-// Rename updates the drawing's name.
-func (s *Impl) Rename(ctx context.Context, id int64, name string) (Drawing, error) {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return Drawing{}, errors.New("drawing: name is required")
+// Update applies a partial update in one statement. Both fields are
+// validated before anything is written, so a bad scene can't leave a
+// half-applied rename behind.
+func (s *Impl) Update(ctx context.Context, id int64, in UpdateInput) (Drawing, error) {
+	var params sqlcgen.UpdateDrawingParams
+	params.ID = id
+	if in.Name != nil {
+		name, err := validateName(*in.Name)
+		if err != nil {
+			return Drawing{}, err
+		}
+		params.Name = &name
 	}
-	row, err := s.q.RenameDrawing(ctx, sqlcgen.RenameDrawingParams{Name: name, ID: id})
-	if err != nil {
-		return Drawing{}, fmt.Errorf("drawing: rename %d: %w", id, err)
+	if in.Scene != nil {
+		scene, err := validateScene(in.Scene)
+		if err != nil {
+			return Drawing{}, err
+		}
+		params.Scene = &scene
 	}
-	return rowToDrawing(row), nil
-}
-
-// SetScene replaces the stored scene. The scene must be a JSON object.
-func (s *Impl) SetScene(ctx context.Context, id int64, scene json.RawMessage) (Drawing, error) {
-	stored, err := validateScene(scene)
+	row, err := s.q.UpdateDrawing(ctx, params)
 	if err != nil {
-		return Drawing{}, err
-	}
-	row, err := s.q.SetDrawingScene(ctx, sqlcgen.SetDrawingSceneParams{Scene: stored, ID: id})
-	if err != nil {
-		return Drawing{}, fmt.Errorf("drawing: set scene %d: %w", id, err)
+		return Drawing{}, fmt.Errorf("drawing: update %d: %w", id, err)
 	}
 	return rowToDrawing(row), nil
 }
@@ -120,6 +115,15 @@ func (s *Impl) Delete(ctx context.Context, id int64) error {
 		return fmt.Errorf("drawing: delete %d: %w", id, err)
 	}
 	return nil
+}
+
+// validateName trims the name and rejects it when empty.
+func validateName(name string) (string, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", errors.New("drawing: name is required")
+	}
+	return name, nil
 }
 
 // validateScene checks the scene is a JSON object and returns it trimmed.
@@ -133,13 +137,17 @@ func validateScene(scene json.RawMessage) (string, error) {
 
 func rowToDrawing(r sqlcgen.Drawing) Drawing {
 	return Drawing{
-		Summary: Summary{
-			ID:        r.ID,
-			Name:      r.Name,
-			CreatedAt: parseSqliteTime(r.CreatedAt),
-			UpdatedAt: parseSqliteTime(r.UpdatedAt),
-		},
-		Scene: json.RawMessage(r.Scene),
+		Summary: toSummary(r.ID, r.Name, r.CreatedAt, r.UpdatedAt),
+		Scene:   json.RawMessage(r.Scene),
+	}
+}
+
+func toSummary(id int64, name, createdAt, updatedAt string) Summary {
+	return Summary{
+		ID:        id,
+		Name:      name,
+		CreatedAt: parseSqliteTime(createdAt),
+		UpdatedAt: parseSqliteTime(updatedAt),
 	}
 }
 

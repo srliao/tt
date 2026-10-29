@@ -96,39 +96,24 @@ func (q *Queries) ListDrawings(ctx context.Context) ([]ListDrawingsRow, error) {
 	return items, nil
 }
 
-const renameDrawing = `-- name: RenameDrawing :one
-UPDATE drawings SET name = ?, updated_at = datetime('now') WHERE id = ? RETURNING id, name, scene, created_at, updated_at
+const updateDrawing = `-- name: UpdateDrawing :one
+UPDATE drawings
+SET name = COALESCE(?1, name),
+    scene = COALESCE(?2, scene),
+    updated_at = datetime('now')
+WHERE id = ?3 RETURNING id, name, scene, created_at, updated_at
 `
 
-type RenameDrawingParams struct {
-	Name string `json:"name"`
-	ID   int64  `json:"id"`
+type UpdateDrawingParams struct {
+	Name  *string `json:"name"`
+	Scene *string `json:"scene"`
+	ID    int64   `json:"id"`
 }
 
-func (q *Queries) RenameDrawing(ctx context.Context, arg RenameDrawingParams) (Drawing, error) {
-	row := q.db.QueryRowContext(ctx, renameDrawing, arg.Name, arg.ID)
-	var i Drawing
-	err := row.Scan(
-		&i.ID,
-		&i.Name,
-		&i.Scene,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}
-
-const setDrawingScene = `-- name: SetDrawingScene :one
-UPDATE drawings SET scene = ?, updated_at = datetime('now') WHERE id = ? RETURNING id, name, scene, created_at, updated_at
-`
-
-type SetDrawingSceneParams struct {
-	Scene string `json:"scene"`
-	ID    int64  `json:"id"`
-}
-
-func (q *Queries) SetDrawingScene(ctx context.Context, arg SetDrawingSceneParams) (Drawing, error) {
-	row := q.db.QueryRowContext(ctx, setDrawingScene, arg.Scene, arg.ID)
+// NULL leaves a column unchanged, so a PATCH of name and/or scene is one
+// atomic statement.
+func (q *Queries) UpdateDrawing(ctx context.Context, arg UpdateDrawingParams) (Drawing, error) {
+	row := q.db.QueryRowContext(ctx, updateDrawing, arg.Name, arg.Scene, arg.ID)
 	var i Drawing
 	err := row.Scan(
 		&i.ID,

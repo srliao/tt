@@ -90,12 +90,20 @@ func TestDrawings_PatchValidation(t *testing.T) {
 		"empty":       map[string]any{},
 		"array scene": map[string]any{"scene": []any{}},
 		"blank name":  map[string]any{"name": "  "},
+		"bad scene":   map[string]any{"name": "renamed", "scene": []any{}},
 	} {
 		r := doJSON(t, http.MethodPatch, item, body)
 		_ = r.Body.Close()
 		if r.StatusCode != http.StatusBadRequest {
 			t.Errorf("%s: status = %d, want 400", name, r.StatusCode)
 		}
+	}
+
+	// A rejected PATCH must not have applied its name.
+	got := doJSON(t, http.MethodGet, item, nil)
+	defer func() { _ = got.Body.Close() }()
+	if d := decodeDrawing(t, got); d.Name != "x" {
+		t.Errorf("name = %q after rejected PATCHes, want unchanged %q", d.Name, "x")
 	}
 }
 

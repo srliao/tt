@@ -90,7 +90,7 @@ Edit `web/src/lib/shortcuts.ts`:
 
 ## Embed a widget that owns its own keys
 
-Wrap it in an element with `data-app-shortcuts="off"` (see `features/drawings/editor-page.tsx`). Global shortcuts and the command palette then ignore keydowns originating inside it.
+Wrap it in an element with `data-app-shortcuts="off"` (see `features/drawings/editor-page.tsx`). Global shortcuts and the command palette then ignore keydowns originating inside it. If the widget portals UI (dialogs) to `document.body`, add its portal class to `SHORTCUT_OPT_OUT_SELECTOR` in `web/src/lib/shortcuts.ts` (as done for `.excalidraw`).
 
 ## Debug a stuck "running" run
 

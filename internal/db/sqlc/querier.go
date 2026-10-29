@@ -56,15 +56,16 @@ type Querier interface {
 	// an empty list land on 0.0.
 	MinPriority(ctx context.Context) (interface{}, error)
 	MinStagedOrder(ctx context.Context) (interface{}, error)
-	RenameDrawing(ctx context.Context, arg RenameDrawingParams) (Drawing, error)
 	RenameTag(ctx context.Context, arg RenameTagParams) (Tag, error)
 	ReplaceTaskTags(ctx context.Context, taskID int64) error
-	SetDrawingScene(ctx context.Context, arg SetDrawingSceneParams) (Drawing, error)
 	SetScriptLastRunAt(ctx context.Context, arg SetScriptLastRunAtParams) error
 	SetScriptUserState(ctx context.Context, arg SetScriptUserStateParams) error
 	SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams) (Task, error)
 	SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (Task, error)
 	SetTaskState(ctx context.Context, arg SetTaskStateParams) (Task, error)
+	// NULL leaves a column unchanged, so a PATCH of name and/or scene is one
+	// atomic statement.
+	UpdateDrawing(ctx context.Context, arg UpdateDrawingParams) (Drawing, error)
 	UpdateScript(ctx context.Context, arg UpdateScriptParams) (Script, error)
 	UpdateTaskFields(ctx context.Context, arg UpdateTaskFieldsParams) (Task, error)
 }

@@ -17,10 +17,15 @@ const NAV_KEYS: Record<string, string> = {
 /**
  * True when the event target sits inside a `data-app-shortcuts="off"`
  * subtree — an embedded app (the Excalidraw canvas) that owns its own
- * single-key shortcuts. Shared with the command palette's listener.
+ * single-key shortcuts. Excalidraw also portals its dialogs (help, export,
+ * …) to `document.body`, outside that wrapper; those portal roots carry the
+ * `excalidraw` class, so they're matched too. Shared with the command
+ * palette's listener.
  */
+const SHORTCUT_OPT_OUT_SELECTOR = '[data-app-shortcuts="off"], .excalidraw';
+
 export function isShortcutOptOut(target: EventTarget | null): boolean {
-  return target instanceof Element && target.closest('[data-app-shortcuts="off"]') !== null;
+  return target instanceof Element && target.closest(SHORTCUT_OPT_OUT_SELECTOR) !== null;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

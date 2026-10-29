@@ -58,7 +58,7 @@ Quick locator tables. When you need to read code, start here.
 | Theme provider + toggle | `web/src/components/theme-{provider,toggle}.tsx` |
 | Keyboard shortcut cheatsheet (`?`) | `web/src/components/shortcut-cheatsheet.tsx` |
 | Global keyboard shortcuts (`n`, `g X`, `?`) | `web/src/lib/shortcuts.ts` |
-| Shortcut opt-out for embedded apps (`data-app-shortcuts="off"`) | `web/src/lib/shortcuts.ts` → `isShortcutOptOut` |
+| Shortcut opt-out for embedded apps (`data-app-shortcuts="off"`, `.excalidraw` portals) | `web/src/lib/shortcuts.ts` → `isShortcutOptOut`, `SHORTCUT_OPT_OUT_SELECTOR` (test: `shortcuts.test.ts`) |
 | Command palette (`/`, ⌘K) — tasks/tags search + nav | `web/src/components/command-palette.tsx` |
 | fetch wrapper + `ApiError` | `web/src/lib/api.ts` |
 | TanStack Query client | `web/src/lib/query.ts` |
@@ -70,7 +70,8 @@ Quick locator tables. When you need to read code, start here.
 | Tags page | `web/src/features/tags/*` |
 | Scripts list + editor + cheatsheets + spawned-tasks panel | `web/src/features/scripts/*` |
 | Runs list + detail + logs table + status pill | `web/src/features/runs/*` |
-| Drawings list (+ file import) + Excalidraw editor (autosave) | `web/src/features/drawings/{list-page,editor-page}.tsx` |
+| Drawings list (+ file import, `useDrawingCreation`) + Excalidraw editor | `web/src/features/drawings/{list-page,editor-page}.tsx` |
+| Drawing autosave (debounce, single in-flight save, unload flush) | `web/src/features/drawings/use-scene-autosave.ts` → `useSceneAutosave`, `SAVE_DEBOUNCE_MS` |
 | URL-driven filter state for /tasks | `web/src/features/tasks/use-task-list-search.ts` |
 | Client-side filter match + select-all-matching helper | `web/src/features/tasks/use-task-list-search.ts` → `matchesFilter`, `computeAllMatchingIds` |
 | Active-filter strip (chips above the task table) | `web/src/features/tasks/active-filter-strip.tsx` |

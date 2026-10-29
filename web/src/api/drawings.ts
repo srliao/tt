@@ -10,6 +10,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { Drawing, DrawingSummary } from '@/types/drawing';
 
+/**
+ * Builds a JSON body embedding an already-serialized scene verbatim, so a
+ * multi-MB scene isn't parsed and re-stringified just to be wrapped.
+ * Exported for tests.
+ */
+export function bodyWithScene(fields: Record<string, unknown>, scene: string): string {
+  const head = JSON.stringify(fields).slice(0, -1);
+  return `${head}${head.length > 1 ? ',' : ''}"scene":${scene}}`;
+}
+
 export function useDrawings() {
   return useQuery<DrawingSummary[]>({
     queryKey: ['drawings'],
@@ -41,10 +51,7 @@ export function useCreateDrawing() {
     mutationFn: ({ name, scene }: { name: string; scene?: string }) =>
       api<Drawing>('/drawings', {
         method: 'POST',
-        body:
-          scene === undefined
-            ? JSON.stringify({ name })
-            : `{"name":${JSON.stringify(name)},"scene":${scene}}`,
+        body: scene === undefined ? JSON.stringify({ name }) : bodyWithScene({ name }, scene),
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['drawings'], exact: true });
@@ -70,7 +77,7 @@ export function useSaveDrawingScene() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, scene }: { id: number; scene: string }) =>
-      api<Drawing>(`/drawings/${id}`, { method: 'PATCH', body: `{"scene":${scene}}` }),
+      api<Drawing>(`/drawings/${id}`, { method: 'PATCH', body: bodyWithScene({}, scene) }),
     onSuccess: () => {
       // Only the list (for updated_at ordering); the open drawing's cache
       // entry is deliberately left alone — see useDrawing.

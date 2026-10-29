@@ -2,12 +2,8 @@
  * The /drawings/:id page: a full-bleed Excalidraw canvas backed by the
  * drawings table.
  *
- * Persistence: Excalidraw fires onChange for every pointer move, selection
- * and scroll, so saves are debounced and skipped when the serialized scene
- * is byte-identical to the last one sent. Until the user first touches the
- * canvas, onChange only records the baseline — that absorbs Excalidraw
- * normalizing the seed without writing (and bumping updated_at) on open.
- * A pending save is flushed on unmount and on tab close.
+ * Persistence lives in `useSceneAutosave` (debounce, skip-identical,
+ * baseline-until-interaction, one save in flight, flush on unmount/close).
  *
  * The canvas wrapper carries `data-app-shortcuts="off"` so the global
  * shortcut handler and command palette leave Excalidraw's single-letter
@@ -21,10 +17,11 @@ import '@excalidraw/excalidraw/index.css';
 import type { ExcalidrawInitialDataState } from '@excalidraw/excalidraw/types';
 import { Link } from '@tanstack/react-router';
 import { ArrowLeftIcon } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useDrawing, useRenameDrawing, useSaveDrawingScene } from '@/api/drawings';
 import { Input } from '@/components/ui/input';
 import { useCanvasTheme } from './canvas-theme';
+import { useSceneAutosave } from './use-scene-autosave';
 
 // Fonts are self-hosted under dist/assets/excalidraw/ by the
 // `excalidrawFonts` plugin in vite.config.ts. Must be set before the first
@@ -35,10 +32,6 @@ declare global {
   }
 }
 window.EXCALIDRAW_ASSET_PATH = '/assets/excalidraw/';
-
-const SAVE_DEBOUNCE_MS = 800;
-
-type SaveStatus = 'saved' | 'pending' | 'saving' | 'error';
 
 type ChangeArgs = Parameters<NonNullable<React.ComponentProps<typeof Excalidraw>['onChange']>>;
 
@@ -67,8 +60,6 @@ function DrawingCanvas({
   scene: ExcalidrawInitialDataState;
 }) {
   const [canvasTheme, setCanvasTheme] = useCanvasTheme();
-  const save = useSaveDrawingScene();
-  const [status, setStatus] = useState<SaveStatus>('saved');
 
   // Seed once; the canvas owns the scene after mount.
   const [initialData] = useState<ExcalidrawInitialDataState>(() => ({
@@ -76,69 +67,19 @@ function DrawingCanvas({
     scrollToContent: true,
   }));
 
-  const latest = useRef<ChangeArgs | null>(null);
-  const lastSaved = useRef<string | null>(null);
-  const interacted = useRef(false);
-  const markInteracted = useCallback(() => {
-    interacted.current = true;
-  }, []);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const flush = useCallback(() => {
-    if (timer.current) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
-    const args = latest.current;
-    if (!args) return;
-    const serialized = serializeAsJSON(args[0], args[1], args[2], 'local');
-    if (serialized === lastSaved.current) {
-      setStatus('saved');
-      return;
-    }
-    if (!interacted.current) {
-      lastSaved.current = serialized;
-      setStatus('saved');
-      return;
-    }
-    setStatus('saving');
-    save.mutate(
-      { id, scene: serialized },
-      {
-        onSuccess: () => {
-          lastSaved.current = serialized;
-          setStatus(timer.current ? 'pending' : 'saved');
-        },
-        onError: () => setStatus('error'),
-      },
-    );
-  }, [id, save]);
+  const { mutateAsync: saveScene } = useSaveDrawingScene();
+  const autosave = useSceneAutosave((scene) => saveScene({ id, scene }));
+  const { notifyChange } = autosave;
 
   const onChange = useCallback(
-    (...args: ChangeArgs) => {
-      latest.current = args;
+    (...[elements, appState, files]: ChangeArgs) => {
       // Excalidraw's menu toggle / Shift+Alt+D flips appState.theme; mirror it
       // so the choice sticks. Unchanged values are ignored.
-      const theme = args[1].theme;
-      if (theme === 'light' || theme === 'dark') setCanvasTheme(theme);
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(flush, SAVE_DEBOUNCE_MS);
-      if (interacted.current) setStatus((s) => (s === 'saving' ? s : 'pending'));
+      if (appState.theme === 'light' || appState.theme === 'dark') setCanvasTheme(appState.theme);
+      notifyChange(() => serializeAsJSON(elements, appState, files, 'local'));
     },
-    [flush, setCanvasTheme],
+    [notifyChange, setCanvasTheme],
   );
-
-  // Flush on unmount (route change) and on tab close.
-  const flushRef = useRef(flush);
-  flushRef.current = flush;
-  useEffect(() => {
-    const onUnload = () => flushRef.current();
-    window.addEventListener('beforeunload', onUnload);
-    return () => {
-      window.removeEventListener('beforeunload', onUnload);
-      if (timer.current) flushRef.current();
-    };
-  }, []);
 
   return (
     <div className="fixed inset-x-0 top-14 bottom-0 flex flex-col">
@@ -152,10 +93,10 @@ function DrawingCanvas({
         </Link>
         <NameField id={id} name={name} />
         <span className="ml-auto text-xs text-muted-foreground" data-testid="save-status">
-          {status === 'saved' && 'Saved'}
-          {status === 'pending' && 'Unsaved changes'}
-          {status === 'saving' && 'Saving…'}
-          {status === 'error' && (
+          {autosave.status === 'saved' && 'Saved'}
+          {autosave.status === 'pending' && 'Unsaved changes'}
+          {autosave.status === 'saving' && 'Saving…'}
+          {autosave.status === 'error' && (
             <span className="text-destructive">Save failed — retrying on next edit</span>
           )}
         </span>
@@ -163,10 +104,10 @@ function DrawingCanvas({
       <div
         className="min-h-0 flex-1"
         data-app-shortcuts="off"
-        onPointerDownCapture={markInteracted}
-        onKeyDownCapture={markInteracted}
-        onPasteCapture={markInteracted}
-        onDropCapture={markInteracted}
+        onPointerDownCapture={autosave.markInteracted}
+        onKeyDownCapture={autosave.markInteracted}
+        onPasteCapture={autosave.markInteracted}
+        onDropCapture={autosave.markInteracted}
       >
         <Excalidraw
           initialData={initialData}

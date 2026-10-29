@@ -33,7 +33,8 @@ function excalidrawFonts(): Plugin {
         const rel = decodeURIComponent((req.url ?? '').split('?')[0]).replace(/^\/+/, '');
         const file = path.join(fontsDir, rel);
         const family = rel.split('/')[0];
-        if (!file.startsWith(fontsDir) || SKIPPED_FONT_FAMILIES.has(family)) return next();
+        if (!file.startsWith(fontsDir + path.sep) || SKIPPED_FONT_FAMILIES.has(family))
+          return next();
         try {
           if (!statSync(file).isFile()) return next();
         } catch {

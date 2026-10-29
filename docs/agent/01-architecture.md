@@ -71,7 +71,7 @@ These are load-bearing — violating them breaks tests or causes subtle bugs.
 
 6. **One scheduler worker.** All script execution is sequential — local single-user; race conditions in user scripts are not a concern. Queue is size-100; manual-trigger overflow returns 503, scheduled overflow is silently dropped + counted.
 
-7. **All timestamps as TEXT, always UTC instants.** Code uses SQLite's `datetime('now')` ("YYYY-MM-DD HH:MM:SS") OR RFC3339 — every parse path accepts both. See `parseSqliteTime` in `task/service.go`, `tag/service.go`, `script/service.go` (intentionally duplicated to keep packages self-contained). Storage is unaffected by the app time zone (rule 11) — only *which calendar day it is* moves.
+7. **All timestamps as TEXT, always UTC instants.** Code uses SQLite's `datetime('now')` ("YYYY-MM-DD HH:MM:SS") OR RFC3339 — every parse path accepts both. See `parseSqliteTime` in `task/service.go`, `tag/service.go`, `script/service.go`, `drawing/service.go` (intentionally duplicated to keep packages self-contained). Storage is unaffected by the app time zone (rule 11) — only *which calendar day it is* moves.
 
 8. **JSON error envelope.** All non-2xx responses share `{"error": {"code", "message", "details?"}}`. Codes are stable strings; see `internal/httpapi/errors.go`. The mapper is `writeServiceError` in `tasks.go` — string-based to avoid importing the scheduler/sqlite packages.
 
@@ -83,7 +83,7 @@ These are load-bearing — violating them breaks tests or causes subtle bugs.
 
 12. **Document-level keydown for the task table.** `useTableShortcuts` in `web/src/features/tasks/task-table.tsx` binds to `document` (not the table element) so j/k/x/⌘A fire regardless of focus. Guards: a `disabled` flag, `isEditableTarget(target)`, and an open Radix dialog probe (`[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]`). Replicate this guard set when adding any document-scoped shortcut on a page.
 
-13. **`data-app-shortcuts="off"` opts a subtree out of app shortcuts.** `isShortcutOptOut` in `web/src/lib/shortcuts.ts` is checked by the global handler (via `isEditableTarget`) and the command palette. Embedded apps that own single-letter keys (the Excalidraw canvas in `web/src/features/drawings/editor-page.tsx`) must sit inside such a subtree.
+13. **`data-app-shortcuts="off"` opts a subtree out of app shortcuts.** `isShortcutOptOut` in `web/src/lib/shortcuts.ts` (`SHORTCUT_OPT_OUT_SELECTOR` = `[data-app-shortcuts="off"], .excalidraw` — Excalidraw portals its dialogs to `document.body` outside the wrapper, with class `excalidraw`) is checked by the global handler (via `isEditableTarget`) and the command palette. Embedded apps that own single-letter keys (the Excalidraw canvas in `web/src/features/drawings/editor-page.tsx`) must sit inside such a subtree.
 
 ## Cross-cutting concerns
 

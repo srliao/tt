@@ -72,8 +72,7 @@ type DrawingService interface {
 	Create(ctx context.Context, name string, scene json.RawMessage) (drawing.Drawing, error)
 	Get(ctx context.Context, id int64) (drawing.Drawing, error)
 	List(ctx context.Context) ([]drawing.Summary, error)
-	Rename(ctx context.Context, id int64, name string) (drawing.Drawing, error)
-	SetScene(ctx context.Context, id int64, scene json.RawMessage) (drawing.Drawing, error)
+	Update(ctx context.Context, id int64, in drawing.UpdateInput) (drawing.Drawing, error)
 	Delete(ctx context.Context, id int64) error
 }
 
