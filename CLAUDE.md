@@ -114,6 +114,13 @@ Dev data lives in `./.dev-data/db.sqlite`. Delete to wipe state.
   URL.** Single source of truth via `useSelection` in
   `web/src/features/tasks/use-selection.ts` (module-level store +
   `useSyncExternalStore` so every consumer shares one snapshot).
+- **`data-app-shortcuts="off"` opts a subtree out of global shortcuts +
+  the command palette** (`isShortcutOptOut` in `web/src/lib/shortcuts.ts`).
+  Wrap any embedded widget that owns single-letter keys (the Excalidraw
+  canvas does). New document-level key listeners must check it.
+- **Drawings: the Excalidraw canvas owns the scene after mount.**
+  `useDrawing` never refetches; autosave uses `serializeAsJSON(..., 'local')`
+  (`'database'` drops embedded images). See `docs/agent/08-frontend.md`.
 
 ## After backend changes
 
@@ -128,6 +135,9 @@ Dev data lives in `./.dev-data/db.sqlite`. Delete to wipe state.
 - Added a route file → `pnpm tsr generate` (or just run `pnpm run build`).
 - Added a UI shortcut → update `web/src/components/shortcut-cheatsheet.tsx`
   so users can discover it.
+- Added a top-level page → nav item in `web/src/components/layout.tsx`,
+  `g X` chord in `NAV_KEYS` (`web/src/lib/shortcuts.ts`), palette `NAV` in
+  `web/src/components/command-palette.tsx`, plus the cheatsheet.
 
 ## Deployment (container)
 

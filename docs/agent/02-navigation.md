@@ -11,8 +11,8 @@ Quick locator tables. When you need to read code, start here.
 | App time zone resolution (`--timezone` → `$TT_TIMEZONE` → `$TZ` → UTC) + embedded `time/tzdata` | `internal/config/config.go` → `resolveTimezone`, `loadLocation`, `Config.Location` |
 | Where the time zone is injected (runner + scheduler must agree) | `cmd/tt/main.go`; `runtime.WithLocation` in `internal/runtime/runner.go`; `scheduler.WithLocation` in `internal/scheduler/scheduler.go` |
 | SQLite open + WAL + goose migrations | `internal/db/store.go` |
-| Schema (DDL) | `internal/db/migrations/0001_init.sql` |
-| sqlc queries | `internal/db/queries/{tasks,tags,scripts,runs}.sql` |
+| Schema (DDL) | `internal/db/migrations/0001_init.sql` (+ `0002_tag_color.sql`, `0003_drawings.sql`) |
+| sqlc queries | `internal/db/queries/{tasks,tags,scripts,runs,drawings}.sql` |
 | Generated sqlc Go (read-only) | `internal/db/sqlc/*.sql.go` |
 | Test helper (in-memory store) | `internal/db/dbtest/dbtest.go` |
 | Task CRUD, reorder, list with filters | `internal/task/service.go` |
@@ -24,6 +24,7 @@ Quick locator tables. When you need to read code, start here.
 | Script CRUD, run lifecycle, retention pruning | `internal/script/service.go` |
 | Script schedule parsing + matching (day boundaries in `loc`) | `internal/script/schedule.go` → `Schedule.Matches`, `notRunToday`, `sameDateIn` |
 | Script domain types (Kind, Trigger, RunStatus, LogLevel) | `internal/script/types.go` |
+| Drawing CRUD (Excalidraw scene as opaque JSON) | `internal/drawing/service.go`, types in `internal/drawing/types.go` (`Summary`, `Drawing`) |
 | Runtime entry (one run lifecycle) | `internal/runtime/runner.go` |
 | `ctx` object installer, `ctx.script.*` metadata, nil→UTC zone normalizer | `internal/runtime/ctx.go` → `installCtx`, `ctxLocation` |
 | `ctx.today/weekday/parseDate/addDays/...` | `internal/runtime/ctx_dates.go` → `dateBindings(rt, now, loc)`, `civilDate` |
@@ -38,6 +39,7 @@ Quick locator tables. When you need to read code, start here.
 | Tag handlers | `internal/httpapi/tags.go` |
 | Script handlers + manual run | `internal/httpapi/scripts.go` |
 | Run-log handlers | `internal/httpapi/runs.go` |
+| Drawing handlers (64 MiB POST/PATCH cap → 413) | `internal/httpapi/drawings.go` → `decodeDrawingBody`, `maxDrawingBody` |
 | Request-id / log / panic-recovery middleware | `internal/httpapi/middleware.go` |
 | SPA fallback handler + cache headers | `internal/httpapi/spa.go` |
 | `/health`, `/version` | `internal/httpapi/health.go` |
@@ -56,17 +58,19 @@ Quick locator tables. When you need to read code, start here.
 | Theme provider + toggle | `web/src/components/theme-{provider,toggle}.tsx` |
 | Keyboard shortcut cheatsheet (`?`) | `web/src/components/shortcut-cheatsheet.tsx` |
 | Global keyboard shortcuts (`n`, `g X`, `?`) | `web/src/lib/shortcuts.ts` |
+| Shortcut opt-out for embedded apps (`data-app-shortcuts="off"`) | `web/src/lib/shortcuts.ts` → `isShortcutOptOut` |
 | Command palette (`/`, ⌘K) — tasks/tags search + nav | `web/src/components/command-palette.tsx` |
 | fetch wrapper + `ApiError` | `web/src/lib/api.ts` |
 | TanStack Query client | `web/src/lib/query.ts` |
 | shadcn/ui primitives | `web/src/components/ui/*.tsx` |
-| Type mirrors of Go DTOs | `web/src/types/{task,tag,script,run}.ts` |
-| API hooks (one file per resource) | `web/src/api/{tasks,tags,scripts,runs,stage}.ts` |
+| Type mirrors of Go DTOs | `web/src/types/{task,tag,script,run,drawing}.ts` |
+| API hooks (one file per resource) | `web/src/api/{tasks,tags,scripts,runs,stage,drawings}.ts` |
 | Tasks page + table + row + filters + bulk bar + inline tag editor | `web/src/features/tasks/*` |
 | Stage page + list + row + soft-cap hint | `web/src/features/stage/*` |
 | Tags page | `web/src/features/tags/*` |
 | Scripts list + editor + cheatsheets + spawned-tasks panel | `web/src/features/scripts/*` |
 | Runs list + detail + logs table + status pill | `web/src/features/runs/*` |
+| Drawings list (+ file import) + Excalidraw editor (autosave) | `web/src/features/drawings/{list-page,editor-page}.tsx` |
 | URL-driven filter state for /tasks | `web/src/features/tasks/use-task-list-search.ts` |
 | Client-side filter match + select-all-matching helper | `web/src/features/tasks/use-task-list-search.ts` → `matchesFilter`, `computeAllMatchingIds` |
 | Active-filter strip (chips above the task table) | `web/src/features/tasks/active-filter-strip.tsx` |
@@ -81,7 +85,7 @@ Quick locator tables. When you need to read code, start here.
 | Justfile (single source of dev commands) | `justfile` |
 | Go module | `go.mod` |
 | sqlc config | `internal/db/sqlc.yaml` |
-| Vite config + `/api` proxy | `web/vite.config.ts` |
+| Vite config + `/api` proxy + `excalidrawFonts` plugin | `web/vite.config.ts` |
 | Vitest setup | `web/vitest.config.ts`, `web/vitest.setup.ts` |
 | Biome lint/format | `web/biome.json` |
 | TanStack Router config | `web/tsr.config.json` |

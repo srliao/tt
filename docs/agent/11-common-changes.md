@@ -84,8 +84,13 @@ Edit `web/src/lib/shortcuts.ts`:
 1. Handle the key in the main `handler`. Use `event.preventDefault()` before the action.
 2. For navigation, use `router.navigate({ to: '/...' })`.
 3. For event-based actions (open modal, toggle panel), dispatch `new CustomEvent('tt:<action>')` and listen on the relevant page.
-4. Suppress when `isEditableTarget(event.target)` returns true.
+4. Suppress when `isEditableTarget(event.target)` returns true (this also covers `data-app-shortcuts="off"` subtrees via `isShortcutOptOut`; separate listeners must call `isShortcutOptOut` themselves).
 5. Update the cheatsheet (`web/src/components/shortcut-cheatsheet.tsx`).
+6. New top-level page? Also add the nav item in `components/layout.tsx`, a `NAV_KEYS` chord, and the palette `NAV` entry in `components/command-palette.tsx`.
+
+## Embed a widget that owns its own keys
+
+Wrap it in an element with `data-app-shortcuts="off"` (see `features/drawings/editor-page.tsx`). Global shortcuts and the command palette then ignore keydowns originating inside it.
 
 ## Debug a stuck "running" run
 

@@ -1,6 +1,6 @@
 # Backend Services
 
-Three domain packages — `task`, `tag`, `script`. All follow the same skeleton.
+Four domain packages — `task`, `tag`, `script`, `drawing`. All follow the same skeleton.
 
 ## Common shape
 
@@ -85,6 +85,18 @@ Every calendar-day question — weekday, day-of-month, is-last-of-month, and the
 - `monthly`: `{"day": 1..31}` OR `{"day": "last"}`
 
 `MonthlyDay` is a tagged-union with custom `MarshalJSON`/`UnmarshalJSON` — read `internal/script/types.go` to understand the shape before changing wire-format.
+
+## drawing
+
+File: `internal/drawing/service.go`. Plain CRUD over Excalidraw canvases; not used by the runtime or scheduler.
+
+| Method | Notes |
+|---|---|
+| `Create` / `Rename` | Name trimmed, empty → `"name is required"`. `Create(ctx, name, scene)` takes an optional scene (nil → `{}`) so an import is one atomic insert. |
+| `Get` | Returns `Drawing` incl. `Scene json.RawMessage`. |
+| `List` | Returns `[]Summary` (no scene), most recently updated first. |
+| `SetScene` | Replaces the scene. `Create` and `SetScene` share `validateScene`: rejects non-object JSON with `"must be a JSON object"` (→ 400); never inspects contents. |
+| `Delete` | Straightforward. |
 
 ## Error idioms
 

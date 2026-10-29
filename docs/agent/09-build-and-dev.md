@@ -78,9 +78,14 @@ Default: `$XDG_DATA_HOME/tt/db.sqlite` or `~/.local/share/tt/db.sqlite`. Overrid
 
 `--timezone America/New_York` → `$TT_TIMEZONE` → `$TZ` → UTC (`internal/config/config.go`). In dev, `just be-dev` derives `TT_TIMEZONE` from `/etc/localtime` unless you export your own, so the backend and the browser agree about "today" — plain `go run ./cmd/tt` does not, and lands on UTC. Decides when a calendar day starts for schedule matching and the `ctx.*` date helpers; stored timestamps stay UTC. An unknown zone name **fails startup** — no silent UTC fallback. The resolved zone is logged at startup (`timezone=`) and returned by `GET /api/v1/version`. `_ "time/tzdata"` is imported in the config package so named zones work in the alpine container image, which ships no system tzdata.
 
+## Excalidraw fonts
+
+Excalidraw fetches fonts from `window.EXCALIDRAW_ASSET_PATH` (else a public CDN). The `excalidrawFonts` plugin in `web/vite.config.ts` serves them in dev and emits them at build time to `dist/assets/excalidraw/fonts/` — under `assets/` because that is the only static prefix `internal/httpapi/spa.go` serves. The Xiaolai family (CJK, ~12 MB) is skipped to keep the binary small, so CJK text still falls back to the CDN.
+
 ## Common dev gotchas
 
 - After changing a sqlc query, you must run `just db-gen` or builds fail with a missing method on `*sqlcgen.Queries`.
 - After changing a route file, `pnpm tsr generate` (auto-run by build) regenerates `routeTree.gen.ts`. If you forget, the dev server will still hot-reload via the plugin but a fresh `tsc -b` will fail.
 - `internal/web/dist/.gitkeep` MUST exist or `//go:embed all:dist` fails the build on a clean checkout.
 - `just clean` wipes `.dev-data/` — your local DB. Use deliberately.
+- `web/node_modules` was installed with pnpm 10; pnpm 11 fails with `ERR_PNPM_UNEXPECTED_STORE`. Use `npx pnpm@10 <cmd>` (e.g. `add`) if your global pnpm is newer.
