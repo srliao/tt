@@ -12,7 +12,7 @@ import (
 )
 
 func newStageCmd(s *session) *cobra.Command {
-	return group("stage", "Work the stage (the focused batch of tasks)",
+	return group("stage", "Work the stage (the hand-picked, ordered tasks being worked through now)",
 		newStageListCmd(s),
 		newStageReorderCmd(s),
 		newStageClearFinishedCmd(s),
