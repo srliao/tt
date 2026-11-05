@@ -126,6 +126,7 @@ func newRootCmd(s *session) *cobra.Command {
 	root.SetErr(s.Stderr)
 	root.SetIn(s.Stdin)
 	root.CompletionOptions.DisableDefaultCmd = true
+	root.SetHelpCommand(newHelpCmd(s))
 
 	root.AddCommand(
 		newTaskCmd(s),
@@ -133,6 +134,7 @@ func newRootCmd(s *session) *cobra.Command {
 		newStageCmd(s),
 		newTagCmd(s),
 		newDoctorCmd(s),
+		newInstallSkillCmd(s),
 	)
 	return root
 }

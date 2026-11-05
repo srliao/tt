@@ -68,6 +68,9 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   server: {
+    // The ctx cheatsheet lives in internal/runtime/docs (one source for the
+    // Go CLI and this UI), outside the web root the dev server serves.
+    fs: { allow: ['..'] },
     proxy: {
       '/api': 'http://localhost:8080',
     },
