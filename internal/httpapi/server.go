@@ -39,6 +39,7 @@ type TaskService interface {
 	ApplyDeps(ctx context.Context, in task.DepBatch) ([]task.Task, error)
 	Graph(ctx context.Context, id int64, dir task.Direction) (task.Graph, error)
 	ListDeps(ctx context.Context) ([]task.Edge, error)
+	ApplyPlan(ctx context.Context, p task.Plan) (task.PlanResult, error)
 }
 
 // TagService is the narrow consumer-side interface for tags. The HTTP layer
@@ -106,6 +107,12 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
+// Snapshotter writes a consistent copy of the database to a path that does
+// not yet exist. *db.Store satisfies this structurally.
+type Snapshotter interface {
+	VacuumInto(ctx context.Context, path string) error
+}
+
 // Options bundles non-service-dependency configuration for New.
 type Options struct {
 	// Logger is the destination for middleware log output and panic traces.
@@ -119,6 +126,12 @@ type Options struct {
 	// schedule firing on an unexpected day can be diagnosed from outside the
 	// process. Optional; empty means it was never configured.
 	Timezone string
+	// Snapshotter backs GET /snapshot.db. Optional; without it the endpoint
+	// answers 500.
+	Snapshotter Snapshotter
+	// SnapshotDir is where GET /snapshot.db stages its temp copy. Empty
+	// means os.TempDir.
+	SnapshotDir string
 	// SPA is the handler that serves the front-end SPA. Phase 09 wires in
 	// the embed.FS; phase 06 tests can pass a plain "404 not found" handler.
 	SPA http.Handler
@@ -126,17 +139,19 @@ type Options struct {
 
 // Server is the assembled HTTP application. Build with New, mount via Routes.
 type Server struct {
-	tasks    TaskService
-	tags     TagService
-	scripts  ScriptService
-	drawings DrawingService
-	enqueuer ManualRunEnqueuer
-	pinger   Pinger
-	logger   *slog.Logger
-	version  string
-	builtAt  string
-	timezone string
-	spa      http.Handler
+	tasks       TaskService
+	tags        TagService
+	scripts     ScriptService
+	drawings    DrawingService
+	enqueuer    ManualRunEnqueuer
+	pinger      Pinger
+	logger      *slog.Logger
+	version     string
+	builtAt     string
+	timezone    string
+	snapshotter Snapshotter
+	snapshotDir string
+	spa         http.Handler
 }
 
 // New constructs a Server bound to the supplied services and options. The
@@ -159,17 +174,19 @@ func New(
 		spa = http.HandlerFunc(spaNotFound)
 	}
 	return &Server{
-		tasks:    tasks,
-		tags:     tags,
-		scripts:  scripts,
-		drawings: drawings,
-		enqueuer: enqueuer,
-		pinger:   pinger,
-		logger:   logger,
-		version:  opts.Version,
-		builtAt:  opts.BuiltAt,
-		timezone: opts.Timezone,
-		spa:      spa,
+		tasks:       tasks,
+		tags:        tags,
+		scripts:     scripts,
+		drawings:    drawings,
+		enqueuer:    enqueuer,
+		pinger:      pinger,
+		logger:      logger,
+		version:     opts.Version,
+		builtAt:     opts.BuiltAt,
+		timezone:    opts.Timezone,
+		snapshotter: opts.Snapshotter,
+		snapshotDir: opts.SnapshotDir,
+		spa:         spa,
 	}
 }
 
@@ -184,8 +201,10 @@ func (s *Server) Routes() http.Handler {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", s.handleHealth)
 		r.Get("/version", s.handleVersion)
+		r.Get("/snapshot.db", s.handleSnapshot)
 		s.mountTaskRoutes(r)
 		s.mountDepRoutes(r)
+		s.mountPlanRoutes(r)
 		s.mountStageRoutes(r)
 		s.mountTagRoutes(r)
 		s.mountScriptRoutes(r)

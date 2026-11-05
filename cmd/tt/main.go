@@ -120,7 +120,11 @@ func run() error {
 			Version:  Version,
 			BuiltAt:  BuiltAt,
 			Timezone: cfg.Location.String(),
-			SPA:      spaHandler,
+			// Staging under the data dir keeps the copy on the same volume
+			// as the live DB, which tmpfs-backed /tmp may not have room for.
+			Snapshotter: store,
+			SnapshotDir: cfg.DataDir,
+			SPA:         spaHandler,
 		},
 	)
 

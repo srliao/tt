@@ -544,6 +544,9 @@ func parseIntDefault(raw string, fallback int) (int, error) {
 // same shape of failure.
 //
 // Recognised mappings:
+//   - *task.RuleError: 409 conflict with the rule's details.
+//   - *task.PlanError: 404 not_found when it wraps sql.ErrNoRows, else 400
+//     validation_failed; either way with the plan item's details.
 //   - errors.Is(err, sql.ErrNoRows): 404 not_found.
 //   - SQLite UNIQUE constraint failures (modernc driver returns the message
 //     verbatim from sqlite): 409 conflict.
@@ -559,6 +562,15 @@ func writeServiceError(w http.ResponseWriter, err error) {
 		details := map[string]any{"rule": re.Rule}
 		maps.Copy(details, re.Details)
 		writeError(w, http.StatusConflict, CodeConflict, re.Error(), details)
+		return
+	}
+	var pe *task.PlanError
+	if errors.As(err, &pe) {
+		if errors.Is(pe, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, CodeNotFound, pe.Msg, pe.Details)
+			return
+		}
+		writeError(w, http.StatusBadRequest, CodeValidation, pe.Msg, pe.Details)
 		return
 	}
 	// sql.ErrNoRows: the task/tag/script services wrap this in fmt.Errorf
