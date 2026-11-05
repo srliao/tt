@@ -59,7 +59,7 @@ func (e Edge) MarshalJSON() ([]byte, error) {
 func (e *Edge) UnmarshalJSON(b []byte) error {
 	var pair []int64
 	if err := json.Unmarshal(b, &pair); err != nil {
-		return err
+		return fmt.Errorf("task: edge: %w", err)
 	}
 	if len(pair) != 2 {
 		return errors.New("task: edge must be [task_id, depends_on_id]")
@@ -70,8 +70,8 @@ func (e *Edge) UnmarshalJSON(b []byte) error {
 
 // DepBatch parameterises ApplyDeps. Removals apply before additions.
 type DepBatch struct {
-	Add    []Edge
-	Remove []Edge
+	Add    []Edge `json:"add"`
+	Remove []Edge `json:"remove"`
 }
 
 // Direction selects which side of a task Graph walks.
@@ -105,7 +105,7 @@ type Graph struct {
 // AddDep records that taskID depends on dependsOnID. Re-adding an existing
 // edge is a no-op.
 func (s *Impl) AddDep(ctx context.Context, taskID, dependsOnID int64) (Task, error) {
-	err := s.inTx(ctx, func(q *sqlcgen.Queries) error {
+	err := s.inTx(ctx, "add dep", func(q *sqlcgen.Queries) error {
 		g, err := loadDepGraph(ctx, q)
 		if err != nil {
 			return err
@@ -120,8 +120,8 @@ func (s *Impl) AddDep(ctx context.Context, taskID, dependsOnID int64) (Task, err
 
 // RemoveDep deletes the edge if present; a missing edge is a no-op.
 func (s *Impl) RemoveDep(ctx context.Context, taskID, dependsOnID int64) (Task, error) {
-	err := s.inTx(ctx, func(q *sqlcgen.Queries) error {
-		return removeDep(ctx, q, nil, Edge{TaskID: taskID, DependsOnID: dependsOnID})
+	err := s.inTx(ctx, "remove dep", func(q *sqlcgen.Queries) error {
+		return removeDep(ctx, q, Edge{TaskID: taskID, DependsOnID: dependsOnID})
 	})
 	if err != nil {
 		return Task{}, err
@@ -138,15 +138,16 @@ func (s *Impl) ApplyDeps(ctx context.Context, in DepBatch) ([]Task, error) {
 	if n := len(in.Add) + len(in.Remove); n > MaxDepBatch {
 		return nil, fmt.Errorf("task: batch must be at most %d operations, got %d", MaxDepBatch, n)
 	}
-	err := s.inTx(ctx, func(q *sqlcgen.Queries) error {
+	err := s.inTx(ctx, "apply deps", func(q *sqlcgen.Queries) error {
 		g, err := loadDepGraph(ctx, q)
 		if err != nil {
 			return err
 		}
 		for _, e := range in.Remove {
-			if err := removeDep(ctx, q, g, e); err != nil {
+			if err := removeDep(ctx, q, e); err != nil {
 				return err
 			}
+			g.remove(e)
 		}
 		for i, e := range in.Add {
 			if err := addDep(ctx, q, g, e); err != nil {
@@ -254,7 +255,7 @@ type depGraph struct {
 func loadDepGraph(ctx context.Context, q *sqlcgen.Queries) (*depGraph, error) {
 	rows, err := q.ListTaskDeps(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("task: load deps: %w", err)
+		return nil, fmt.Errorf("task: load dep graph: %w", err)
 	}
 	g := &depGraph{blockers: map[int64][]int64{}, dependents: map[int64][]int64{}}
 	for _, r := range rows {
@@ -303,7 +304,8 @@ func (g *depGraph) pathTo(from, to int64) []int64 {
 	return nil
 }
 
-// addDep checks R9, R7, R1 and R2 in that order, then inserts the edge.
+// addDep inserts the edge after checking, in order: both tasks exist, the
+// edge is new (else no-op), the dependent is not_done, and no cycle forms.
 func addDep(ctx context.Context, q *sqlcgen.Queries, g *depGraph, e Edge) error {
 	blocked, err := requireEdgeTasks(ctx, q, e)
 	if err != nil {
@@ -325,16 +327,13 @@ func addDep(ctx context.Context, q *sqlcgen.Queries, g *depGraph, e Edge) error 
 	return nil
 }
 
-// removeDep deletes the edge; g may be nil when no later check needs it.
-func removeDep(ctx context.Context, q *sqlcgen.Queries, g *depGraph, e Edge) error {
+// removeDep deletes the edge after checking both tasks exist.
+func removeDep(ctx context.Context, q *sqlcgen.Queries, e Edge) error {
 	if _, err := requireEdgeTasks(ctx, q, e); err != nil {
 		return err
 	}
 	if err := q.DeleteTaskDep(ctx, sqlcgen.DeleteTaskDepParams{TaskID: e.TaskID, DependsOnID: e.DependsOnID}); err != nil {
 		return fmt.Errorf("task: remove dep %d→%d: %w", e.TaskID, e.DependsOnID, err)
-	}
-	if g != nil {
-		g.remove(e)
 	}
 	return nil
 }
@@ -364,12 +363,13 @@ func (s *Impl) loadDeps(ctx context.Context, ts []Task) error {
 		ids[i] = t.ID
 		index[t.ID] = i
 	}
-	rows, err := s.q.ListTaskDepsTouching(ctx, sqlcgen.ListTaskDepsTouchingParams{
-		TaskIds:      ids,
-		DependsOnIds: ids,
-	})
+	idsJSON, err := json.Marshal(ids)
 	if err != nil {
-		return fmt.Errorf("task: load deps: %w", err)
+		return fmt.Errorf("task: encode dep ids: %w", err)
+	}
+	rows, err := s.q.ListTaskDepsTouching(ctx, string(idsJSON))
+	if err != nil {
+		return fmt.Errorf("task: load task deps: %w", err)
 	}
 	for _, r := range rows {
 		if i, ok := index[r.TaskID]; ok {

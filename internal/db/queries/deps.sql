@@ -13,13 +13,13 @@ SELECT EXISTS (
 SELECT task_id, depends_on_id FROM task_deps
 ORDER BY task_id, depends_on_id;
 
--- Both slices carry the same task ids: every edge with either end in the set.
+-- task_ids is a JSON array, so a long list stays one bind parameter.
 
 -- name: ListTaskDepsTouching :many
 SELECT d.task_id, d.depends_on_id, b.state AS depends_on_state
 FROM task_deps d JOIN tasks b ON b.id = d.depends_on_id
-WHERE d.task_id IN (sqlc.slice('task_ids'))
-   OR d.depends_on_id IN (sqlc.slice('depends_on_ids'))
+WHERE d.task_id IN (SELECT value FROM json_each(sqlc.arg('task_ids')))
+   OR d.depends_on_id IN (SELECT value FROM json_each(sqlc.arg('task_ids')))
 ORDER BY d.task_id, d.depends_on_id;
 
 -- A cancelled blocker still blocks until the edge is removed.

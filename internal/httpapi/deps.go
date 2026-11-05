@@ -23,13 +23,6 @@ type addDepBody struct {
 	DependsOnID int64 `json:"depends_on_id"`
 }
 
-// depBatchBody is the inbound JSON for POST /deps/batch. Each pair is
-// [task_id, depends_on_id].
-type depBatchBody struct {
-	Add    []task.Edge `json:"add"`
-	Remove []task.Edge `json:"remove"`
-}
-
 func (s *Server) handleAddDep(w http.ResponseWriter, r *http.Request) {
 	id, ok := parsePathID(w, r)
 	if !ok {
@@ -70,12 +63,12 @@ func (s *Server) handleRemoveDep(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleApplyDeps(w http.ResponseWriter, r *http.Request) {
-	var body depBatchBody
+	var body task.DepBatch
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, CodeValidation, "invalid JSON body: each pair must be [task_id, depends_on_id]", nil)
 		return
 	}
-	out, err := s.tasks.ApplyDeps(r.Context(), task.DepBatch{Add: body.Add, Remove: body.Remove})
+	out, err := s.tasks.ApplyDeps(r.Context(), body)
 	if err != nil {
 		writeServiceError(w, err)
 		return

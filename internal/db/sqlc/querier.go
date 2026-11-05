@@ -53,8 +53,8 @@ type Querier interface {
 	ListTags(ctx context.Context) ([]Tag, error)
 	ListTagsWithCounts(ctx context.Context) ([]ListTagsWithCountsRow, error)
 	ListTaskDeps(ctx context.Context) ([]ListTaskDepsRow, error)
-	// Both slices carry the same task ids: every edge with either end in the set.
-	ListTaskDepsTouching(ctx context.Context, arg ListTaskDepsTouchingParams) ([]ListTaskDepsTouchingRow, error)
+	// task_ids is a JSON array, so a long list stays one bind parameter.
+	ListTaskDepsTouching(ctx context.Context, taskIds interface{}) ([]ListTaskDepsTouchingRow, error)
 	ListTasksByScript(ctx context.Context, spawnedByScriptID *int64) ([]Task, error)
 	// A cancelled blocker still blocks until the edge is removed.
 	ListUnfinishedBlockers(ctx context.Context, taskID int64) ([]int64, error)

@@ -7,7 +7,6 @@ package sqlcgen
 
 import (
 	"context"
-	"strings"
 )
 
 const addTaskDep = `-- name: AddTaskDep :exec
@@ -104,15 +103,10 @@ const listTaskDepsTouching = `-- name: ListTaskDepsTouching :many
 
 SELECT d.task_id, d.depends_on_id, b.state AS depends_on_state
 FROM task_deps d JOIN tasks b ON b.id = d.depends_on_id
-WHERE d.task_id IN (/*SLICE:task_ids*/?)
-   OR d.depends_on_id IN (/*SLICE:depends_on_ids*/?)
+WHERE d.task_id IN (SELECT value FROM json_each(?1))
+   OR d.depends_on_id IN (SELECT value FROM json_each(?1))
 ORDER BY d.task_id, d.depends_on_id
 `
-
-type ListTaskDepsTouchingParams struct {
-	TaskIds      []int64 `json:"task_ids"`
-	DependsOnIds []int64 `json:"depends_on_ids"`
-}
 
 type ListTaskDepsTouchingRow struct {
 	TaskID         int64  `json:"task_id"`
@@ -120,27 +114,9 @@ type ListTaskDepsTouchingRow struct {
 	DependsOnState string `json:"depends_on_state"`
 }
 
-// Both slices carry the same task ids: every edge with either end in the set.
-func (q *Queries) ListTaskDepsTouching(ctx context.Context, arg ListTaskDepsTouchingParams) ([]ListTaskDepsTouchingRow, error) {
-	query := listTaskDepsTouching
-	var queryParams []interface{}
-	if len(arg.TaskIds) > 0 {
-		for _, v := range arg.TaskIds {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:task_ids*/?", strings.Repeat(",?", len(arg.TaskIds))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:task_ids*/?", "NULL", 1)
-	}
-	if len(arg.DependsOnIds) > 0 {
-		for _, v := range arg.DependsOnIds {
-			queryParams = append(queryParams, v)
-		}
-		query = strings.Replace(query, "/*SLICE:depends_on_ids*/?", strings.Repeat(",?", len(arg.DependsOnIds))[1:], 1)
-	} else {
-		query = strings.Replace(query, "/*SLICE:depends_on_ids*/?", "NULL", 1)
-	}
-	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+// task_ids is a JSON array, so a long list stays one bind parameter.
+func (q *Queries) ListTaskDepsTouching(ctx context.Context, taskIds interface{}) ([]ListTaskDepsTouchingRow, error) {
+	rows, err := q.db.QueryContext(ctx, listTaskDepsTouching, taskIds)
 	if err != nil {
 		return nil, err
 	}
