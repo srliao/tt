@@ -46,11 +46,14 @@ func (failPinger) Ping(_ context.Context) error { return errors.New("db down") }
 // store. The returned httptest.Server is auto-closed by t.Cleanup. opts
 // allows individual tests to override options (e.g. pass a failing Pinger).
 type serverFixture struct {
-	server *httptest.Server
-	tasks  task.Service
-	tags   tag.Service
+	server  *httptest.Server
+	tasks   task.Service
+	tags    tag.Service
 	scripts script.Service
-	enq    *noopEnqueuer
+	enq     *noopEnqueuer
+	// snapshotDir is where GET /snapshot.db stages its temp copy, so tests
+	// can assert the file is gone once the response ends.
+	snapshotDir string
 }
 
 func newTestServer(t *testing.T, pinger httpapi.Pinger) *serverFixture {
@@ -62,6 +65,7 @@ func newTestServer(t *testing.T, pinger httpapi.Pinger) *serverFixture {
 	scripts := script.New(store)
 	drawings := drawing.New(store)
 	enq := &noopEnqueuer{}
+	snapshotDir := t.TempDir()
 
 	if pinger == nil {
 		pinger = okPinger{}
@@ -70,21 +74,24 @@ func newTestServer(t *testing.T, pinger httpapi.Pinger) *serverFixture {
 	srv := httpapi.New(
 		tasks, tags, scripts, drawings, enq, pinger,
 		httpapi.Options{
-			Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
-			Version:  "test-1.2.3",
-			BuiltAt:  "2026-05-21T00:00:00Z",
-			Timezone: "America/New_York",
+			Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Version:     "test-1.2.3",
+			BuiltAt:     "2026-05-21T00:00:00Z",
+			Timezone:    "America/New_York",
+			Snapshotter: store,
+			SnapshotDir: snapshotDir,
 		},
 	)
 	ts := httptest.NewServer(srv.Routes())
 	t.Cleanup(ts.Close)
 
 	return &serverFixture{
-		server:  ts,
-		tasks:   tasks,
-		tags:    tags,
-		scripts: scripts,
-		enq:     enq,
+		server:      ts,
+		tasks:       tasks,
+		tags:        tags,
+		scripts:     scripts,
+		enq:         enq,
+		snapshotDir: snapshotDir,
 	}
 }
 
