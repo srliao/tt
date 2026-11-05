@@ -39,6 +39,7 @@ type TaskService interface {
 	ApplyDeps(ctx context.Context, in task.DepBatch) ([]task.Task, error)
 	Graph(ctx context.Context, id int64, dir task.Direction) (task.Graph, error)
 	ListDeps(ctx context.Context) ([]task.Edge, error)
+	ApplyPlan(ctx context.Context, p task.Plan) (task.PlanResult, error)
 }
 
 // TagService is the narrow consumer-side interface for tags. The HTTP layer
@@ -203,6 +204,7 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/snapshot.db", s.handleSnapshot)
 		s.mountTaskRoutes(r)
 		s.mountDepRoutes(r)
+		s.mountPlanRoutes(r)
 		s.mountStageRoutes(r)
 		s.mountTagRoutes(r)
 		s.mountScriptRoutes(r)

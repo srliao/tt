@@ -54,6 +54,8 @@ type Service interface {
 	ApplyDeps(ctx context.Context, in DepBatch) ([]Task, error)
 	Graph(ctx context.Context, id int64, dir Direction) (Graph, error)
 	ListDeps(ctx context.Context) ([]Edge, error)
+
+	ApplyPlan(ctx context.Context, p Plan) (PlanResult, error)
 }
 
 // Impl is the concrete Service backed by a *db.Store. It is safe for
