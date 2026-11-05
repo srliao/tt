@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -18,6 +22,34 @@ func parseID(name, raw string) (int64, error) {
 		return 0, usageErr(name+" must be a positive integer", map[string]any{"value": raw})
 	}
 	return id, nil
+}
+
+// readInput returns the contents of path, or stdin when path is "" or "-".
+// Complex bodies (dep batches, plans, script code) come in this way.
+func (s *session) readInput(path string) ([]byte, error) {
+	var (
+		b   []byte
+		err error
+	)
+	if path == "" || path == "-" {
+		b, err = io.ReadAll(s.Stdin)
+	} else {
+		b, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return nil, usageErr("read input: "+err.Error(), map[string]any{"path": path})
+	}
+	return b, nil
+}
+
+// decodeDoc strictly decodes a JSON input document into v.
+func decodeDoc(b []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return validationErr("invalid JSON document: "+err.Error(), nil)
+	}
+	return nil
 }
 
 // checkDate enforces YYYY-MM-DD; relative dates are deliberately rejected.
