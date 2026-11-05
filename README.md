@@ -113,9 +113,9 @@ it was scheduled for. Timestamps `ctx` hands you (`ctx.script.lastRunAt`,
 `created_at`/`completed_at`/`cancelled_at` on spawns) are wall-clock
 strings in that zone. Storage stays UTC.
 
-A misspelled zone fails startup. The running value is at
-`GET /api/v1/version`. The web UI uses your **browser's** zone for
-"today", so set the server zone to where you live.
+A misspelled zone fails startup (`unknown time zone "..."` in the logs).
+The running value is at `GET /api/v1/version`. The web UI uses your
+**browser's** zone for "today", so set the server zone to where you live.
 
 ### `ctx` API
 
@@ -188,6 +188,8 @@ Copy `.env.example` to `.env` and fill it in.
 
 ### Cloudflare setup
 
+On a free Cloudflare account, enable R2 and Zero Trust first.
+
 1. **R2:** create a bucket, then *Manage R2 API tokens* → token with
    **Object Read & Write** on that bucket. Note the account ID for the
    endpoint; the secret is shown only once.
@@ -203,7 +205,8 @@ Copy `.env.example` to `.env` and fill it in.
 ### Run
 
 ```sh
-# on the host (Docker Engine ≥ 24, Compose v2), with docker-compose.yml + .env
+# on the host (Docker Engine ≥ 24, Compose v2), in a clone of this repo
+# (or a dir holding docker-compose.yml + .env)
 docker compose up -d
 docker compose ps                    # tt healthy, cloudflared running
 docker compose exec tt wget -qO- http://localhost:8080/api/v1/version
