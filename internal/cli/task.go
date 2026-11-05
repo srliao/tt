@@ -160,7 +160,7 @@ Output: {tasks: [row], next_cursor?: string}
 		},
 	}
 	f := cmd.Flags()
-	f.BoolVar(&ready, "ready", false, "only ready tasks: open, and no blocker is open or cancelled")
+	f.BoolVar(&ready, "ready", false, "only unblocked tasks: no blocker is open or cancelled")
 	f.BoolVar(&blocked, "blocked", false, "only blocked tasks")
 	f.StringArrayVar(&states, "state", nil, "not_done|done|cancelled; repeatable (default not_done)")
 	f.StringArrayVar(&tags, "tag", nil, "existing tag name; repeatable, all must match")
