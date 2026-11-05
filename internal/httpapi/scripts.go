@@ -37,11 +37,13 @@ type scheduleBody struct {
 	Day     json.RawMessage `json:"day,omitempty"`
 }
 
-// scriptBody mirrors the POST/PATCH /scripts payload.
+// scriptBody mirrors the POST/PATCH /scripts payload. Enabled is optional:
+// omitted means false on create and unchanged on PATCH, so tt-cli can save a
+// script without undoing an enable/disable made in the UI.
 type scriptBody struct {
 	Name     string       `json:"name"`
 	Code     string       `json:"code"`
-	Enabled  bool         `json:"enabled"`
+	Enabled  *bool        `json:"enabled"`
 	Schedule scheduleBody `json:"schedule"`
 }
 
@@ -136,7 +138,7 @@ func (s *Server) handleCreateScript(w http.ResponseWriter, r *http.Request) {
 	created, err := s.scripts.Create(r.Context(), script.CreateInput{
 		Name:     body.Name,
 		Code:     body.Code,
-		Enabled:  body.Enabled,
+		Enabled:  body.Enabled != nil && *body.Enabled,
 		Schedule: sch,
 	})
 	if err != nil {
@@ -181,10 +183,18 @@ func (s *Server) handleUpdateScript(w http.ResponseWriter, r *http.Request) {
 	if !checkScriptCode(w, body.Code) {
 		return
 	}
+	if body.Enabled == nil {
+		cur, err := s.scripts.Get(r.Context(), id)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		body.Enabled = &cur.Enabled
+	}
 	updated, err := s.scripts.Update(r.Context(), id, script.UpdateInput{
 		Name:     body.Name,
 		Code:     body.Code,
-		Enabled:  body.Enabled,
+		Enabled:  *body.Enabled,
 		Schedule: sch,
 	})
 	if err != nil {

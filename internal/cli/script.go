@@ -38,11 +38,12 @@ const scheduleFlagHelp = "every_tick | daily | weekly:<weekday> | monthly:<1-31|
 // the user enables it in the UI.
 const nextStepEnable = "enable in UI"
 
-// scriptBody is the POST/PATCH /scripts body. PATCH replaces every field.
+// scriptBody is the POST/PATCH /scripts body. PATCH replaces every field
+// except enabled, which the server leaves alone when it is omitted.
 type scriptBody struct {
 	Name     string          `json:"name"`
 	Code     string          `json:"code"`
-	Enabled  bool            `json:"enabled"`
+	Enabled  *bool           `json:"enabled,omitempty"`
 	Schedule script.Schedule `json:"schedule"`
 }
 
@@ -235,7 +236,8 @@ Output: {...script, next_step: "enable in UI"}
 				return err
 			}
 			var out script.Script
-			body := scriptBody{Name: name, Code: string(code), Enabled: false, Schedule: sch}
+			disabled := false
+			body := scriptBody{Name: name, Code: string(code), Enabled: &disabled, Schedule: sch}
 			if _, err := c.Do(cmd.Context(), http.MethodPost, "/scripts", nil, body, &out); err != nil {
 				return err
 			}
@@ -292,7 +294,6 @@ Output: {...script, next_step: "enable in UI"}
 			if err != nil {
 				return err
 			}
-			body.Enabled = cur.Enabled
 			body.Name = cur.Name
 			if flags.Changed("name") {
 				body.Name = name
