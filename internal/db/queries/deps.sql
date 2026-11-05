@@ -1,5 +1,5 @@
 -- name: AddTaskDep :exec
-INSERT OR IGNORE INTO task_deps (task_id, depends_on_id) VALUES (?, ?);
+INSERT OR IGNORE INTO task_deps (task_id, depends_on_id, created_at) VALUES (?, ?, ?);
 
 -- name: DeleteTaskDep :exec
 DELETE FROM task_deps WHERE task_id = ? AND depends_on_id = ?;

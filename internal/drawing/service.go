@@ -28,12 +28,35 @@ type Service interface {
 
 // Impl is the concrete Service backed by a *db.Store.
 type Impl struct {
-	q *sqlcgen.Queries
+	q   *sqlcgen.Queries
+	now func() time.Time
+}
+
+// Option configures an Impl at construction time.
+type Option func(*Impl)
+
+// WithClock overrides the clock used for persisted timestamps. Defaults to
+// time.Now.
+func WithClock(now func() time.Time) Option {
+	return func(s *Impl) {
+		if now != nil {
+			s.now = now
+		}
+	}
 }
 
 // New constructs a Service bound to the supplied store.
-func New(store *db.Store) *Impl {
-	return &Impl{q: store.Queries()}
+func New(store *db.Store, opts ...Option) *Impl {
+	s := &Impl{q: store.Queries(), now: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// stamp is the current clock time in the layout every timestamp column uses.
+func (s *Impl) stamp() string {
+	return s.now().UTC().Format(sqliteTimeLayout)
 }
 
 // Create inserts a drawing. The name is trimmed and must be non-empty. A nil
@@ -52,7 +75,13 @@ func (s *Impl) Create(ctx context.Context, name string, scene json.RawMessage) (
 		}
 		stored = v
 	}
-	row, err := s.q.CreateDrawing(ctx, sqlcgen.CreateDrawingParams{Name: name, Scene: stored})
+	now := s.stamp()
+	row, err := s.q.CreateDrawing(ctx, sqlcgen.CreateDrawingParams{
+		Name:      name,
+		Scene:     stored,
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
 	if err != nil {
 		return Drawing{}, fmt.Errorf("drawing: create: %w", err)
 	}
@@ -86,8 +115,7 @@ func (s *Impl) List(ctx context.Context) ([]Summary, error) {
 // validated before anything is written, so a bad scene can't leave a
 // half-applied rename behind.
 func (s *Impl) Update(ctx context.Context, id int64, in UpdateInput) (Drawing, error) {
-	var params sqlcgen.UpdateDrawingParams
-	params.ID = id
+	params := sqlcgen.UpdateDrawingParams{ID: id, UpdatedAt: s.stamp()}
 	if in.Name != nil {
 		name, err := validateName(*in.Name)
 		if err != nil {

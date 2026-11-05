@@ -52,11 +52,34 @@ type Service interface {
 type Impl struct {
 	store *db.Store
 	q     *sqlcgen.Queries
+	now   func() time.Time
+}
+
+// Option configures an Impl at construction time.
+type Option func(*Impl)
+
+// WithClock overrides the clock used for every persisted timestamp. Defaults
+// to time.Now; simulations pass a fake clock so the rows they write follow it.
+func WithClock(now func() time.Time) Option {
+	return func(s *Impl) {
+		if now != nil {
+			s.now = now
+		}
+	}
 }
 
 // New constructs a Service bound to the supplied store.
-func New(store *db.Store) *Impl {
-	return &Impl{store: store, q: store.Queries()}
+func New(store *db.Store, opts ...Option) *Impl {
+	s := &Impl{store: store, q: store.Queries(), now: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// stamp is the current clock time in the layout every timestamp column uses.
+func (s *Impl) stamp() string {
+	return s.now().UTC().Format(sqliteTimeLayout)
 }
 
 // Create inserts a new script. Name is trimmed and required; Schedule is
@@ -71,12 +94,15 @@ func (s *Impl) Create(ctx context.Context, in CreateInput) (Script, error) {
 	if err != nil {
 		return Script{}, err
 	}
+	now := s.stamp()
 	row, err := s.q.CreateScript(ctx, sqlcgen.CreateScriptParams{
 		Name:           name,
 		Code:           in.Code,
 		Enabled:        boolToInt(in.Enabled),
 		ScheduleKind:   string(in.Schedule.Kind),
 		ScheduleConfig: cfg,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	})
 	if err != nil {
 		return Script{}, fmt.Errorf("script: create: %w", err)
@@ -101,6 +127,7 @@ func (s *Impl) Update(ctx context.Context, id int64, in UpdateInput) (Script, er
 		Enabled:        boolToInt(in.Enabled),
 		ScheduleKind:   string(in.Schedule.Kind),
 		ScheduleConfig: cfg,
+		UpdatedAt:      s.stamp(),
 		ID:             id,
 	})
 	if err != nil {
@@ -171,6 +198,7 @@ func (s *Impl) SetLastRunAt(ctx context.Context, id int64, t time.Time) error {
 	ts := t.UTC().Format(sqliteTimeLayout)
 	if err := s.q.SetScriptLastRunAt(ctx, sqlcgen.SetScriptLastRunAtParams{
 		LastRunAt: &ts,
+		UpdatedAt: s.stamp(),
 		ID:        id,
 	}); err != nil {
 		return fmt.Errorf("script: set last_run_at %d: %w", id, err)
@@ -196,6 +224,7 @@ func (s *Impl) WriteUserState(ctx context.Context, id int64, blob []byte) error 
 	}
 	if err := s.q.SetScriptUserState(ctx, sqlcgen.SetScriptUserStateParams{
 		UserState: v,
+		UpdatedAt: s.stamp(),
 		ID:        id,
 	}); err != nil {
 		return fmt.Errorf("script: write user_state %d: %w", id, err)
@@ -206,8 +235,9 @@ func (s *Impl) WriteUserState(ctx context.Context, id int64, blob []byte) error 
 // StartRun inserts a new script_runs row in the "running" state.
 func (s *Impl) StartRun(ctx context.Context, scriptID int64, trigger Trigger) (Run, error) {
 	row, err := s.q.CreateScriptRun(ctx, sqlcgen.CreateScriptRunParams{
-		ScriptID: scriptID,
-		Trigger:  string(trigger),
+		ScriptID:  scriptID,
+		Trigger:   string(trigger),
+		StartedAt: s.stamp(),
 	})
 	if err != nil {
 		return Run{}, fmt.Errorf("script: start run %d: %w", scriptID, err)
@@ -230,7 +260,9 @@ func (s *Impl) FinishRun(ctx context.Context, runID int64, status RunStatus, err
 	if errMsg != "" {
 		errPtr = &errMsg
 	}
+	now := s.stamp()
 	if err := s.q.FinishScriptRun(ctx, sqlcgen.FinishScriptRunParams{
+		FinishedAt:     &now,
 		Status:         string(status),
 		ErrorMessage:   errPtr,
 		SpawnedTaskIds: string(b),
@@ -247,6 +279,7 @@ func (s *Impl) AppendLog(ctx context.Context, runID int64, level LogLevel, messa
 		ScriptRunID: runID,
 		Level:       string(level),
 		Message:     message,
+		LoggedAt:    s.stamp(),
 	}); err != nil {
 		return fmt.Errorf("script: append log: %w", err)
 	}
@@ -342,7 +375,8 @@ func (s *Impl) PruneRuns(ctx context.Context, keep int64) error {
 // for binary startup: any run that was in flight when the previous process
 // died is otherwise stuck visible as running forever.
 func (s *Impl) RecoverOrphanedRuns(ctx context.Context) error {
-	if err := s.q.MarkOrphanedRunsAsError(ctx); err != nil {
+	now := s.stamp()
+	if err := s.q.MarkOrphanedRunsAsError(ctx, &now); err != nil {
 		return fmt.Errorf("script: recover orphaned runs: %w", err)
 	}
 	return nil

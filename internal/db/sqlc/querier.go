@@ -12,8 +12,8 @@ type Querier interface {
 	AddTaskDep(ctx context.Context, arg AddTaskDepParams) error
 	AddTaskTag(ctx context.Context, arg AddTaskTagParams) error
 	AppendScriptLog(ctx context.Context, arg AppendScriptLogParams) error
-	ClearFinishedFromStage(ctx context.Context) error
-	ClearStage(ctx context.Context) error
+	ClearFinishedFromStage(ctx context.Context, updatedAt string) error
+	ClearStage(ctx context.Context, updatedAt string) error
 	CountScriptRuns(ctx context.Context) (int64, error)
 	CountTagsByHue(ctx context.Context) ([]CountTagsByHueRow, error)
 	CreateDrawing(ctx context.Context, arg CreateDrawingParams) (Drawing, error)
@@ -56,7 +56,7 @@ type Querier interface {
 	ListTaskDeps(ctx context.Context) ([]ListTaskDepsRow, error)
 	ListTaskDepsTouching(ctx context.Context, taskIds interface{}) ([]ListTaskDepsTouchingRow, error)
 	ListTasksByScript(ctx context.Context, spawnedByScriptID *int64) ([]Task, error)
-	MarkOrphanedRunsAsError(ctx context.Context) error
+	MarkOrphanedRunsAsError(ctx context.Context, finishedAt *string) error
 	// New rows are minted at MIN(key) - 1 so they sort above everything already
 	// present on the ascending-key axis. The 1.0 fallback makes the first row in
 	// an empty list land on 0.0.
