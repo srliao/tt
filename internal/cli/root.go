@@ -134,6 +134,7 @@ func newRootCmd(s *session) *cobra.Command {
 		newStageCmd(s),
 		newTagCmd(s),
 		newDoctorCmd(s),
+		newInstallSkillCmd(s),
 	)
 	return root
 }
