@@ -66,9 +66,6 @@ func compact(t task.Task) compactTask {
 // taskRows renders tasks compact, or whole when full is set.
 func taskRows(tasks []task.Task, full bool) any {
 	if full {
-		if tasks == nil {
-			return []task.Task{}
-		}
 		return tasks
 	}
 	rows := make([]compactTask, 0, len(tasks))
@@ -142,12 +139,8 @@ Output: {tasks: [row], next_cursor?: string}
 			q.Set("limit", strconv.Itoa(limit+1))
 			q.Set("offset", strconv.Itoa(offset))
 
-			c, err := s.api()
+			got, err := list[task.Task](cmd.Context(), s, http.MethodGet, "/tasks", q, nil)
 			if err != nil {
-				return err
-			}
-			var got []task.Task
-			if _, err := c.Do(cmd.Context(), http.MethodGet, "/tasks", q, nil, &got); err != nil {
 				return err
 			}
 			out := taskList{}
@@ -172,12 +165,8 @@ Output: {tasks: [row], next_cursor?: string}
 }
 
 func (s *session) getTask(ctx context.Context, id int64) (task.Task, error) {
-	c, err := s.api()
-	if err != nil {
-		return task.Task{}, err
-	}
 	var out task.Task
-	_, err = c.Do(ctx, http.MethodGet, fmt.Sprintf("/tasks/%d", id), nil, nil, &out)
+	err := s.do(ctx, http.MethodGet, fmt.Sprintf("/tasks/%d", id), nil, nil, &out)
 	return out, err
 }
 
@@ -229,12 +218,8 @@ Output: ` + fullTaskShape,
 			if err := s.requireTags(cmd.Context(), tags); err != nil {
 				return err
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out task.Task
-			if _, err := c.Do(cmd.Context(), http.MethodPost, "/tasks", nil, body, &out); err != nil {
+			if err := s.do(cmd.Context(), http.MethodPost, "/tasks", nil, body, &out); err != nil {
 				return err
 			}
 			return s.out(out)
@@ -298,12 +283,8 @@ Output: ` + fullTaskShape,
 			if clearDue {
 				body.DueDate = nil
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out task.Task
-			if _, err := c.Do(cmd.Context(), http.MethodPatch, fmt.Sprintf("/tasks/%d", id), nil, body, &out); err != nil {
+			if err := s.do(cmd.Context(), http.MethodPatch, fmt.Sprintf("/tasks/%d", id), nil, body, &out); err != nil {
 				return err
 			}
 			return s.out(out)
@@ -334,12 +315,8 @@ Output: ` + fullTaskShape,
 			if !st.IsValid() {
 				return validationErr("state must be not_done|done|cancelled", map[string]any{"value": args[1]})
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out task.Task
-			if _, err := c.Do(cmd.Context(), http.MethodPost, fmt.Sprintf("/tasks/%d/state", id), nil,
+			if err := s.do(cmd.Context(), http.MethodPost, fmt.Sprintf("/tasks/%d/state", id), nil,
 				map[string]string{"state": string(st)}, &out); err != nil {
 				return err
 			}
@@ -366,12 +343,8 @@ Output: ` + fullTaskShape,
 			if err != nil {
 				return err
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out task.Task
-			if _, err := c.Do(cmd.Context(), method, fmt.Sprintf("/tasks/%d/stage", id), nil, nil, &out); err != nil {
+			if err := s.do(cmd.Context(), method, fmt.Sprintf("/tasks/%d/stage", id), nil, nil, &out); err != nil {
 				return err
 			}
 			return s.out(out)
@@ -406,13 +379,9 @@ Output: ` + fullTaskShape,
 			if _, err := s.getTask(cmd.Context(), id); err != nil {
 				return err
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out []task.Task
 			body := map[string]any{"ids": []int64{id}, "op": string(op), "tags": names}
-			if _, err := c.Do(cmd.Context(), http.MethodPost, "/tasks/bulk-tag", nil, body, &out); err != nil {
+			if err := s.do(cmd.Context(), http.MethodPost, "/tasks/bulk-tag", nil, body, &out); err != nil {
 				return err
 			}
 			if len(out) != 1 {

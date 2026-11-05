@@ -79,12 +79,8 @@ every task and edge is written or, on any error, nothing is.
 			if err != nil {
 				return err
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out task.PlanResult
-			if _, err := c.Do(cmd.Context(), http.MethodPost, "/plans", nil, plan, &out); err != nil {
+			if err := s.do(cmd.Context(), http.MethodPost, "/plans", nil, plan, &out); err != nil {
 				return err
 			}
 			return s.out(out)
