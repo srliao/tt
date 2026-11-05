@@ -82,16 +82,21 @@ func run() error {
 		}
 	}()
 
-	tasks := task.New(store)
+	// One clock for every component that stamps time, so a fake clock swapped
+	// in here would move runs, schedules and persisted timestamps together.
+	clock := time.Now
+	tasks := task.New(store, task.WithClock(clock))
 	tags := tag.New(store)
-	scripts := script.New(store)
-	drawings := drawing.New(store)
+	scripts := script.New(store, script.WithClock(clock))
+	drawings := drawing.New(store, drawing.WithClock(clock))
 
 	// cfg.Location decides when a calendar day starts for both the ctx.*
 	// date helpers and schedule matching; the two must agree or a daily
 	// script and the ctx.today() it calls would disagree about the date.
-	runner := runtime.New(tasks, tags, scripts, logger, runtime.WithLocation(cfg.Location))
-	sched := scheduler.New(runner, scripts, logger, scheduler.WithLocation(cfg.Location))
+	runner := runtime.New(tasks, tags, scripts, logger,
+		runtime.WithLocation(cfg.Location), runtime.WithClock(clock))
+	sched := scheduler.New(runner, scripts, logger,
+		scheduler.WithLocation(cfg.Location), scheduler.WithClock(clock))
 	if err := sched.Start(ctx); err != nil {
 		return fmt.Errorf("start scheduler: %w", err)
 	}

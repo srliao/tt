@@ -1,5 +1,5 @@
 -- name: CreateDrawing :one
-INSERT INTO drawings (name, scene) VALUES (?, ?) RETURNING *;
+INSERT INTO drawings (name, scene, created_at, updated_at) VALUES (?, ?, ?, ?) RETURNING *;
 
 -- name: GetDrawing :one
 SELECT * FROM drawings WHERE id = ?;
@@ -13,7 +13,7 @@ SELECT id, name, created_at, updated_at FROM drawings ORDER BY updated_at DESC, 
 UPDATE drawings
 SET name = COALESCE(sqlc.narg('name'), name),
     scene = COALESCE(sqlc.narg('scene'), scene),
-    updated_at = datetime('now')
+    updated_at = sqlc.arg('updated_at')
 WHERE id = sqlc.arg('id') RETURNING *;
 
 -- name: DeleteDrawing :exec

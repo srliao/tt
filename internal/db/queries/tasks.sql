@@ -1,6 +1,6 @@
 -- name: CreateTask :one
-INSERT INTO tasks (title, notes, due_date, priority, staged_order, spawned_by_script_id)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO tasks (title, notes, due_date, priority, staged_order, spawned_by_script_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetTask :one
@@ -14,33 +14,33 @@ ORDER BY t.name;
 
 -- name: UpdateTaskFields :one
 UPDATE tasks
-SET title = ?, notes = ?, due_date = ?, updated_at = datetime('now')
+SET title = ?, notes = ?, due_date = ?, updated_at = ?
 WHERE id = ?
 RETURNING *;
 
 -- name: SetTaskState :one
 UPDATE tasks
-SET state = ?, completed_at = ?, cancelled_at = ?, updated_at = datetime('now')
+SET state = ?, completed_at = ?, cancelled_at = ?, updated_at = ?
 WHERE id = ?
 RETURNING *;
 
 -- name: SetTaskStaged :one
-UPDATE tasks SET staged_order = ?, updated_at = datetime('now')
+UPDATE tasks SET staged_order = ?, updated_at = ?
 WHERE id = ? RETURNING *;
 
 -- name: SetTaskPriority :one
-UPDATE tasks SET priority = ?, updated_at = datetime('now')
+UPDATE tasks SET priority = ?, updated_at = ?
 WHERE id = ? RETURNING *;
 
 -- name: DeleteTask :exec
 DELETE FROM tasks WHERE id = ?;
 
 -- name: ClearStage :exec
-UPDATE tasks SET staged_order = NULL, updated_at = datetime('now')
+UPDATE tasks SET staged_order = NULL, updated_at = ?
 WHERE staged_order IS NOT NULL;
 
 -- name: ClearFinishedFromStage :exec
-UPDATE tasks SET staged_order = NULL, updated_at = datetime('now')
+UPDATE tasks SET staged_order = NULL, updated_at = ?
 WHERE staged_order IS NOT NULL AND state IN ('done','cancelled');
 
 -- New rows are minted at MIN(key) - 1 so they sort above everything already

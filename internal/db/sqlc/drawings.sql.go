@@ -10,16 +10,23 @@ import (
 )
 
 const createDrawing = `-- name: CreateDrawing :one
-INSERT INTO drawings (name, scene) VALUES (?, ?) RETURNING id, name, scene, created_at, updated_at
+INSERT INTO drawings (name, scene, created_at, updated_at) VALUES (?, ?, ?, ?) RETURNING id, name, scene, created_at, updated_at
 `
 
 type CreateDrawingParams struct {
-	Name  string `json:"name"`
-	Scene string `json:"scene"`
+	Name      string `json:"name"`
+	Scene     string `json:"scene"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 func (q *Queries) CreateDrawing(ctx context.Context, arg CreateDrawingParams) (Drawing, error) {
-	row := q.db.QueryRowContext(ctx, createDrawing, arg.Name, arg.Scene)
+	row := q.db.QueryRowContext(ctx, createDrawing,
+		arg.Name,
+		arg.Scene,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+	)
 	var i Drawing
 	err := row.Scan(
 		&i.ID,
@@ -100,20 +107,26 @@ const updateDrawing = `-- name: UpdateDrawing :one
 UPDATE drawings
 SET name = COALESCE(?1, name),
     scene = COALESCE(?2, scene),
-    updated_at = datetime('now')
-WHERE id = ?3 RETURNING id, name, scene, created_at, updated_at
+    updated_at = ?3
+WHERE id = ?4 RETURNING id, name, scene, created_at, updated_at
 `
 
 type UpdateDrawingParams struct {
-	Name  *string `json:"name"`
-	Scene *string `json:"scene"`
-	ID    int64   `json:"id"`
+	Name      *string `json:"name"`
+	Scene     *string `json:"scene"`
+	UpdatedAt string  `json:"updated_at"`
+	ID        int64   `json:"id"`
 }
 
 // NULL leaves a column unchanged, so a PATCH of name and/or scene is one
 // atomic statement.
 func (q *Queries) UpdateDrawing(ctx context.Context, arg UpdateDrawingParams) (Drawing, error) {
-	row := q.db.QueryRowContext(ctx, updateDrawing, arg.Name, arg.Scene, arg.ID)
+	row := q.db.QueryRowContext(ctx, updateDrawing,
+		arg.Name,
+		arg.Scene,
+		arg.UpdatedAt,
+		arg.ID,
+	)
 	var i Drawing
 	err := row.Scan(
 		&i.ID,
