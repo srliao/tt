@@ -24,6 +24,7 @@ func newScriptCmd(s *session) *cobra.Command {
 		newScriptUpdateCmd(s),
 		newScriptRunCmd(s),
 		newScriptRunsCmd(s),
+		newScriptSimulateCmd(s),
 	)
 }
 

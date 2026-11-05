@@ -15,6 +15,9 @@ func TestCommandHelp_HasExampleAndOutputShape(t *testing.T) {
 		"deps add", "deps rm", "deps batch", "deps graph",
 		"stage list", "stage reorder", "stage clear-finished",
 		"tag list", "tag create",
+		"plan check", "plan apply", "snapshot pull",
+		"script list", "script get", "script check", "script create", "script update",
+		"script run", "script runs", "script simulate",
 		"doctor",
 	} {
 		args := append(strings.Fields(path), "--help")
