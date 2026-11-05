@@ -110,7 +110,7 @@ func (s *Impl) AddDep(ctx context.Context, taskID, dependsOnID int64) (Task, err
 		if err != nil {
 			return err
 		}
-		return addDep(ctx, q, g, Edge{TaskID: taskID, DependsOnID: dependsOnID})
+		return addDep(ctx, q, g, Edge{TaskID: taskID, DependsOnID: dependsOnID}, s.now.Stamp())
 	})
 	if err != nil {
 		return Task{}, err
@@ -149,8 +149,9 @@ func (s *Impl) ApplyDeps(ctx context.Context, in DepBatch) ([]Task, error) {
 			}
 			g.remove(e)
 		}
+		now := s.now.Stamp()
 		for i, e := range in.Add {
-			if err := addDep(ctx, q, g, e); err != nil {
+			if err := addDep(ctx, q, g, e, now); err != nil {
 				var re *RuleError
 				if errors.As(err, &re) {
 					re.Details["op"] = "add"
@@ -301,7 +302,7 @@ func (g *depGraph) pathTo(from, to int64) []int64 {
 	return nil
 }
 
-func addDep(ctx context.Context, q *sqlcgen.Queries, g *depGraph, e Edge) error {
+func addDep(ctx context.Context, q *sqlcgen.Queries, g *depGraph, e Edge, now string) error {
 	blocked, _, err := loadEdgeTasks(ctx, q, e)
 	if err != nil {
 		return err
@@ -315,7 +316,7 @@ func addDep(ctx context.Context, q *sqlcgen.Queries, g *depGraph, e Edge) error 
 	if path := g.pathTo(e.DependsOnID, e.TaskID); path != nil {
 		return &RuleError{Rule: RuleCycle, Details: map[string]any{"path": append([]int64{e.TaskID}, path...)}}
 	}
-	if err := q.AddTaskDep(ctx, sqlcgen.AddTaskDepParams{TaskID: e.TaskID, DependsOnID: e.DependsOnID}); err != nil {
+	if err := q.AddTaskDep(ctx, sqlcgen.AddTaskDepParams{TaskID: e.TaskID, DependsOnID: e.DependsOnID, CreatedAt: now}); err != nil {
 		return fmt.Errorf("task: add dep %d→%d: %w", e.TaskID, e.DependsOnID, err)
 	}
 	g.add(e)

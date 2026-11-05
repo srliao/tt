@@ -10,16 +10,17 @@ import (
 )
 
 const addTaskDep = `-- name: AddTaskDep :exec
-INSERT OR IGNORE INTO task_deps (task_id, depends_on_id) VALUES (?, ?)
+INSERT OR IGNORE INTO task_deps (task_id, depends_on_id, created_at) VALUES (?, ?, ?)
 `
 
 type AddTaskDepParams struct {
-	TaskID      int64 `json:"task_id"`
-	DependsOnID int64 `json:"depends_on_id"`
+	TaskID      int64  `json:"task_id"`
+	DependsOnID int64  `json:"depends_on_id"`
+	CreatedAt   string `json:"created_at"`
 }
 
 func (q *Queries) AddTaskDep(ctx context.Context, arg AddTaskDepParams) error {
-	_, err := q.db.ExecContext(ctx, addTaskDep, arg.TaskID, arg.DependsOnID)
+	_, err := q.db.ExecContext(ctx, addTaskDep, arg.TaskID, arg.DependsOnID, arg.CreatedAt)
 	return err
 }
 

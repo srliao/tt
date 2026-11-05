@@ -61,6 +61,12 @@ build-release: fe-build
     VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o ./bin/tt ./cmd/tt
 
+build-cli:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.Version=${VERSION}" -o ./bin/tt-cli ./cmd/tt-cli
+
 test: be-test fe-test
 
 lint: be-lint fe-lint

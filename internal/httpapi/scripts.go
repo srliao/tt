@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/srliao/tt/internal/runtime"
 	"github.com/srliao/tt/internal/script"
 )
 
@@ -36,11 +37,13 @@ type scheduleBody struct {
 	Day     json.RawMessage `json:"day,omitempty"`
 }
 
-// scriptBody mirrors the POST/PATCH /scripts payload.
+// scriptBody mirrors the POST/PATCH /scripts payload. Enabled is optional:
+// omitted means false on create and unchanged on PATCH, so tt-cli can save a
+// script without undoing an enable/disable made in the UI.
 type scriptBody struct {
 	Name     string       `json:"name"`
 	Code     string       `json:"code"`
-	Enabled  bool         `json:"enabled"`
+	Enabled  *bool        `json:"enabled"`
 	Schedule scheduleBody `json:"schedule"`
 }
 
@@ -97,6 +100,23 @@ func (s *Server) handleListScripts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// checkScriptCode compiles code without running it and writes a 400 with the
+// error position when it doesn't compile. Reports whether the code is valid.
+func checkScriptCode(w http.ResponseWriter, code string) bool {
+	err := runtime.Check(code)
+	if err == nil {
+		return true
+	}
+	details := map[string]any{"field": "code"}
+	var ce *runtime.CheckError
+	if errors.As(err, &ce) {
+		details["line"] = ce.Line
+		details["column"] = ce.Column
+	}
+	writeError(w, http.StatusBadRequest, CodeValidation, err.Error(), details)
+	return false
+}
+
 func (s *Server) handleCreateScript(w http.ResponseWriter, r *http.Request) {
 	var body scriptBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -112,10 +132,13 @@ func (s *Server) handleCreateScript(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, CodeValidation, err.Error(), map[string]any{"field": "schedule"})
 		return
 	}
+	if !checkScriptCode(w, body.Code) {
+		return
+	}
 	created, err := s.scripts.Create(r.Context(), script.CreateInput{
 		Name:     body.Name,
 		Code:     body.Code,
-		Enabled:  body.Enabled,
+		Enabled:  body.Enabled != nil && *body.Enabled,
 		Schedule: sch,
 	})
 	if err != nil {
@@ -157,10 +180,21 @@ func (s *Server) handleUpdateScript(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, CodeValidation, err.Error(), map[string]any{"field": "schedule"})
 		return
 	}
+	if !checkScriptCode(w, body.Code) {
+		return
+	}
+	if body.Enabled == nil {
+		cur, err := s.scripts.Get(r.Context(), id)
+		if err != nil {
+			writeServiceError(w, err)
+			return
+		}
+		body.Enabled = &cur.Enabled
+	}
 	updated, err := s.scripts.Update(r.Context(), id, script.UpdateInput{
 		Name:     body.Name,
 		Code:     body.Code,
-		Enabled:  body.Enabled,
+		Enabled:  *body.Enabled,
 		Schedule: sch,
 	})
 	if err != nil {

@@ -1,0 +1,10 @@
+# tt-cli config. Copy to ~/.config/tt-cli/config.toml and chmod 600.
+# TT_URL, TT_CF_CLIENT_ID and TT_CF_CLIENT_SECRET override these values.
+
+# Base URL of the tt server, e.g. "http://localhost:8080" for a local one.
+url = "https://tt.example.com"
+
+# Cloudflare Access service token, only if the server sits behind Access.
+# Leave both empty (or delete them) for a plain tt; no auth headers are sent.
+cf_client_id     = ""
+cf_client_secret = ""

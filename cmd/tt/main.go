@@ -82,16 +82,21 @@ func run() error {
 		}
 	}()
 
-	tasks := task.New(store)
+	// One clock for every component that stamps time, so a fake clock swapped
+	// in here would move runs, schedules and persisted timestamps together.
+	clock := time.Now
+	tasks := task.New(store, task.WithClock(clock))
 	tags := tag.New(store)
-	scripts := script.New(store)
-	drawings := drawing.New(store)
+	scripts := script.New(store, script.WithClock(clock))
+	drawings := drawing.New(store, drawing.WithClock(clock))
 
 	// cfg.Location decides when a calendar day starts for both the ctx.*
 	// date helpers and schedule matching; the two must agree or a daily
 	// script and the ctx.today() it calls would disagree about the date.
-	runner := runtime.New(tasks, tags, scripts, logger, runtime.WithLocation(cfg.Location))
-	sched := scheduler.New(runner, scripts, logger, scheduler.WithLocation(cfg.Location))
+	runner := runtime.New(tasks, tags, scripts, logger,
+		runtime.WithLocation(cfg.Location), runtime.WithClock(clock))
+	sched := scheduler.New(runner, scripts, logger,
+		scheduler.WithLocation(cfg.Location), scheduler.WithClock(clock))
 	if err := sched.Start(ctx); err != nil {
 		return fmt.Errorf("start scheduler: %w", err)
 	}
@@ -107,6 +112,10 @@ func run() error {
 	}
 	spaHandler := httpapi.NewSPAHandler(distFS)
 
+	schema, err := db.SchemaVersion()
+	if err != nil {
+		return fmt.Errorf("read schema version: %w", err)
+	}
 	server := httpapi.New(
 		tasks, tags, scripts, drawings, sched,
 		httpapi.PingerFunc(store.DB().PingContext),
@@ -114,8 +123,13 @@ func run() error {
 			Logger:   logger,
 			Version:  Version,
 			BuiltAt:  BuiltAt,
-			Timezone: cfg.Location.String(),
-			SPA:      spaHandler,
+			Timezone:      cfg.Location.String(),
+			SchemaVersion: schema,
+			// Staging under the data dir keeps the copy on the same volume
+			// as the live DB, which tmpfs-backed /tmp may not have room for.
+			Snapshotter: store,
+			SnapshotDir: cfg.DataDir,
+			SPA:         spaHandler,
 		},
 	)
 

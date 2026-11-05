@@ -39,6 +39,17 @@ Back up or move your data by copying `db.sqlite` while `tt` is stopped
 (it runs in WAL mode). `just build-release` stamps the version from
 `git describe`.
 
+`just build-cli` writes `./bin/tt-cli`, the agent-facing CLI (or
+`go install github.com/srliao/tt/cmd/tt-cli@latest`). Point it at a server
+with `TT_URL=https://tt.example.com` or a config file, then run
+`tt-cli doctor`:
+
+```sh
+mkdir -p ~/.config/tt-cli
+cp cmd/tt-cli/config.example.toml ~/.config/tt-cli/config.toml
+chmod 600 ~/.config/tt-cli/config.toml   # then fill in url (and the CF token if any)
+```
+
 ## Development
 
 ```sh

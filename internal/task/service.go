@@ -11,11 +11,6 @@ import (
 	sqlcgen "github.com/srliao/tt/internal/db/sqlc"
 )
 
-// sqliteTimeLayout matches the format goose's datetime('now') produces in
-// SQLite (UTC, second precision). When parsing, we try RFC3339 as a fallback
-// in case a caller persisted a higher-precision timestamp.
-const sqliteTimeLayout = "2006-01-02 15:04:05"
-
 // Service is the task-domain API. The interface enumerates every method
 // implemented by Impl so callers can mock the service in tests.
 type Service interface {
@@ -54,6 +49,8 @@ type Service interface {
 	ApplyDeps(ctx context.Context, in DepBatch) ([]Task, error)
 	Graph(ctx context.Context, id int64, dir Direction) (Graph, error)
 	ListDeps(ctx context.Context) ([]Edge, error)
+
+	ApplyPlan(ctx context.Context, p Plan) (PlanResult, error)
 }
 
 // Impl is the concrete Service backed by a *db.Store. It is safe for
@@ -61,11 +58,29 @@ type Service interface {
 type Impl struct {
 	store *db.Store
 	q     *sqlcgen.Queries
+	now   db.Clock
+}
+
+// Option configures an Impl at construction time.
+type Option func(*Impl)
+
+// WithClock overrides the clock used for every persisted timestamp. Defaults
+// to time.Now; simulations pass a fake clock so the rows they write follow it.
+func WithClock(now func() time.Time) Option {
+	return func(s *Impl) {
+		if now != nil {
+			s.now = now
+		}
+	}
 }
 
 // New constructs a Service bound to the supplied store.
-func New(store *db.Store) *Impl {
-	return &Impl{store: store, q: store.Queries()}
+func New(store *db.Store, opts ...Option) *Impl {
+	s := &Impl{store: store, q: store.Queries(), now: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // Create inserts a new task above every existing one. Lists render by
@@ -89,6 +104,7 @@ func (s *Impl) Create(ctx context.Context, in CreateInput) (Task, error) {
 	}
 	newPriority := minP - 1.0
 
+	now := s.now.Stamp()
 	row, err := s.q.CreateTask(ctx, sqlcgen.CreateTaskParams{
 		Title:             title,
 		Notes:             in.Notes,
@@ -96,6 +112,8 @@ func (s *Impl) Create(ctx context.Context, in CreateInput) (Task, error) {
 		Priority:          newPriority,
 		StagedOrder:       nil,
 		SpawnedByScriptID: in.SpawnedByScriptID,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	})
 	if err != nil {
 		return Task{}, fmt.Errorf("task: create: %w", err)
@@ -114,7 +132,7 @@ func (s *Impl) SetState(ctx context.Context, id int64, st State) (Task, error) {
 		return Task{}, fmt.Errorf("task: invalid state %q", st)
 	}
 
-	now := time.Now().UTC().Format(sqliteTimeLayout)
+	now := s.now.Stamp()
 	var completedAt, cancelledAt *string
 	switch st {
 	case StateDone:
@@ -141,6 +159,7 @@ func (s *Impl) SetState(ctx context.Context, id int64, st State) (Task, error) {
 			State:       string(st),
 			CompletedAt: completedAt,
 			CancelledAt: cancelledAt,
+			UpdatedAt:   now,
 			ID:          id,
 		})
 		if err != nil {
@@ -165,6 +184,7 @@ func (s *Impl) Stage(ctx context.Context, id int64) (Task, error) {
 	newStaged := minS - 1.0
 	row, err := s.q.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
 		StagedOrder: &newStaged,
+		UpdatedAt:   s.now.Stamp(),
 		ID:          id,
 	})
 	if err != nil {
@@ -178,6 +198,7 @@ func (s *Impl) Stage(ctx context.Context, id int64) (Task, error) {
 func (s *Impl) Unstage(ctx context.Context, id int64) (Task, error) {
 	row, err := s.q.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
 		StagedOrder: nil,
+		UpdatedAt:   s.now.Stamp(),
 		ID:          id,
 	})
 	if err != nil {
@@ -188,7 +209,7 @@ func (s *Impl) Unstage(ctx context.Context, id int64) (Task, error) {
 
 // ClearStage empties the focused batch, regardless of each task's state.
 func (s *Impl) ClearStage(ctx context.Context) error {
-	if err := s.q.ClearStage(ctx); err != nil {
+	if err := s.q.ClearStage(ctx, s.now.Stamp()); err != nil {
 		return fmt.Errorf("task: clear stage: %w", err)
 	}
 	return nil
@@ -197,7 +218,7 @@ func (s *Impl) ClearStage(ctx context.Context) error {
 // ClearFinishedFromStage removes only the done / cancelled tasks from the
 // focused batch, leaving still-actionable rows in place.
 func (s *Impl) ClearFinishedFromStage(ctx context.Context) error {
-	if err := s.q.ClearFinishedFromStage(ctx); err != nil {
+	if err := s.q.ClearFinishedFromStage(ctx, s.now.Stamp()); err != nil {
 		return fmt.Errorf("task: clear finished from stage: %w", err)
 	}
 	return nil
@@ -223,8 +244,9 @@ func (s *Impl) ReorderMain(ctx context.Context, id int64, beforeID, afterID *int
 	}
 	newKey := Midpoint(bp, ap)
 	row, err := s.q.SetTaskPriority(ctx, sqlcgen.SetTaskPriorityParams{
-		Priority: newKey,
-		ID:       id,
+		Priority:  newKey,
+		UpdatedAt: s.now.Stamp(),
+		ID:        id,
 	})
 	if err != nil {
 		return Task{}, fmt.Errorf("task: reorder main: %w", err)
@@ -251,6 +273,7 @@ func (s *Impl) ReorderStage(ctx context.Context, id int64, beforeID, afterID *in
 	newKey := Midpoint(bp, ap)
 	row, err := s.q.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
 		StagedOrder: &newKey,
+		UpdatedAt:   s.now.Stamp(),
 		ID:          id,
 	})
 	if err != nil {
@@ -501,10 +524,12 @@ func (s *Impl) RebalancePriority(ctx context.Context) error {
 	defer func() { _ = tx.Rollback() }()
 	qtx := s.q.WithTx(tx)
 
+	now := s.now.Stamp()
 	for i, r := range rows {
 		if _, err := qtx.SetTaskPriority(ctx, sqlcgen.SetTaskPriorityParams{
-			Priority: float64(i),
-			ID:       r.ID,
+			Priority:  float64(i),
+			UpdatedAt: now,
+			ID:        r.ID,
 		}); err != nil {
 			return fmt.Errorf("task: rebalance set priority %d: %w", r.ID, err)
 		}
@@ -533,10 +558,12 @@ func (s *Impl) RebalanceStage(ctx context.Context) error {
 	defer func() { _ = tx.Rollback() }()
 	qtx := s.q.WithTx(tx)
 
+	now := s.now.Stamp()
 	for i, r := range rows {
 		key := float64(i)
 		if _, err := qtx.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
 			StagedOrder: &key,
+			UpdatedAt:   now,
 			ID:          r.ID,
 		}); err != nil {
 			return fmt.Errorf("task: rebalance set staged %d: %w", r.ID, err)
@@ -562,10 +589,11 @@ func (s *Impl) Update(ctx context.Context, id int64, in UpdateInput) (Task, erro
 	}
 
 	row, err := s.q.UpdateTaskFields(ctx, sqlcgen.UpdateTaskFieldsParams{
-		Title:   title,
-		Notes:   in.Notes,
-		DueDate: due,
-		ID:      id,
+		Title:     title,
+		Notes:     in.Notes,
+		DueDate:   due,
+		UpdatedAt: s.now.Stamp(),
+		ID:        id,
 	})
 	if err != nil {
 		return Task{}, fmt.Errorf("task: update: %w", err)
@@ -713,36 +741,21 @@ func rowToTask(r sqlcgen.Task, tags []string) Task {
 		Priority:          r.Priority,
 		StagedOrder:       r.StagedOrder,
 		SpawnedByScriptID: r.SpawnedByScriptID,
-		CreatedAt:         parseSqliteTime(r.CreatedAt),
-		UpdatedAt:         parseSqliteTime(r.UpdatedAt),
+		CreatedAt:         db.ParseTime(r.CreatedAt),
+		UpdatedAt:         db.ParseTime(r.UpdatedAt),
 		Tags:              tags,
 		BlockedBy:         []int64{},
 		Blocks:            []int64{},
 	}
 	if r.CompletedAt != nil {
-		ts := parseSqliteTime(*r.CompletedAt)
+		ts := db.ParseTime(*r.CompletedAt)
 		t.CompletedAt = &ts
 	}
 	if r.CancelledAt != nil {
-		ts := parseSqliteTime(*r.CancelledAt)
+		ts := db.ParseTime(*r.CancelledAt)
 		t.CancelledAt = &ts
 	}
 	return t
-}
-
-// parseSqliteTime accepts both SQLite's datetime('now') output and RFC3339
-// to be tolerant of timestamps produced by other code paths.
-func parseSqliteTime(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	if t, err := time.Parse(sqliteTimeLayout, s); err == nil {
-		return t.UTC()
-	}
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t.UTC()
-	}
-	return time.Time{}
 }
 
 // coerceFloat converts the COALESCE(MAX(...), -1.0) result from sqlc back to a

@@ -37,18 +37,21 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // timezone is the resolved app time zone (config.Config.Timezone) — the one
 // deciding when a calendar day starts for schedules and the ctx.* date
 // helpers. Reported here so "why did my daily script fire at 8pm" is
-// answerable from a single HTTP call.
+// answerable from a single HTTP call. schema_version is the database's goose
+// version, which tt-cli doctor compares against its own.
 type versionResponse struct {
-	Version  string `json:"version"`
-	BuiltAt  string `json:"built_at,omitempty"`
-	Timezone string `json:"timezone,omitempty"`
+	Version       string `json:"version"`
+	BuiltAt       string `json:"built_at,omitempty"`
+	Timezone      string `json:"timezone,omitempty"`
+	SchemaVersion int64  `json:"schema_version,omitempty"`
 }
 
 // handleVersion returns the version string supplied at server construction.
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, versionResponse{
-		Version:  s.version,
-		BuiltAt:  s.builtAt,
-		Timezone: s.timezone,
+		Version:       s.version,
+		BuiltAt:       s.builtAt,
+		Timezone:      s.timezone,
+		SchemaVersion: s.schema,
 	})
 }

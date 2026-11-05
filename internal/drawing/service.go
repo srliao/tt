@@ -13,10 +13,6 @@ import (
 	sqlcgen "github.com/srliao/tt/internal/db/sqlc"
 )
 
-// sqliteTimeLayout matches the format SQLite's datetime('now') produces (UTC,
-// second precision). RFC3339 is tried as a fallback.
-const sqliteTimeLayout = "2006-01-02 15:04:05"
-
 // Service is the drawing-domain API.
 type Service interface {
 	Create(ctx context.Context, name string, scene json.RawMessage) (Drawing, error)
@@ -28,12 +24,30 @@ type Service interface {
 
 // Impl is the concrete Service backed by a *db.Store.
 type Impl struct {
-	q *sqlcgen.Queries
+	q   *sqlcgen.Queries
+	now db.Clock
+}
+
+// Option configures an Impl at construction time.
+type Option func(*Impl)
+
+// WithClock overrides the clock used for persisted timestamps. Defaults to
+// time.Now.
+func WithClock(now func() time.Time) Option {
+	return func(s *Impl) {
+		if now != nil {
+			s.now = now
+		}
+	}
 }
 
 // New constructs a Service bound to the supplied store.
-func New(store *db.Store) *Impl {
-	return &Impl{q: store.Queries()}
+func New(store *db.Store, opts ...Option) *Impl {
+	s := &Impl{q: store.Queries(), now: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
 }
 
 // Create inserts a drawing. The name is trimmed and must be non-empty. A nil
@@ -52,7 +66,13 @@ func (s *Impl) Create(ctx context.Context, name string, scene json.RawMessage) (
 		}
 		stored = v
 	}
-	row, err := s.q.CreateDrawing(ctx, sqlcgen.CreateDrawingParams{Name: name, Scene: stored})
+	now := s.now.Stamp()
+	row, err := s.q.CreateDrawing(ctx, sqlcgen.CreateDrawingParams{
+		Name:      name,
+		Scene:     stored,
+		CreatedAt: now,
+		UpdatedAt: now,
+	})
 	if err != nil {
 		return Drawing{}, fmt.Errorf("drawing: create: %w", err)
 	}
@@ -86,8 +106,7 @@ func (s *Impl) List(ctx context.Context) ([]Summary, error) {
 // validated before anything is written, so a bad scene can't leave a
 // half-applied rename behind.
 func (s *Impl) Update(ctx context.Context, id int64, in UpdateInput) (Drawing, error) {
-	var params sqlcgen.UpdateDrawingParams
-	params.ID = id
+	params := sqlcgen.UpdateDrawingParams{ID: id, UpdatedAt: s.now.Stamp()}
 	if in.Name != nil {
 		name, err := validateName(*in.Name)
 		if err != nil {
@@ -146,23 +165,9 @@ func toSummary(id int64, name, createdAt, updatedAt string) Summary {
 	return Summary{
 		ID:        id,
 		Name:      name,
-		CreatedAt: parseSqliteTime(createdAt),
-		UpdatedAt: parseSqliteTime(updatedAt),
+		CreatedAt: db.ParseTime(createdAt),
+		UpdatedAt: db.ParseTime(updatedAt),
 	}
-}
-
-// parseSqliteTime accepts both SQLite's datetime('now') output and RFC3339.
-func parseSqliteTime(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	if t, err := time.Parse(sqliteTimeLayout, s); err == nil {
-		return t.UTC()
-	}
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t.UTC()
-	}
-	return time.Time{}
 }
 
 // Compile-time assertion that Impl satisfies the Service interface.

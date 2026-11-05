@@ -10,8 +10,8 @@ import (
 )
 
 const createScript = `-- name: CreateScript :one
-INSERT INTO scripts (name, code, enabled, schedule_kind, schedule_config)
-VALUES (?, ?, ?, ?, ?) RETURNING id, name, code, enabled, schedule_kind, schedule_config, user_state, last_run_at, created_at, updated_at
+INSERT INTO scripts (name, code, enabled, schedule_kind, schedule_config, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id, name, code, enabled, schedule_kind, schedule_config, user_state, last_run_at, created_at, updated_at
 `
 
 type CreateScriptParams struct {
@@ -20,6 +20,8 @@ type CreateScriptParams struct {
 	Enabled        int64  `json:"enabled"`
 	ScheduleKind   string `json:"schedule_kind"`
 	ScheduleConfig string `json:"schedule_config"`
+	CreatedAt      string `json:"created_at"`
+	UpdatedAt      string `json:"updated_at"`
 }
 
 func (q *Queries) CreateScript(ctx context.Context, arg CreateScriptParams) (Script, error) {
@@ -29,6 +31,8 @@ func (q *Queries) CreateScript(ctx context.Context, arg CreateScriptParams) (Scr
 		arg.Enabled,
 		arg.ScheduleKind,
 		arg.ScheduleConfig,
+		arg.CreatedAt,
+		arg.UpdatedAt,
 	)
 	var i Script
 	err := row.Scan(
@@ -165,37 +169,39 @@ func (q *Queries) ListScripts(ctx context.Context) ([]Script, error) {
 }
 
 const setScriptLastRunAt = `-- name: SetScriptLastRunAt :exec
-UPDATE scripts SET last_run_at = ?, updated_at = datetime('now') WHERE id = ?
+UPDATE scripts SET last_run_at = ?, updated_at = ? WHERE id = ?
 `
 
 type SetScriptLastRunAtParams struct {
 	LastRunAt *string `json:"last_run_at"`
+	UpdatedAt string  `json:"updated_at"`
 	ID        int64   `json:"id"`
 }
 
 func (q *Queries) SetScriptLastRunAt(ctx context.Context, arg SetScriptLastRunAtParams) error {
-	_, err := q.db.ExecContext(ctx, setScriptLastRunAt, arg.LastRunAt, arg.ID)
+	_, err := q.db.ExecContext(ctx, setScriptLastRunAt, arg.LastRunAt, arg.UpdatedAt, arg.ID)
 	return err
 }
 
 const setScriptUserState = `-- name: SetScriptUserState :exec
-UPDATE scripts SET user_state = ?, updated_at = datetime('now') WHERE id = ?
+UPDATE scripts SET user_state = ?, updated_at = ? WHERE id = ?
 `
 
 type SetScriptUserStateParams struct {
 	UserState string `json:"user_state"`
+	UpdatedAt string `json:"updated_at"`
 	ID        int64  `json:"id"`
 }
 
 func (q *Queries) SetScriptUserState(ctx context.Context, arg SetScriptUserStateParams) error {
-	_, err := q.db.ExecContext(ctx, setScriptUserState, arg.UserState, arg.ID)
+	_, err := q.db.ExecContext(ctx, setScriptUserState, arg.UserState, arg.UpdatedAt, arg.ID)
 	return err
 }
 
 const updateScript = `-- name: UpdateScript :one
 UPDATE scripts
 SET name = ?, code = ?, enabled = ?, schedule_kind = ?, schedule_config = ?,
-    updated_at = datetime('now')
+    updated_at = ?
 WHERE id = ? RETURNING id, name, code, enabled, schedule_kind, schedule_config, user_state, last_run_at, created_at, updated_at
 `
 
@@ -205,6 +211,7 @@ type UpdateScriptParams struct {
 	Enabled        int64  `json:"enabled"`
 	ScheduleKind   string `json:"schedule_kind"`
 	ScheduleConfig string `json:"schedule_config"`
+	UpdatedAt      string `json:"updated_at"`
 	ID             int64  `json:"id"`
 }
 
@@ -215,6 +222,7 @@ func (q *Queries) UpdateScript(ctx context.Context, arg UpdateScriptParams) (Scr
 		arg.Enabled,
 		arg.ScheduleKind,
 		arg.ScheduleConfig,
+		arg.UpdatedAt,
 		arg.ID,
 	)
 	var i Script

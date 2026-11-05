@@ -3,6 +3,7 @@ package db_test
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -165,5 +166,50 @@ func TestTaskDepsMigrationUpgradeAndDown(t *testing.T) {
 	}
 	if n != 0 {
 		t.Fatalf("task_deps still present after down")
+	}
+}
+
+// The server's database runs in WAL mode; its VACUUM INTO copy must still
+// load into memory, and writes there must not touch the file it came from.
+func TestOpenSnapshot_LoadsCopyOfWALDatabaseInMemory(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	src, err := db.Open(ctx, filepath.Join(dir, "tt.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = src.Close() })
+	if _, err := src.DB().ExecContext(ctx, `INSERT INTO tags (name) VALUES ('work')`); err != nil {
+		t.Fatal(err)
+	}
+	copyPath := filepath.Join(dir, "copy.db")
+	if err := src.VacuumInto(ctx, copyPath); err != nil {
+		t.Fatal(err)
+	}
+	image, err := os.ReadFile(copyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snap, err := db.OpenSnapshot(ctx, image)
+	if err != nil {
+		t.Fatalf("OpenSnapshot: %v", err)
+	}
+	t.Cleanup(func() { _ = snap.Close() })
+	if _, err := snap.DB().ExecContext(ctx, `INSERT INTO tags (name) VALUES ('home')`); err != nil {
+		t.Fatalf("write to snapshot: %v", err)
+	}
+	var n int
+	if err := snap.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM tags`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("snapshot tags = %d, want 2", n)
+	}
+	if err := src.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM tags`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("source tags = %d, want 1", n)
 	}
 }

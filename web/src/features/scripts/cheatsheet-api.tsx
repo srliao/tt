@@ -11,8 +11,9 @@
 
 import { CopyIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import md from '@/assets/ctx-cheatsheet.md?raw';
 import { Button } from '@/components/ui/button';
+// Shared with tt-cli's `help scripts`, which embeds the same file.
+import md from '../../../../internal/runtime/docs/ctx-cheatsheet.md?raw';
 
 interface CheatsheetEntry {
   /** The function name (e.g. `ctx.today()`). */
