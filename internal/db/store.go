@@ -81,6 +81,72 @@ func (s *Store) VacuumInto(ctx context.Context, path string) error {
 	return nil
 }
 
+// VersionMismatchError reports a snapshot whose goose version differs from
+// the latest migration this binary embeds.
+type VersionMismatchError struct {
+	Snapshot int64
+	Latest   int64
+}
+
+func (e *VersionMismatchError) Error() string {
+	return fmt.Sprintf("snapshot schema version %d differs from this binary's %d", e.Snapshot, e.Latest)
+}
+
+// OpenSnapshot loads a database file image (as written by VacuumInto) into
+// in-memory SQLite. Migrations are not run: the image must already be at
+// this binary's latest migration, else a *VersionMismatchError is returned.
+func OpenSnapshot(ctx context.Context, image []byte) (*Store, error) {
+	if len(image) == 0 {
+		return nil, fmt.Errorf("open snapshot: empty image")
+	}
+	sqlDB, err := sql.Open("sqlite", "file::memory:?_pragma=foreign_keys(1)")
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+	store, err := loadSnapshot(ctx, sqlDB, image)
+	if err != nil {
+		_ = sqlDB.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+func loadSnapshot(ctx context.Context, sqlDB *sql.DB, image []byte) (*Store, error) {
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("open snapshot: %w", err)
+	}
+	err = conn.Raw(func(dc any) error {
+		d, ok := dc.(interface{ Deserialize([]byte) error })
+		if !ok {
+			return fmt.Errorf("sqlite driver cannot deserialize")
+		}
+		return d.Deserialize(image)
+	})
+	_ = conn.Close()
+	if err != nil {
+		return nil, fmt.Errorf("open snapshot: deserialize: %w", err)
+	}
+
+	provider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, migrations.FS)
+	if err != nil {
+		return nil, fmt.Errorf("new goose provider: %w", err)
+	}
+	current, err := provider.GetDBVersion(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("open snapshot: read schema version: %w", err)
+	}
+	var latest int64
+	if sources := provider.ListSources(); len(sources) > 0 {
+		latest = sources[len(sources)-1].Version
+	}
+	if current != latest {
+		return nil, &VersionMismatchError{Snapshot: current, Latest: latest}
+	}
+	return &Store{db: sqlDB, queries: sqlcgen.New(sqlDB)}, nil
+}
+
 // Close closes the underlying database connection.
 func (s *Store) Close() error {
 	if s.db == nil {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -26,6 +27,9 @@ type App struct {
 	HTTP *http.Client
 	// Version is the CLI build version.
 	Version string
+	// Now is the CLI's clock (snapshot pulled_at, simulate's default range).
+	// Defaults to time.Now.
+	Now func() time.Time
 }
 
 // session is what every command closes over: the App plus the lazily loaded
@@ -101,6 +105,9 @@ func Run(ctx context.Context, app App, args []string) int {
 	if app.Stdin == nil {
 		app.Stdin = os.Stdin
 	}
+	if app.Now == nil {
+		app.Now = time.Now
+	}
 	s := &session{App: app}
 	root := newRootCmd(s)
 	root.SetArgs(args)
@@ -132,6 +139,8 @@ func newRootCmd(s *session) *cobra.Command {
 		newDepsCmd(s),
 		newStageCmd(s),
 		newTagCmd(s),
+		newPlanCmd(s),
+		newSnapshotCmd(s),
 		newDoctorCmd(s),
 	)
 	return root

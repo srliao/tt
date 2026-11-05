@@ -60,6 +60,40 @@ func New(baseURL, clientID, clientSecret string) *Client {
 // JSON response into out (skipped when out is nil or the response is 204).
 // The response headers are returned on success.
 func (c *Client) Do(ctx context.Context, method, path string, query url.Values, body, out any) (http.Header, error) {
+	resp, raw, err := c.send(ctx, method, path, query, body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusNoContent {
+		return resp.Header, nil
+	}
+	if !isJSON(resp.Header.Get("Content-Type")) {
+		return nil, authError(resp, "server returned a non-JSON response (likely an auth or proxy page); check url and Cloudflare Access credentials")
+	}
+	if out != nil {
+		if err := json.Unmarshal(raw, out); err != nil {
+			return nil, &APIError{Status: resp.StatusCode, Code: CodeNetwork, Message: "decode response: " + err.Error()}
+		}
+	}
+	return resp.Header, nil
+}
+
+// Fetch GETs /api/v1+path and returns the raw body of a successful response
+// whose Content-Type is contentType. Errors decode as in Do.
+func (c *Client) Fetch(ctx context.Context, path, contentType string) ([]byte, http.Header, error) {
+	resp, raw, err := c.send(ctx, http.MethodGet, path, nil, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	if mt, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type")); mt != contentType {
+		return nil, nil, authError(resp, "server returned an unexpected "+resp.Header.Get("Content-Type")+" response (likely an auth or proxy page); check url and Cloudflare Access credentials")
+	}
+	return raw, resp.Header, nil
+}
+
+// send performs one request and returns the response with its body read.
+// Redirects and error statuses come back as an *APIError.
+func (c *Client) send(ctx context.Context, method, path string, query url.Values, body any) (*http.Response, []byte, error) {
 	u := c.BaseURL + "/api/v1" + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
@@ -68,13 +102,13 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return nil, fmt.Errorf("ttclient: encode body: %w", err)
+			return nil, nil, fmt.Errorf("ttclient: encode body: %w", err)
 		}
 		rdr = bytes.NewReader(b)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, u, rdr)
 	if err != nil {
-		return nil, &APIError{Code: CodeNetwork, Message: err.Error(), Details: map[string]any{"url": c.BaseURL}}
+		return nil, nil, &APIError{Code: CodeNetwork, Message: err.Error(), Details: map[string]any{"url": c.BaseURL}}
 	}
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
@@ -87,39 +121,31 @@ func (c *Client) Do(ctx context.Context, method, path string, query url.Values, 
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, &APIError{Code: CodeNetwork, Message: err.Error(), Details: map[string]any{"url": c.BaseURL}}
+		return nil, nil, &APIError{Code: CodeNetwork, Message: err.Error(), Details: map[string]any{"url": c.BaseURL}}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, &APIError{Code: CodeNetwork, Message: "read response: " + err.Error()}
+		return nil, nil, &APIError{Code: CodeNetwork, Message: "read response: " + err.Error()}
 	}
 
 	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
-		return nil, authError(resp, "request was redirected (likely a Cloudflare Access login); check cf_client_id / cf_client_secret")
-	}
-	if resp.StatusCode == http.StatusNoContent {
-		return resp.Header, nil
-	}
-	if !isJSON(resp.Header.Get("Content-Type")) {
-		return nil, authError(resp, "server returned a non-JSON response (likely an auth or proxy page); check url and Cloudflare Access credentials")
+		return nil, nil, authError(resp, "request was redirected (likely a Cloudflare Access login); check cf_client_id / cf_client_secret")
 	}
 	if resp.StatusCode >= 400 {
+		if !isJSON(resp.Header.Get("Content-Type")) {
+			return nil, nil, authError(resp, "server returned a non-JSON response (likely an auth or proxy page); check url and Cloudflare Access credentials")
+		}
 		var env struct {
 			Error *APIError `json:"error"`
 		}
 		if err := json.Unmarshal(raw, &env); err != nil || env.Error == nil || env.Error.Code == "" {
-			return nil, &APIError{Status: resp.StatusCode, Code: CodeNetwork, Message: fmt.Sprintf("unexpected %d response", resp.StatusCode)}
+			return nil, nil, &APIError{Status: resp.StatusCode, Code: CodeNetwork, Message: fmt.Sprintf("unexpected %d response", resp.StatusCode)}
 		}
 		env.Error.Status = resp.StatusCode
-		return nil, env.Error
+		return nil, nil, env.Error
 	}
-	if out != nil {
-		if err := json.Unmarshal(raw, out); err != nil {
-			return nil, &APIError{Status: resp.StatusCode, Code: CodeNetwork, Message: "decode response: " + err.Error()}
-		}
-	}
-	return resp.Header, nil
+	return resp, raw, nil
 }
 
 func authError(resp *http.Response, msg string) *APIError {
