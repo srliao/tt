@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -67,10 +68,11 @@ Modes:
 
 --schedule: ` + scheduleFlagHelp + `
 --from / --to: YYYY-MM-DD, both inclusive, in the time zone. Default: now
-  through now + 35 days.
+  through now + 35 days; --from alone runs through --from + 35 days.
 --tz: IANA zone for calendar days. Default: the snapshot's (server's) zone.
---complete-after <dur>: before each tick, mark done every task the simulation
-  spawned at least <dur> ago (Nd, or a Go duration like 36h); its completed_at
+--complete-after <dur>: before each tick, mark done every open spawn of the
+  script (already open in the snapshot, or spawned by the simulation) created
+  at least <dur> ago (Nd, or a Go duration like 36h); its completed_at
   is creation + <dur>. Without it, spawned tasks stay open.
 --snapshot file.db: reuse a saved snapshot instead of fetching a fresh one.
 
@@ -141,12 +143,13 @@ Output: {runs: [{at, trigger, spawned: [task], logs: [{level, message, logged_at
 			if err != nil {
 				return validationErr("snapshot time zone "+strconv.Quote(tz)+" is unknown; pass --tz", nil)
 			}
-			start, end := s.Now(), s.Now().AddDate(0, 0, defaultSimulateDays)
+			start := s.Now()
 			if from != "" {
 				if start, err = localDate("--from", from, loc); err != nil {
 					return err
 				}
 			}
+			end := start.AddDate(0, 0, defaultSimulateDays)
 			if to != "" {
 				if end, err = localDate("--to", to, loc); err != nil {
 					return err
@@ -174,7 +177,7 @@ Output: {runs: [{at, trigger, spawned: [task], logs: [{level, message, logged_at
 	f.StringVar(&codeFile, "code", "", "script file, or - for stdin")
 	f.StringVar(&schedule, "schedule", "", scheduleFlagHelp)
 	f.StringVar(&from, "from", "", "first day, YYYY-MM-DD (default now)")
-	f.StringVar(&to, "to", "", "last day, YYYY-MM-DD (default now + 35 days)")
+	f.StringVar(&to, "to", "", "last day, YYYY-MM-DD (default --from or now, + 35 days)")
 	f.StringVar(&tz, "tz", "", "IANA time zone (default: the snapshot's)")
 	f.StringVar(&completeAfter, "complete-after", "", "auto-complete spawned tasks this long after creation, e.g. 0d, 2d, 36h")
 	f.StringVar(&snapshot, "snapshot", "", "saved snapshot (default: fetch a fresh one)")
@@ -254,12 +257,19 @@ func (sim *simulation) target(ctx context.Context, id int64, code *string, sch *
 }
 
 // run walks the scheduler's ticks from start through end. At each tick it
-// first completes spawns older than complete, then runs the script if its
-// schedule is due, the same test the scheduler's DueAt applies.
+// first completes spawns older than complete, then runs the script if
+// DueAt, the scheduler's own test, lists it. The target is enabled in the
+// snapshot; any other script DueAt lists is ignored.
 func (sim *simulation) run(ctx context.Context, id int64, start, end time.Time, complete *time.Duration) (simResult, error) {
 	out := simResult{Runs: []simRun{}}
 	out.Summary.SpawnDates = []string{}
 	var open []task.Task
+	if complete != nil {
+		var err error
+		if open, err = sim.openSpawns(ctx, id); err != nil {
+			return out, err
+		}
+	}
 	for at := start; !at.After(end); at = at.Add(tickInterval) {
 		if complete != nil {
 			var err error
@@ -268,11 +278,11 @@ func (sim *simulation) run(ctx context.Context, id int64, start, end time.Time, 
 			}
 		}
 		sim.now = at
-		sc, err := sim.scripts.Get(ctx, id)
+		due, err := sim.scripts.DueAt(ctx, at, sim.loc)
 		if err != nil {
 			return out, serviceErr(err)
 		}
-		if !sc.Schedule.Matches(at, sc.LastRunAt, sim.loc) {
+		if !slices.ContainsFunc(due, func(sc script.Script) bool { return sc.ID == id }) {
 			continue
 		}
 		r, err := sim.runOnce(ctx, id, at)
@@ -286,6 +296,16 @@ func (sim *simulation) run(ctx context.Context, id int64, start, end time.Time, 
 		open = append(open, r.Spawned...)
 	}
 	return out, nil
+}
+
+// openSpawns returns the script's spawns that are open in the snapshot.
+// Blocked ones are left out: they cannot be marked done.
+func (sim *simulation) openSpawns(ctx context.Context, id int64) ([]task.Task, error) {
+	ts, err := sim.tasks.ByScript(ctx, id, 0, 0)
+	if err != nil {
+		return nil, serviceErr(err)
+	}
+	return slices.DeleteFunc(ts, func(t task.Task) bool { return t.State != task.StateNotDone || t.Blocked }), nil
 }
 
 // completeSpawns marks done every open spawn created at least age before
