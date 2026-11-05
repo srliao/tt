@@ -17,13 +17,13 @@ const (
 	ExitRemote     = 4
 )
 
-// CLI-side error codes. Server codes (validation_failed, not_found,
-// conflict, ...) pass through unchanged from the response envelope.
+// CLI-side error codes. Server codes (ttclient.CodeValidation, ...) pass
+// through unchanged from the response envelope, and the CLI reuses them for
+// its own errors of the same kind.
 const (
 	CodeUsage           = "usage"
-	CodeValidation      = "validation_failed"
-	CodeNotFound        = "not_found"
-	CodeConflict        = "conflict"
+	CodeConfigMissing   = "config_missing"
+	CodeConfigInvalid   = "config_invalid"
 	CodeVersionMismatch = "version_mismatch"
 )
 
@@ -43,7 +43,7 @@ func usageErr(msg string, details map[string]any) *Error {
 }
 
 func validationErr(msg string, details map[string]any) *Error {
-	return &Error{Code: CodeValidation, Message: msg, Details: details, Exit: ExitValidation}
+	return &Error{Code: ttclient.CodeValidation, Message: msg, Details: details, Exit: ExitValidation}
 }
 
 // asError folds any error returned by a command into an *Error. Client
@@ -63,9 +63,9 @@ func asError(err error) *Error {
 
 func exitFor(ae *ttclient.APIError) int {
 	switch ae.Code {
-	case CodeNotFound:
+	case ttclient.CodeNotFound:
 		return ExitNotFound
-	case CodeValidation, CodeConflict:
+	case ttclient.CodeValidation, ttclient.CodeConflict:
 		return ExitValidation
 	}
 	return ExitRemote

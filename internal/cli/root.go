@@ -64,7 +64,7 @@ func (s *session) api() (*ttclient.Client, error) {
 	}
 	if cfg.URL == "" {
 		return nil, &Error{
-			Code:    "config_missing",
+			Code:    CodeConfigMissing,
 			Message: "no server url configured: set url in the config file or TT_URL",
 			Details: map[string]any{"path": cfg.Path},
 			Exit:    ExitUsage,

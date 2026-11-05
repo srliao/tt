@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/srliao/tt/internal/task"
+	"github.com/srliao/tt/internal/ttclient"
 )
 
 func newTaskCmd(s *session) *cobra.Command {
@@ -385,7 +386,7 @@ Output: ` + fullTaskShape,
 				return err
 			}
 			if len(out) != 1 {
-				return &Error{Code: "internal", Message: fmt.Sprintf("bulk-tag returned %d tasks, want 1", len(out)), Exit: ExitRemote}
+				return &Error{Code: ttclient.CodeInternal, Message: fmt.Sprintf("bulk-tag returned %d tasks, want 1", len(out)), Exit: ExitRemote}
 			}
 			return s.out(out[0])
 		},
