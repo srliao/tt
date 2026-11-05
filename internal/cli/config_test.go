@@ -105,6 +105,11 @@ type doctorOut struct {
 		Version   string `json:"version"`
 		Timezone  string `json:"timezone"`
 		Time      string `json:"time"`
+		Schema    struct {
+			Server int64 `json:"server"`
+			CLI    int64 `json:"cli"`
+			Match  bool  `json:"match"`
+		} `json:"schema"`
 	} `json:"server"`
 	Warnings []string `json:"warnings"`
 }
@@ -124,6 +129,9 @@ func TestDoctor_ReportsServer(t *testing.T) {
 	}
 	if _, err := time.Parse(time.RFC3339, out.Server.Time); err != nil {
 		t.Fatalf("server time %q: %v", out.Server.Time, err)
+	}
+	if sch := out.Server.Schema; !sch.Match || sch.CLI == 0 || sch.Server != sch.CLI {
+		t.Fatalf("schema = %+v", sch)
 	}
 	if !out.Config.FileFound || out.Config.Path != f.config || !out.Config.CFAccess {
 		t.Fatalf("config = %+v", out.Config)
@@ -154,6 +162,29 @@ func TestDoctor_AuthFailure(t *testing.T) {
 	e := f.run("doctor").fails(t, 4, "auth_failed")
 	server, _ := e.Details["server"].(map[string]any)
 	if server["reachable"] != true || server["auth_ok"] != false {
+		t.Fatalf("details = %v", e.Details)
+	}
+}
+
+// A server on an older schema than tt-cli fails with version_mismatch and
+// says which side to upgrade.
+func TestDoctor_SchemaMismatch(t *testing.T) {
+	f := newFixture(t)
+	f.gate = func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/version" {
+			w.Header().Set("X-Gated", "1")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"version":"old","timezone":"UTC","schema_version":1}`))
+		}
+	}
+
+	e := f.run("doctor").fails(t, 4, "version_mismatch")
+	if !strings.Contains(e.Message, "upgrade the tt server") {
+		t.Fatalf("message = %q", e.Message)
+	}
+	server, _ := e.Details["server"].(map[string]any)
+	schema, _ := server["schema"].(map[string]any)
+	if schema["server"] != float64(1) || schema["match"] != false {
 		t.Fatalf("details = %v", e.Details)
 	}
 }

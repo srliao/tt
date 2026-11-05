@@ -90,6 +90,22 @@ func (s *session) fetchSnapshot(ctx context.Context) ([]byte, snapshotMeta, erro
 	}, nil
 }
 
+// versionMismatchErr reports that what's schema (a snapshot's or the
+// server's) is at version theirs while this tt-cli embeds ours, naming the
+// side to upgrade.
+func versionMismatchErr(what string, theirs, ours int64, details map[string]any) *Error {
+	side := "upgrade the tt server"
+	if theirs > ours {
+		side = "upgrade tt-cli"
+	}
+	return &Error{
+		Code:    CodeVersionMismatch,
+		Message: fmt.Sprintf("%s schema is version %d but tt-cli expects %d: %s", what, theirs, ours, side),
+		Details: details,
+		Exit:    ExitRemote,
+	}
+}
+
 // openSnapshot loads a snapshot into in-memory SQLite: the saved file at
 // path (with its .json sidecar), or a fresh copy from the server when path
 // is empty. The caller closes the store.
@@ -122,16 +138,8 @@ func (s *session) openSnapshot(ctx context.Context, path string) (*db.Store, sna
 	store, err := db.OpenSnapshot(ctx, image)
 	var vm *db.VersionMismatchError
 	if errors.As(err, &vm) {
-		side := "upgrade the tt server (or pull a newer snapshot)"
-		if vm.Snapshot > vm.Latest {
-			side = "upgrade tt-cli"
-		}
-		return nil, meta, &Error{
-			Code:    "version_mismatch",
-			Message: fmt.Sprintf("snapshot schema is version %d but tt-cli expects %d: %s", vm.Snapshot, vm.Latest, side),
-			Details: map[string]any{"snapshot_version": vm.Snapshot, "cli_version": vm.Latest, "server_version": meta.ServerVersion},
-			Exit:    ExitRemote,
-		}
+		return nil, meta, versionMismatchErr("snapshot", vm.Snapshot, vm.Latest,
+			map[string]any{"snapshot_version": vm.Snapshot, "cli_version": vm.Latest, "server_version": meta.ServerVersion})
 	}
 	if err != nil {
 		return nil, meta, validationErr("load snapshot: "+err.Error(), map[string]any{"path": path})

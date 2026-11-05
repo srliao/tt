@@ -20,10 +20,11 @@ const (
 // CLI-side error codes. Server codes (validation_failed, not_found,
 // conflict, ...) pass through unchanged from the response envelope.
 const (
-	CodeUsage      = "usage"
-	CodeValidation = "validation_failed"
-	CodeNotFound   = "not_found"
-	CodeConflict   = "conflict"
+	CodeUsage           = "usage"
+	CodeValidation      = "validation_failed"
+	CodeNotFound        = "not_found"
+	CodeConflict        = "conflict"
+	CodeVersionMismatch = "version_mismatch"
 )
 
 // Error is the CLI's error shape: the server's {code, message, details}

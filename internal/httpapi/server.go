@@ -126,6 +126,9 @@ type Options struct {
 	// schedule firing on an unexpected day can be diagnosed from outside the
 	// process. Optional; empty means it was never configured.
 	Timezone string
+	// SchemaVersion is the database's goose version, returned by /version so
+	// tt-cli doctor can tell whether snapshots will load. Optional.
+	SchemaVersion int64
 	// Snapshotter backs GET /snapshot.db. Optional; without it the endpoint
 	// answers 500.
 	Snapshotter Snapshotter
@@ -149,6 +152,7 @@ type Server struct {
 	version     string
 	builtAt     string
 	timezone    string
+	schema      int64
 	snapshotter Snapshotter
 	snapshotDir string
 	spa         http.Handler
@@ -184,6 +188,7 @@ func New(
 		version:     opts.Version,
 		builtAt:     opts.BuiltAt,
 		timezone:    opts.Timezone,
+		schema:      opts.SchemaVersion,
 		snapshotter: opts.Snapshotter,
 		snapshotDir: opts.SnapshotDir,
 		spa:         spa,

@@ -112,6 +112,10 @@ func run() error {
 	}
 	spaHandler := httpapi.NewSPAHandler(distFS)
 
+	schema, err := db.SchemaVersion()
+	if err != nil {
+		return fmt.Errorf("read schema version: %w", err)
+	}
 	server := httpapi.New(
 		tasks, tags, scripts, drawings, sched,
 		httpapi.PingerFunc(store.DB().PingContext),
@@ -119,7 +123,8 @@ func run() error {
 			Logger:   logger,
 			Version:  Version,
 			BuiltAt:  BuiltAt,
-			Timezone: cfg.Location.String(),
+			Timezone:      cfg.Location.String(),
+			SchemaVersion: schema,
 			// Staging under the data dir keeps the copy on the same volume
 			// as the live DB, which tmpfs-backed /tmp may not have room for.
 			Snapshotter: store,
