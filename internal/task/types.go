@@ -5,7 +5,8 @@
 // transitions, staging, drag-drop reorder via midpoint computation,
 // rebalancing, dynamic filter/sort listing, and script-spawn lookups.
 //
-// The JSON shapes are hand-mirrored in `web/src/types/task.ts`; update both together.
+// The JSON shapes are hand-mirrored in `web/src/types/task.ts`; update both
+// together.
 package task
 
 import "time"

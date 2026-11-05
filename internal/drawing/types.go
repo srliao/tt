@@ -3,8 +3,6 @@
 // A drawing is a name plus an opaque Excalidraw scene blob. The service
 // validates that the scene is a JSON object but never interprets it; the
 // SPA owns the scene format.
-//
-// The JSON shapes are hand-mirrored in `web/src/types/drawing.ts`; update both together.
 package drawing
 
 import (
