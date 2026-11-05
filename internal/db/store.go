@@ -72,6 +72,15 @@ func (s *Store) Queries() *sqlcgen.Queries {
 	return s.queries
 }
 
+// VacuumInto writes a transactionally consistent copy of the database,
+// including the goose version table, to path. path must not already exist.
+func (s *Store) VacuumInto(ctx context.Context, path string) error {
+	if _, err := s.db.ExecContext(ctx, `VACUUM INTO ?`, path); err != nil {
+		return fmt.Errorf("vacuum into: %w", err)
+	}
+	return nil
+}
+
 // Close closes the underlying database connection.
 func (s *Store) Close() error {
 	if s.db == nil {
