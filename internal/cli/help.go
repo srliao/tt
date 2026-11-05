@@ -278,14 +278,17 @@ Codes
                      (exit 4)
   network_error      the server could not be reached or sent a bad response
                      (exit 4)
-  version_mismatch   a snapshot's schema differs from this tt-cli; the message
-                     says whether to upgrade tt-cli or the server (exit 4)
+  version_mismatch   a snapshot's or the server's schema differs from this
+                     tt-cli; the message says whether to upgrade tt-cli or the
+                     server (exit 4)
   scheduler_busy     the server's scheduler could not take the request; retry
                      later (exit 4)
   internal           server-side bug (exit 4)
+  any other code     passed through unchanged from the server (exit 4)
 
 On exit 4, or whenever a failure is unclear, run ` + "`tt-cli doctor`" + `: it reports
-the config source, reachability, auth, and the server's version and time.
+the config source, reachability, auth, the server's version and time, and
+whether the server's schema matches this tt-cli.
 `
 
 var helpConfig = `tt-cli help config: connecting to a tt instance
