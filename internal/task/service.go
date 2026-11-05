@@ -49,7 +49,6 @@ type Service interface {
 	SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error
 	BulkTag(ctx context.Context, in BulkTagInput) ([]Task, error)
 
-	// Dependencies
 	AddDep(ctx context.Context, taskID, dependsOnID int64) (Task, error)
 	RemoveDep(ctx context.Context, taskID, dependsOnID int64) (Task, error)
 	ApplyDeps(ctx context.Context, in DepBatch) ([]Task, error)
@@ -129,7 +128,7 @@ func (s *Impl) SetState(ctx context.Context, id int64, st State) (Task, error) {
 	var row sqlcgen.Task
 	err := s.inTx(ctx, "set state", func(q *sqlcgen.Queries) error {
 		if st == StateDone {
-			blockers, err := q.ListUnfinishedBlockers(ctx, id)
+			blockers, err := q.ListNotDoneBlockers(ctx, id)
 			if err != nil {
 				return fmt.Errorf("task: set state blockers: %w", err)
 			}
@@ -417,7 +416,6 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 		args = append(args, needle, needle)
 	}
 
-	// A task is blocked while any blocker is not done.
 	if f.Blocked != nil {
 		if *f.Blocked {
 			sb.WriteString(" AND")
@@ -616,7 +614,6 @@ func (s *Impl) loadTags(ctx context.Context, taskID int64) ([]string, error) {
 	return out, nil
 }
 
-// load hydrates one row with its tags and dependency edges.
 func (s *Impl) load(ctx context.Context, row sqlcgen.Task) (Task, error) {
 	out, err := s.loadAll(ctx, []sqlcgen.Task{row})
 	if err != nil {
@@ -625,7 +622,6 @@ func (s *Impl) load(ctx context.Context, row sqlcgen.Task) (Task, error) {
 	return out[0], nil
 }
 
-// loadAll hydrates rows in order; dependency edges come from one query.
 func (s *Impl) loadAll(ctx context.Context, rows []sqlcgen.Task) ([]Task, error) {
 	out := make([]Task, 0, len(rows))
 	for _, r := range rows {
@@ -641,7 +637,6 @@ func (s *Impl) loadAll(ctx context.Context, rows []sqlcgen.Task) ([]Task, error)
 	return out, nil
 }
 
-// getMany loads and hydrates tasks by id, in the order given.
 func (s *Impl) getMany(ctx context.Context, ids []int64) ([]Task, error) {
 	rows := make([]sqlcgen.Task, 0, len(ids))
 	for _, id := range ids {
@@ -654,8 +649,6 @@ func (s *Impl) getMany(ctx context.Context, ids []int64) ([]Task, error) {
 	return s.loadAll(ctx, rows)
 }
 
-// inTx runs fn in a transaction, committing only when fn succeeds. op names
-// the operation in begin/commit errors.
 func (s *Impl) inTx(ctx context.Context, op string, fn func(q *sqlcgen.Queries) error) error {
 	tx, err := s.store.DB().BeginTx(ctx, nil)
 	if err != nil {

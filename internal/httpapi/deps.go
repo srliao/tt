@@ -9,8 +9,6 @@ import (
 	"github.com/srliao/tt/internal/task"
 )
 
-// mountDepRoutes wires the /deps subtree. Per-task edge routes live under
-// mountTaskRoutes.
 func (s *Server) mountDepRoutes(r chi.Router) {
 	r.Route("/deps", func(r chi.Router) {
 		r.Get("/", s.handleListDeps)
@@ -18,7 +16,6 @@ func (s *Server) mountDepRoutes(r chi.Router) {
 	})
 }
 
-// addDepBody is the inbound JSON for POST /tasks/:id/deps.
 type addDepBody struct {
 	DependsOnID int64 `json:"depends_on_id"`
 }

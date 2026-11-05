@@ -1,7 +1,5 @@
 -- +goose Up
 
--- task_id depends on depends_on_id: the blocker must finish first. Whether a
--- task is blocked is derived from its blockers' states, never stored.
 CREATE TABLE task_deps (
   task_id       INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
   depends_on_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,

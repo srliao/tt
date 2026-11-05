@@ -515,7 +515,6 @@ func parsePathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	return parseIDParam(w, r, "id")
 }
 
-// parseIDParam is parsePathID for an arbitrary URL param name.
 func parseIDParam(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
 	raw := chi.URLParam(r, name)
 	id, err := strconv.ParseInt(raw, 10, 64)
@@ -545,8 +544,6 @@ func parseIntDefault(raw string, fallback int) (int, error) {
 // same shape of failure.
 //
 // Recognised mappings:
-//   - *task.RuleError: 409 conflict, rule name and ids in details. Checked
-//     first so no substring match below can claim it.
 //   - errors.Is(err, sql.ErrNoRows): 404 not_found.
 //   - SQLite UNIQUE constraint failures (modernc driver returns the message
 //     verbatim from sqlite): 409 conflict.

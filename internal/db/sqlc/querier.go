@@ -46,6 +46,7 @@ type Querier interface {
 	// spawning run inserts its batch in reverse so the tasks stack top-down in
 	// spawn order, which leaves rowids running opposite to logical batch order.
 	ListLatestSpawnedTasksByScript(ctx context.Context, scriptID int64) ([]Task, error)
+	ListNotDoneBlockers(ctx context.Context, taskID int64) ([]int64, error)
 	ListOpenDependents(ctx context.Context, dependsOnID int64) ([]int64, error)
 	ListScriptLogsByRun(ctx context.Context, scriptRunID int64) ([]ScriptLog, error)
 	ListScriptRunsByScript(ctx context.Context, arg ListScriptRunsByScriptParams) ([]ScriptRun, error)
@@ -53,11 +54,8 @@ type Querier interface {
 	ListTags(ctx context.Context) ([]Tag, error)
 	ListTagsWithCounts(ctx context.Context) ([]ListTagsWithCountsRow, error)
 	ListTaskDeps(ctx context.Context) ([]ListTaskDepsRow, error)
-	// task_ids is a JSON array, so a long list stays one bind parameter.
 	ListTaskDepsTouching(ctx context.Context, taskIds interface{}) ([]ListTaskDepsTouchingRow, error)
 	ListTasksByScript(ctx context.Context, spawnedByScriptID *int64) ([]Task, error)
-	// A cancelled blocker still blocks until the edge is removed.
-	ListUnfinishedBlockers(ctx context.Context, taskID int64) ([]int64, error)
 	MarkOrphanedRunsAsError(ctx context.Context) error
 	// New rows are minted at MIN(key) - 1 so they sort above everything already
 	// present on the ascending-key axis. The 1.0 fallback makes the first row in

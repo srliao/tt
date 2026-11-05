@@ -131,8 +131,6 @@ func TestOpenFile(t *testing.T) {
 	}
 }
 
-// TestTaskDepsMigrationUpgradeAndDown applies 0004 on top of a database that
-// already holds tasks, then rolls it back.
 func TestTaskDepsMigrationUpgradeAndDown(t *testing.T) {
 	ctx := context.Background()
 	sqlDB, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "up.sqlite")+"?_pragma=foreign_keys(1)")

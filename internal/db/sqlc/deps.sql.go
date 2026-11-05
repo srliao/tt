@@ -37,6 +37,35 @@ func (q *Queries) DeleteTaskDep(ctx context.Context, arg DeleteTaskDepParams) er
 	return err
 }
 
+const listNotDoneBlockers = `-- name: ListNotDoneBlockers :many
+SELECT d.depends_on_id FROM task_deps d JOIN tasks b ON b.id = d.depends_on_id
+WHERE d.task_id = ? AND b.state != 'done'
+ORDER BY d.depends_on_id
+`
+
+func (q *Queries) ListNotDoneBlockers(ctx context.Context, taskID int64) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listNotDoneBlockers, taskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var depends_on_id int64
+		if err := rows.Scan(&depends_on_id); err != nil {
+			return nil, err
+		}
+		items = append(items, depends_on_id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOpenDependents = `-- name: ListOpenDependents :many
 SELECT d.task_id FROM task_deps d JOIN tasks t ON t.id = d.task_id
 WHERE d.depends_on_id = ? AND t.state = 'not_done'
@@ -100,7 +129,6 @@ func (q *Queries) ListTaskDeps(ctx context.Context) ([]ListTaskDepsRow, error) {
 }
 
 const listTaskDepsTouching = `-- name: ListTaskDepsTouching :many
-
 SELECT d.task_id, d.depends_on_id, b.state AS depends_on_state
 FROM task_deps d JOIN tasks b ON b.id = d.depends_on_id
 WHERE d.task_id IN (SELECT value FROM json_each(?1))
@@ -114,7 +142,6 @@ type ListTaskDepsTouchingRow struct {
 	DependsOnState string `json:"depends_on_state"`
 }
 
-// task_ids is a JSON array, so a long list stays one bind parameter.
 func (q *Queries) ListTaskDepsTouching(ctx context.Context, taskIds interface{}) ([]ListTaskDepsTouchingRow, error) {
 	rows, err := q.db.QueryContext(ctx, listTaskDepsTouching, taskIds)
 	if err != nil {
@@ -128,37 +155,6 @@ func (q *Queries) ListTaskDepsTouching(ctx context.Context, taskIds interface{})
 			return nil, err
 		}
 		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listUnfinishedBlockers = `-- name: ListUnfinishedBlockers :many
-
-SELECT d.depends_on_id FROM task_deps d JOIN tasks b ON b.id = d.depends_on_id
-WHERE d.task_id = ? AND b.state != 'done'
-ORDER BY d.depends_on_id
-`
-
-// A cancelled blocker still blocks until the edge is removed.
-func (q *Queries) ListUnfinishedBlockers(ctx context.Context, taskID int64) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, listUnfinishedBlockers, taskID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []int64
-	for rows.Next() {
-		var depends_on_id int64
-		if err := rows.Scan(&depends_on_id); err != nil {
-			return nil, err
-		}
-		items = append(items, depends_on_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

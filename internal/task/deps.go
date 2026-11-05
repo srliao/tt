@@ -245,8 +245,6 @@ func compareEdges(a, b Edge) int {
 	return cmp.Or(cmp.Compare(a.TaskID, b.TaskID), cmp.Compare(a.DependsOnID, b.DependsOnID))
 }
 
-// depGraph is an in-memory copy of task_deps, kept in step with the writes of
-// the enclosing transaction.
 type depGraph struct {
 	blockers   map[int64][]int64
 	dependents map[int64][]int64
@@ -278,7 +276,6 @@ func (g *depGraph) remove(e Edge) {
 	g.dependents[e.DependsOnID] = slices.DeleteFunc(g.dependents[e.DependsOnID], func(n int64) bool { return n == e.TaskID })
 }
 
-// pathTo returns the shortest blocker chain from → … → to, or nil.
 func (g *depGraph) pathTo(from, to int64) []int64 {
 	prev := map[int64]int64{from: from}
 	queue := []int64{from}
@@ -304,10 +301,8 @@ func (g *depGraph) pathTo(from, to int64) []int64 {
 	return nil
 }
 
-// addDep inserts the edge after checking, in order: both tasks exist, the
-// edge is new (else no-op), the dependent is not_done, and no cycle forms.
 func addDep(ctx context.Context, q *sqlcgen.Queries, g *depGraph, e Edge) error {
-	blocked, err := requireEdgeTasks(ctx, q, e)
+	blocked, _, err := loadEdgeTasks(ctx, q, e)
 	if err != nil {
 		return err
 	}
@@ -327,9 +322,8 @@ func addDep(ctx context.Context, q *sqlcgen.Queries, g *depGraph, e Edge) error 
 	return nil
 }
 
-// removeDep deletes the edge after checking both tasks exist.
 func removeDep(ctx context.Context, q *sqlcgen.Queries, e Edge) error {
-	if _, err := requireEdgeTasks(ctx, q, e); err != nil {
+	if _, _, err := loadEdgeTasks(ctx, q, e); err != nil {
 		return err
 	}
 	if err := q.DeleteTaskDep(ctx, sqlcgen.DeleteTaskDepParams{TaskID: e.TaskID, DependsOnID: e.DependsOnID}); err != nil {
@@ -338,21 +332,18 @@ func removeDep(ctx context.Context, q *sqlcgen.Queries, e Edge) error {
 	return nil
 }
 
-// requireEdgeTasks loads both ends so an unknown id surfaces as
-// sql.ErrNoRows (404) rather than a foreign-key failure, which the HTTP
-// layer would report as a 409. Returns the dependent task's row.
-func requireEdgeTasks(ctx context.Context, q *sqlcgen.Queries, e Edge) (sqlcgen.Task, error) {
-	row, err := q.GetTask(ctx, e.TaskID)
+func loadEdgeTasks(ctx context.Context, q *sqlcgen.Queries, e Edge) (dependent, blocker sqlcgen.Task, err error) {
+	dependent, err = q.GetTask(ctx, e.TaskID)
 	if err != nil {
-		return sqlcgen.Task{}, fmt.Errorf("task: dep task %d: %w", e.TaskID, err)
+		return dependent, blocker, fmt.Errorf("task: dep task %d: %w", e.TaskID, err)
 	}
-	if _, err := q.GetTask(ctx, e.DependsOnID); err != nil {
-		return sqlcgen.Task{}, fmt.Errorf("task: dep blocker %d: %w", e.DependsOnID, err)
+	blocker, err = q.GetTask(ctx, e.DependsOnID)
+	if err != nil {
+		return dependent, blocker, fmt.Errorf("task: dep blocker %d: %w", e.DependsOnID, err)
 	}
-	return row, nil
+	return dependent, blocker, nil
 }
 
-// loadDeps fills BlockedBy, Blocks and Blocked on ts with a single query.
 func (s *Impl) loadDeps(ctx context.Context, ts []Task) error {
 	if len(ts) == 0 {
 		return nil

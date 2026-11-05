@@ -11,7 +11,6 @@ import (
 	"github.com/srliao/tt/internal/task"
 )
 
-// mkTasks creates one task per title and returns their ids in order.
 func mkTasks(t *testing.T, svc *task.Impl, ctx context.Context, titles ...string) []int64 {
 	t.Helper()
 	ids := make([]int64, 0, len(titles))
@@ -48,7 +47,6 @@ func mustGet(t *testing.T, svc *task.Impl, ctx context.Context, id int64) task.T
 	return got
 }
 
-// ruleOf returns the violated rule name, or "" when err is not a RuleError.
 func ruleOf(err error) (string, map[string]any) {
 	var re *task.RuleError
 	if !errors.As(err, &re) {
@@ -193,7 +191,6 @@ func TestDelete_R6_RejectsWhileBlockingOpenTask(t *testing.T) {
 	mustGet(t, svc, ctx, blocker)
 
 	mustSetState(t, svc, ctx, open, task.StateCancelled)
-	// done is still not_done here: closing it needs the blocker done first.
 	mustSetState(t, svc, ctx, blocker, task.StateDone)
 	mustSetState(t, svc, ctx, done, task.StateDone)
 	if err := svc.Delete(ctx, blocker); err != nil {

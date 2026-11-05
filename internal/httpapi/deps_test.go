@@ -12,7 +12,6 @@ import (
 	"github.com/srliao/tt/internal/task"
 )
 
-// errorEnv is the decoded error envelope, details included.
 type errorEnv struct {
 	Error struct {
 		Code    string         `json:"code"`
@@ -21,8 +20,6 @@ type errorEnv struct {
 	} `json:"error"`
 }
 
-// expectError asserts the status and code of an error response and returns
-// its details.
 func expectError(t *testing.T, resp *http.Response, status int, code string) map[string]any {
 	t.Helper()
 	defer func() { _ = resp.Body.Close() }()
@@ -67,7 +64,6 @@ func addDep(t *testing.T, fx *serverFixture, taskID, dependsOnID int64) *http.Re
 		map[string]any{"depends_on_id": dependsOnID})
 }
 
-// idList converts a JSON-decoded array of numbers into int64s.
 func idList(t *testing.T, v any) []int64 {
 	t.Helper()
 	raw, ok := v.([]any)
