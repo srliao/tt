@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +46,21 @@ func TestConfig_EnvOverridesFile(t *testing.T) {
 	h := f.lastHeaders()
 	if h.Get("CF-Access-Client-Id") != "file-id" || h.Get("CF-Access-Client-Secret") != "env-secret" {
 		t.Fatalf("headers = %v", h)
+	}
+}
+
+func TestConfig_ExampleFileLoads(t *testing.T) {
+	example, err := os.ReadFile("../../cmd/tt-cli/config.example.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := newFixture(t)
+	f.env = map[string]string{}
+	f.writeConfig(strings.Replace(string(example), "https://tt.example.com", f.server.URL, 1), 0o600)
+
+	f.run("tag", "list").ok(t, nil)
+	if _, ok := f.lastHeaders()["Cf-Access-Client-Id"]; ok {
+		t.Fatalf("CF-Access-Client-Id sent with the example's empty token")
 	}
 }
 
