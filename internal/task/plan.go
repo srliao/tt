@@ -140,12 +140,15 @@ func (s *Impl) ApplyPlan(ctx context.Context, p Plan) (PlanResult, error) {
 			}
 		}
 
+		now := s.stamp()
 		for _, pt := range p.Tasks {
 			params := sqlcgen.CreateTaskParams{
-				Title:    pt.Title,
-				Notes:    pt.Notes,
-				DueDate:  pt.DueDate,
-				Priority: priority,
+				Title:     pt.Title,
+				Notes:     pt.Notes,
+				DueDate:   pt.DueDate,
+				Priority:  priority,
+				CreatedAt: now,
+				UpdatedAt: now,
 			}
 			if pt.Stage {
 				params.StagedOrder = &stagedOrder
@@ -179,7 +182,7 @@ func (s *Impl) ApplyPlan(ctx context.Context, p Plan) (PlanResult, error) {
 			g.remove(e)
 		}
 		for i, pe := range p.Deps {
-			if err := addDep(ctx, q, g, resolve(pe)); err != nil {
+			if err := addDep(ctx, q, g, resolve(pe), now); err != nil {
 				return planEdgeError(err, "add", i, pe)
 			}
 		}

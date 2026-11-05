@@ -68,4 +68,13 @@ func TestServiceStampsTimestampsFromClock(t *testing.T) {
 	if !staged.UpdatedAt.Equal(clk.t) {
 		t.Errorf("stage updated_at = %v, want %v", staged.UpdatedAt, clk.t)
 	}
+
+	clk.t = time.Date(2031, 3, 9, 0, 0, 0, 0, time.UTC)
+	res, err := svc.ApplyPlan(ctx, task.Plan{Tasks: []task.PlanTask{{Ref: "p", Title: "planned"}}})
+	if err != nil {
+		t.Fatalf("ApplyPlan: %v", err)
+	}
+	if len(res.Tasks) != 1 || !res.Tasks[0].CreatedAt.Equal(clk.t) || !res.Tasks[0].UpdatedAt.Equal(clk.t) {
+		t.Errorf("plan tasks = %+v, want one stamped %v", res.Tasks, clk.t)
+	}
 }
