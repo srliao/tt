@@ -50,6 +50,20 @@ Skip the subagent only for trivial changes (typo fixes, single-line bug
 fixes, comment edits) that don't change any pattern, location, command,
 or contract.
 
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `srliao/tt` via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default five roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` + `docs/adr/`. See `docs/agents/domain.md`.
+
 ## Commands
 
 ```bash
