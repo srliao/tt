@@ -48,6 +48,13 @@ type Service interface {
 	// Tags
 	SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error
 	BulkTag(ctx context.Context, in BulkTagInput) ([]Task, error)
+
+	// Dependencies
+	AddDep(ctx context.Context, taskID, dependsOnID int64) (Task, error)
+	RemoveDep(ctx context.Context, taskID, dependsOnID int64) (Task, error)
+	ApplyDeps(ctx context.Context, in DepBatch) ([]Task, error)
+	Graph(ctx context.Context, id int64, dir Direction) (Graph, error)
+	ListDeps(ctx context.Context) ([]Edge, error)
 }
 
 // Impl is the concrete Service backed by a *db.Store. It is safe for
@@ -95,12 +102,14 @@ func (s *Impl) Create(ctx context.Context, in CreateInput) (Task, error) {
 		return Task{}, fmt.Errorf("task: create: %w", err)
 	}
 
-	return rowToTask(row, nil), nil
+	return s.load(ctx, row)
 }
 
 // SetState transitions a task to st, managing completed_at / cancelled_at
 // timestamps. Per spec §3, staged_order is intentionally untouched so a
-// staged task remains visible in the focused batch after completion.
+// staged task remains visible in the focused batch after completion. Moving a
+// blocked task to done fails with RuleBlocked; cancelling and reopening are
+// always allowed.
 func (s *Impl) SetState(ctx context.Context, id int64, st State) (Task, error) {
 	if !st.IsValid() {
 		return Task{}, fmt.Errorf("task: invalid state %q", st)
@@ -117,21 +126,34 @@ func (s *Impl) SetState(ctx context.Context, id int64, st State) (Task, error) {
 		// both stay nil → clears any previous completed/cancelled timestamps
 	}
 
-	row, err := s.q.SetTaskState(ctx, sqlcgen.SetTaskStateParams{
-		State:       string(st),
-		CompletedAt: completedAt,
-		CancelledAt: cancelledAt,
-		ID:          id,
+	var row sqlcgen.Task
+	err := s.inTx(ctx, func(q *sqlcgen.Queries) error {
+		if st == StateDone {
+			blockers, err := q.ListUnfinishedBlockers(ctx, id)
+			if err != nil {
+				return fmt.Errorf("task: set state blockers: %w", err)
+			}
+			if len(blockers) > 0 {
+				return &RuleError{Rule: RuleBlocked, Details: map[string]any{"blockers": blockers}}
+			}
+		}
+		var err error
+		row, err = q.SetTaskState(ctx, sqlcgen.SetTaskStateParams{
+			State:       string(st),
+			CompletedAt: completedAt,
+			CancelledAt: cancelledAt,
+			ID:          id,
+		})
+		if err != nil {
+			return fmt.Errorf("task: set state: %w", err)
+		}
+		return nil
 	})
-	if err != nil {
-		return Task{}, fmt.Errorf("task: set state: %w", err)
-	}
-
-	tags, err := s.loadTags(ctx, id)
 	if err != nil {
 		return Task{}, err
 	}
-	return rowToTask(row, tags), nil
+
+	return s.load(ctx, row)
 }
 
 // Stage puts the task at the top of the focused batch. The stage renders by
@@ -149,11 +171,7 @@ func (s *Impl) Stage(ctx context.Context, id int64) (Task, error) {
 	if err != nil {
 		return Task{}, fmt.Errorf("task: stage: %w", err)
 	}
-	tags, err := s.loadTags(ctx, id)
-	if err != nil {
-		return Task{}, err
-	}
-	return rowToTask(row, tags), nil
+	return s.load(ctx, row)
 }
 
 // Unstage removes the task from the focused batch by setting staged_order
@@ -166,11 +184,7 @@ func (s *Impl) Unstage(ctx context.Context, id int64) (Task, error) {
 	if err != nil {
 		return Task{}, fmt.Errorf("task: unstage: %w", err)
 	}
-	tags, err := s.loadTags(ctx, id)
-	if err != nil {
-		return Task{}, err
-	}
-	return rowToTask(row, tags), nil
+	return s.load(ctx, row)
 }
 
 // ClearStage empties the focused batch, regardless of each task's state.
@@ -216,11 +230,7 @@ func (s *Impl) ReorderMain(ctx context.Context, id int64, beforeID, afterID *int
 	if err != nil {
 		return Task{}, fmt.Errorf("task: reorder main: %w", err)
 	}
-	tags, err := s.loadTags(ctx, id)
-	if err != nil {
-		return Task{}, err
-	}
-	return rowToTask(row, tags), nil
+	return s.load(ctx, row)
 }
 
 // ReorderStage moves task id between two visible neighbors in the focused
@@ -247,11 +257,7 @@ func (s *Impl) ReorderStage(ctx context.Context, id int64, beforeID, afterID *in
 	if err != nil {
 		return Task{}, fmt.Errorf("task: reorder stage: %w", err)
 	}
-	tags, err := s.loadTags(ctx, id)
-	if err != nil {
-		return Task{}, err
-	}
-	return rowToTask(row, tags), nil
+	return s.load(ctx, row)
 }
 
 // neighborPriorities looks up the priority (useStage=false) or staged_order
@@ -411,6 +417,16 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 		args = append(args, needle, needle)
 	}
 
+	// A task is blocked while any blocker is not done.
+	if f.Blocked != nil {
+		if *f.Blocked {
+			sb.WriteString(" AND")
+		} else {
+			sb.WriteString(" AND NOT")
+		}
+		sb.WriteString(" EXISTS (SELECT 1 FROM task_deps d JOIN tasks b ON b.id = d.depends_on_id WHERE d.task_id = tasks.id AND b.state != 'done')")
+	}
+
 	dir := "ASC"
 	if !f.Ascending {
 		dir = "DESC"
@@ -465,19 +481,7 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 		return nil, fmt.Errorf("task: list rows: %w", err)
 	}
 
-	out := make([]Task, 0, len(ids))
-	for _, id := range ids {
-		row, err := s.q.GetTask(ctx, id)
-		if err != nil {
-			return nil, fmt.Errorf("task: list get %d: %w", id, err)
-		}
-		tags, err := s.loadTags(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, rowToTask(row, tags))
-	}
-	return out, nil
+	return s.getMany(ctx, ids)
 }
 
 // RebalancePriority reassigns every task's priority to evenly spaced
@@ -568,19 +572,26 @@ func (s *Impl) Update(ctx context.Context, id int64, in UpdateInput) (Task, erro
 	if err != nil {
 		return Task{}, fmt.Errorf("task: update: %w", err)
 	}
-	tags, err := s.loadTags(ctx, id)
-	if err != nil {
-		return Task{}, err
-	}
-	return rowToTask(row, tags), nil
+	return s.load(ctx, row)
 }
 
-// Delete removes a task. CASCADE drops associated task_tags rows.
+// Delete removes a task. CASCADE drops associated task_tags and task_deps
+// rows. Deleting a task that blocks a not_done task fails with
+// RuleHasOpenDependents.
 func (s *Impl) Delete(ctx context.Context, id int64) error {
-	if err := s.q.DeleteTask(ctx, id); err != nil {
-		return fmt.Errorf("task: delete %d: %w", id, err)
-	}
-	return nil
+	return s.inTx(ctx, func(q *sqlcgen.Queries) error {
+		dependents, err := q.ListOpenDependents(ctx, id)
+		if err != nil {
+			return fmt.Errorf("task: delete %d dependents: %w", id, err)
+		}
+		if len(dependents) > 0 {
+			return &RuleError{Rule: RuleHasOpenDependents, Details: map[string]any{"dependents": dependents}}
+		}
+		if err := q.DeleteTask(ctx, id); err != nil {
+			return fmt.Errorf("task: delete %d: %w", id, err)
+		}
+		return nil
+	})
 }
 
 // Get loads a task by id along with its tag names.
@@ -589,11 +600,7 @@ func (s *Impl) Get(ctx context.Context, id int64) (Task, error) {
 	if err != nil {
 		return Task{}, fmt.Errorf("task: get %d: %w", id, err)
 	}
-	tags, err := s.loadTags(ctx, id)
-	if err != nil {
-		return Task{}, err
-	}
-	return rowToTask(row, tags), nil
+	return s.load(ctx, row)
 }
 
 // loadTags returns the tag names associated with a task, sorted by name.
@@ -607,6 +614,60 @@ func (s *Impl) loadTags(ctx context.Context, taskID int64) ([]string, error) {
 		out = append(out, r.Name)
 	}
 	return out, nil
+}
+
+// load hydrates one row with its tags and dependency edges.
+func (s *Impl) load(ctx context.Context, row sqlcgen.Task) (Task, error) {
+	out, err := s.loadAll(ctx, []sqlcgen.Task{row})
+	if err != nil {
+		return Task{}, err
+	}
+	return out[0], nil
+}
+
+// loadAll hydrates rows in order; dependency edges come from one query.
+func (s *Impl) loadAll(ctx context.Context, rows []sqlcgen.Task) ([]Task, error) {
+	out := make([]Task, 0, len(rows))
+	for _, r := range rows {
+		tags, err := s.loadTags(ctx, r.ID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rowToTask(r, tags))
+	}
+	if err := s.loadDeps(ctx, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// getMany loads and hydrates tasks by id, in the order given.
+func (s *Impl) getMany(ctx context.Context, ids []int64) ([]Task, error) {
+	rows := make([]sqlcgen.Task, 0, len(ids))
+	for _, id := range ids {
+		row, err := s.q.GetTask(ctx, id)
+		if err != nil {
+			return nil, fmt.Errorf("task: get %d: %w", id, err)
+		}
+		rows = append(rows, row)
+	}
+	return s.loadAll(ctx, rows)
+}
+
+// inTx runs fn in a transaction, committing only when fn succeeds.
+func (s *Impl) inTx(ctx context.Context, fn func(q *sqlcgen.Queries) error) error {
+	tx, err := s.store.DB().BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("task: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := fn(s.q.WithTx(tx)); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("task: commit: %w", err)
+	}
+	return nil
 }
 
 // minStagedOrder reads the current MIN(staged_order); 1.0 when no task is
@@ -661,6 +722,8 @@ func rowToTask(r sqlcgen.Task, tags []string) Task {
 		CreatedAt:         parseSqliteTime(r.CreatedAt),
 		UpdatedAt:         parseSqliteTime(r.UpdatedAt),
 		Tags:              tags,
+		BlockedBy:         []int64{},
+		Blocks:            []int64{},
 	}
 	if r.CompletedAt != nil {
 		ts := parseSqliteTime(*r.CompletedAt)
@@ -725,15 +788,7 @@ func (s *Impl) ByScript(ctx context.Context, scriptID int64, limit, offset int) 
 		rows = rows[:limit]
 	}
 
-	out := make([]Task, 0, len(rows))
-	for _, r := range rows {
-		tags, err := s.loadTags(ctx, r.ID)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, rowToTask(r, tags))
-	}
-	return out, nil
+	return s.loadAll(ctx, rows)
 }
 
 // LatestBySpawningScripts returns the tasks spawned in the most recent
@@ -746,15 +801,7 @@ func (s *Impl) LatestBySpawningScripts(ctx context.Context, scriptID int64) ([]T
 	if err != nil {
 		return nil, fmt.Errorf("task: latest spawn batch for script %d: %w", scriptID, err)
 	}
-	out := make([]Task, 0, len(rows))
-	for _, r := range rows {
-		tags, err := s.loadTags(ctx, r.ID)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, rowToTask(r, tags))
-	}
-	return out, nil
+	return s.loadAll(ctx, rows)
 }
 
 // SetTagsByID replaces the full tag set associated with a task. The caller
@@ -876,19 +923,7 @@ func (s *Impl) BulkTag(ctx context.Context, in BulkTagInput) ([]Task, error) {
 
 	// Reload the affected rows in the order the caller supplied so the
 	// response mirrors the request.
-	out := make([]Task, 0, len(in.IDs))
-	for _, id := range in.IDs {
-		row, err := s.q.GetTask(ctx, id)
-		if err != nil {
-			return nil, fmt.Errorf("task: bulk tag reload %d: %w", id, err)
-		}
-		tags, err := s.loadTags(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, rowToTask(row, tags))
-	}
-	return out, nil
+	return s.getMany(ctx, in.IDs)
 }
 
 // Compile-time assertion that Impl satisfies the Service interface.

@@ -79,7 +79,8 @@ const (
 )
 
 // Task is the domain-layer representation of a row in the tasks table joined
-// with its tag names.
+// with its tag names and dependency edges. Blocked is derived: true while any
+// blocker is not done (a cancelled blocker still blocks).
 type Task struct {
 	ID                int64      `json:"id"`
 	Title             string     `json:"title"`
@@ -94,6 +95,9 @@ type Task struct {
 	CancelledAt       *time.Time `json:"cancelled_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 	Tags              []string   `json:"tags"`
+	BlockedBy         []int64    `json:"blocked_by"`
+	Blocks            []int64    `json:"blocks"`
+	Blocked           bool       `json:"blocked"`
 }
 
 // CreateInput carries the fields a caller must supply when creating a task.
@@ -198,6 +202,7 @@ type FilterSort struct {
 	TagExcludeIDs []int64   `json:"tag_exclude_ids"`
 	Due           DueRange  `json:"due"`
 	Search        string    `json:"search"`
+	Blocked       *bool     `json:"blocked"`
 	Sort          SortAxis  `json:"sort"`
 	Ascending     bool      `json:"ascending"`
 	Limit         int       `json:"limit"`
