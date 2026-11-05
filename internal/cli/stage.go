@@ -12,7 +12,7 @@ import (
 )
 
 func newStageCmd(s *session) *cobra.Command {
-	return group("stage", "Work the stage (the focused batch of tasks)",
+	return group("stage", "Work the stage (the hand-picked, ordered tasks being worked through now)",
 		newStageListCmd(s),
 		newStageReorderCmd(s),
 		newStageClearFinishedCmd(s),
@@ -21,12 +21,8 @@ func newStageCmd(s *session) *cobra.Command {
 
 // stagedTasks returns every staged task, done or not, in stage order.
 func (s *session) stagedTasks(ctx context.Context) ([]task.Task, error) {
-	c, err := s.api()
+	all, err := list[task.Task](ctx, s, http.MethodGet, "/tasks", nil, nil)
 	if err != nil {
-		return nil, err
-	}
-	var all []task.Task
-	if _, err := c.Do(ctx, http.MethodGet, "/tasks", nil, nil, &all); err != nil {
 		return nil, err
 	}
 	staged := slices.DeleteFunc(all, func(t task.Task) bool { return t.StagedOrder == nil })
@@ -126,13 +122,9 @@ Output: the moved task ` + fullTaskShape,
 				}
 			}
 
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out task.Task
 			body := map[string]any{"task_id": id, "before_id": above, "after_id": below}
-			if _, err := c.Do(ctx, http.MethodPost, "/stage/reorder", nil, body, &out); err != nil {
+			if err := s.do(ctx, http.MethodPost, "/stage/reorder", nil, body, &out); err != nil {
 				return err
 			}
 			return s.out(out)
@@ -168,11 +160,7 @@ Output: {ok: true}`,
 		Example: `  tt-cli stage clear-finished`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
-			if _, err := c.Do(cmd.Context(), http.MethodDelete, "/stage/finished", nil, nil, nil); err != nil {
+			if err := s.do(cmd.Context(), http.MethodDelete, "/stage/finished", nil, nil, nil); err != nil {
 				return err
 			}
 			return s.out(map[string]bool{"ok": true})

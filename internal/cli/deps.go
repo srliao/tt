@@ -35,12 +35,8 @@ Output: the dependent task ` + fullTaskShape,
 			if err != nil {
 				return err
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out task.Task
-			if _, err := c.Do(cmd.Context(), http.MethodPost, fmt.Sprintf("/tasks/%d/deps", taskID), nil,
+			if err := s.do(cmd.Context(), http.MethodPost, fmt.Sprintf("/tasks/%d/deps", taskID), nil,
 				map[string]int64{"depends_on_id": dependsOn}, &out); err != nil {
 				return err
 			}
@@ -63,12 +59,8 @@ Output: the dependent task ` + fullTaskShape,
 			if err != nil {
 				return err
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out task.Task
-			if _, err := c.Do(cmd.Context(), http.MethodDelete, fmt.Sprintf("/tasks/%d/deps/%d", taskID, dependsOn), nil, nil, &out); err != nil {
+			if err := s.do(cmd.Context(), http.MethodDelete, fmt.Sprintf("/tasks/%d/deps/%d", taskID, dependsOn), nil, nil, &out); err != nil {
 				return err
 			}
 			return s.out(out)
@@ -98,12 +90,8 @@ Output: {tasks: [task]} with every touched task in full
 			if err := decodeDoc(raw, &body); err != nil {
 				return err
 			}
-			c, err := s.api()
+			out, err := list[task.Task](cmd.Context(), s, http.MethodPost, "/deps/batch", nil, body)
 			if err != nil {
-				return err
-			}
-			var out []task.Task
-			if _, err := c.Do(cmd.Context(), http.MethodPost, "/deps/batch", nil, body, &out); err != nil {
 				return err
 			}
 			return s.out(taskList{Tasks: taskRows(out, true)})
@@ -130,12 +118,8 @@ Output: {tasks: [task], edges: [[task_id, depends_on_id]]}
 			if err != nil {
 				return err
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out task.Graph
-			if _, err := c.Do(cmd.Context(), http.MethodGet, fmt.Sprintf("/tasks/%d/graph", id),
+			if err := s.do(cmd.Context(), http.MethodGet, fmt.Sprintf("/tasks/%d/graph", id),
 				url.Values{"direction": {dir}}, nil, &out); err != nil {
 				return err
 			}

@@ -137,14 +137,35 @@ func loadSnapshot(ctx context.Context, sqlDB *sql.DB, image []byte) (*Store, err
 	if err != nil {
 		return nil, fmt.Errorf("open snapshot: read schema version: %w", err)
 	}
-	var latest int64
-	if sources := provider.ListSources(); len(sources) > 0 {
-		latest = sources[len(sources)-1].Version
-	}
-	if current != latest {
+	if latest := latestVersion(provider); current != latest {
 		return nil, &VersionMismatchError{Snapshot: current, Latest: latest}
 	}
 	return &Store{db: sqlDB, queries: sqlcgen.New(sqlDB)}, nil
+}
+
+// SchemaVersion is the goose version of the latest migration this binary
+// embeds: the schema every database it opens is migrated to, and the one a
+// snapshot must match.
+func SchemaVersion() (int64, error) {
+	// sql.Open does not connect; the provider only reads the embedded files.
+	sqlDB, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		return 0, fmt.Errorf("open sqlite: %w", err)
+	}
+	defer func() { _ = sqlDB.Close() }()
+	provider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, migrations.FS)
+	if err != nil {
+		return 0, fmt.Errorf("new goose provider: %w", err)
+	}
+	return latestVersion(provider), nil
+}
+
+func latestVersion(provider *goose.Provider) int64 {
+	sources := provider.ListSources()
+	if len(sources) == 0 {
+		return 0
+	}
+	return sources[len(sources)-1].Version
 }
 
 // Close closes the underlying database connection.

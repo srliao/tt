@@ -38,12 +38,12 @@ func loadConfig(path string, getenv func(string) string) (Config, error) {
 	switch {
 	case err == nil:
 		if _, err := toml.DecodeFile(path, &cfg); err != nil {
-			return cfg, &Error{Code: "config_invalid", Message: "parse config: " + err.Error(), Details: map[string]any{"path": path}, Exit: ExitUsage}
+			return cfg, &Error{Code: CodeConfigInvalid, Message: "parse config: " + err.Error(), Details: map[string]any{"path": path}, Exit: ExitUsage}
 		}
 		cfg.FileFound = true
 		cfg.FileMode = info.Mode().Perm()
 	case !errors.Is(err, fs.ErrNotExist):
-		return cfg, &Error{Code: "config_invalid", Message: "read config: " + err.Error(), Details: map[string]any{"path": path}, Exit: ExitUsage}
+		return cfg, &Error{Code: CodeConfigInvalid, Message: "read config: " + err.Error(), Details: map[string]any{"path": path}, Exit: ExitUsage}
 	}
 
 	for _, f := range []struct {

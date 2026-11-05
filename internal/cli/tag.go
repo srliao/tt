@@ -28,16 +28,9 @@ Output: {tags: [{id, name, color_hue, created_at, count}]}`,
 		Example: `  tt-cli tag list`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, err := s.api()
+			out, err := list[tag.TagWithCount](cmd.Context(), s, http.MethodGet, "/tags", url.Values{"counts": {"1"}}, nil)
 			if err != nil {
 				return err
-			}
-			var out []tag.TagWithCount
-			if _, err := c.Do(cmd.Context(), http.MethodGet, "/tags", url.Values{"counts": {"1"}}, nil, &out); err != nil {
-				return err
-			}
-			if out == nil {
-				out = []tag.TagWithCount{}
 			}
 			return s.out(map[string]any{"tags": out})
 		},
@@ -55,12 +48,8 @@ Output: ` + tagShape,
 		Example: `  tt-cli tag create errand`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out tag.Tag
-			if _, err := c.Do(cmd.Context(), http.MethodPost, "/tags", nil, map[string]string{"name": args[0]}, &out); err != nil {
+			if err := s.do(cmd.Context(), http.MethodPost, "/tags", nil, map[string]string{"name": args[0]}, &out); err != nil {
 				return err
 			}
 			return s.out(out)

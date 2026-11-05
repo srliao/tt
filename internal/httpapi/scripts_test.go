@@ -101,6 +101,30 @@ func TestScripts_CRUD(t *testing.T) {
 	}
 }
 
+// The CLI omits enabled on PATCH so a toggle made in the UI is never undone.
+func TestScripts_PatchWithoutEnabledKeepsIt(t *testing.T) {
+	t.Parallel()
+
+	fx := newTestServer(t, nil)
+	resp := doJSON(t, http.MethodPost, fx.server.URL+"/api/v1/scripts", map[string]any{
+		"name": "s", "code": "1", "enabled": true, "schedule": map[string]any{"kind": "daily"},
+	})
+	defer func() { _ = resp.Body.Close() }()
+	created := decodeScript(t, resp)
+
+	resp2 := doJSON(t, http.MethodPatch, fmt.Sprintf("%s/api/v1/scripts/%d", fx.server.URL, created.ID), map[string]any{
+		"name": "s", "code": "2", "schedule": map[string]any{"kind": "daily"},
+	})
+	defer func() { _ = resp2.Body.Close() }()
+	if resp2.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp2.Body)
+		t.Fatalf("patch status = %d body = %s", resp2.StatusCode, string(body))
+	}
+	if patched := decodeScript(t, resp2); !patched.Enabled || patched.Code != "2" {
+		t.Fatalf("patched = %+v, want enabled kept and code updated", patched)
+	}
+}
+
 func TestScripts_BadWeekdayRejected(t *testing.T) {
 	t.Parallel()
 

@@ -38,11 +38,12 @@ const scheduleFlagHelp = "every_tick | daily | weekly:<weekday> | monthly:<1-31|
 // the user enables it in the UI.
 const nextStepEnable = "enable in UI"
 
-// scriptBody is the POST/PATCH /scripts body. PATCH replaces every field.
+// scriptBody is the POST/PATCH /scripts body. PATCH replaces every field
+// except enabled, which the server leaves alone when it is omitted.
 type scriptBody struct {
 	Name     string          `json:"name"`
 	Code     string          `json:"code"`
-	Enabled  bool            `json:"enabled"`
+	Enabled  *bool           `json:"enabled,omitempty"`
 	Schedule script.Schedule `json:"schedule"`
 }
 
@@ -111,16 +112,9 @@ Output: {scripts: [script]}
 		Example: `  tt-cli script list`,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, err := s.api()
+			out, err := list[script.Script](cmd.Context(), s, http.MethodGet, "/scripts", nil, nil)
 			if err != nil {
 				return err
-			}
-			var out []script.Script
-			if _, err := c.Do(cmd.Context(), http.MethodGet, "/scripts", nil, nil, &out); err != nil {
-				return err
-			}
-			if out == nil {
-				out = []script.Script{}
 			}
 			return s.out(map[string]any{"scripts": out})
 		},
@@ -128,12 +122,8 @@ Output: {scripts: [script]}
 }
 
 func (s *session) getScript(ctx context.Context, id int64) (script.Script, error) {
-	c, err := s.api()
-	if err != nil {
-		return script.Script{}, err
-	}
 	var out script.Script
-	_, err = c.Do(ctx, http.MethodGet, fmt.Sprintf("/scripts/%d", id), nil, nil, &out)
+	err := s.do(ctx, http.MethodGet, fmt.Sprintf("/scripts/%d", id), nil, nil, &out)
 	return out, err
 }
 
@@ -230,13 +220,10 @@ Output: {...script, next_step: "enable in UI"}
 			if err := checkCode(string(code)); err != nil {
 				return err
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out script.Script
-			body := scriptBody{Name: name, Code: string(code), Enabled: false, Schedule: sch}
-			if _, err := c.Do(cmd.Context(), http.MethodPost, "/scripts", nil, body, &out); err != nil {
+			disabled := false
+			body := scriptBody{Name: name, Code: string(code), Enabled: &disabled, Schedule: sch}
+			if err := s.do(cmd.Context(), http.MethodPost, "/scripts", nil, body, &out); err != nil {
 				return err
 			}
 			return s.out(savedScript{Script: out, NextStep: nextStepEnable})
@@ -292,7 +279,6 @@ Output: {...script, next_step: "enable in UI"}
 			if err != nil {
 				return err
 			}
-			body.Enabled = cur.Enabled
 			body.Name = cur.Name
 			if flags.Changed("name") {
 				body.Name = name
@@ -303,12 +289,8 @@ Output: {...script, next_step: "enable in UI"}
 			if !flags.Changed("schedule") {
 				body.Schedule = cur.Schedule
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out script.Script
-			if _, err := c.Do(cmd.Context(), http.MethodPatch, fmt.Sprintf("/scripts/%d", id), nil, body, &out); err != nil {
+			if err := s.do(cmd.Context(), http.MethodPatch, fmt.Sprintf("/scripts/%d", id), nil, body, &out); err != nil {
 				return err
 			}
 			saved := savedScript{Script: out}
@@ -341,12 +323,8 @@ Output: {run_id}`,
 			if err != nil {
 				return err
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out map[string]int64
-			if _, err := c.Do(cmd.Context(), http.MethodPost, fmt.Sprintf("/scripts/%d/run", id), nil, nil, &out); err != nil {
+			if err := s.do(cmd.Context(), http.MethodPost, fmt.Sprintf("/scripts/%d/run", id), nil, nil, &out); err != nil {
 				return err
 			}
 			return s.out(out)
@@ -373,17 +351,10 @@ Output: {runs: [run]}
 			if limit <= 0 {
 				return usageErr("--limit must be positive", map[string]any{"value": limit})
 			}
-			c, err := s.api()
+			out, err := list[script.Run](cmd.Context(), s, http.MethodGet, fmt.Sprintf("/scripts/%d/runs", id),
+				url.Values{"limit": {fmt.Sprint(limit)}}, nil)
 			if err != nil {
 				return err
-			}
-			var out []script.Run
-			if _, err := c.Do(cmd.Context(), http.MethodGet, fmt.Sprintf("/scripts/%d/runs", id),
-				url.Values{"limit": {fmt.Sprint(limit)}}, nil, &out); err != nil {
-				return err
-			}
-			if out == nil {
-				out = []script.Run{}
 			}
 			return s.out(map[string]any{"runs": out})
 		},

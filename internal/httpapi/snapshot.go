@@ -17,10 +17,15 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// fail logs a failed step and answers 500 without leaking its detail.
+	fail := func(step string, err error) {
+		s.logger.Error("snapshot: "+step, "err", err)
+		writeError(w, http.StatusInternalServerError, CodeInternal, "snapshot failed", nil)
+	}
+
 	dir, err := os.MkdirTemp(s.snapshotDir, "tt-snapshot-*")
 	if err != nil {
-		s.logger.Error("snapshot: create temp dir", "err", err)
-		writeError(w, http.StatusInternalServerError, CodeInternal, "snapshot failed", nil)
+		fail("create temp dir", err)
 		return
 	}
 	defer func() {
@@ -31,22 +36,19 @@ func (s *Server) handleSnapshot(w http.ResponseWriter, r *http.Request) {
 
 	path := filepath.Join(dir, "snapshot.db")
 	if err := s.snapshotter.VacuumInto(r.Context(), path); err != nil {
-		s.logger.Error("snapshot: vacuum", "err", err)
-		writeError(w, http.StatusInternalServerError, CodeInternal, "snapshot failed", nil)
+		fail("vacuum", err)
 		return
 	}
 
 	f, err := os.Open(path)
 	if err != nil {
-		s.logger.Error("snapshot: open copy", "err", err)
-		writeError(w, http.StatusInternalServerError, CodeInternal, "snapshot failed", nil)
+		fail("open copy", err)
 		return
 	}
 	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
-		s.logger.Error("snapshot: stat copy", "err", err)
-		writeError(w, http.StatusInternalServerError, CodeInternal, "snapshot failed", nil)
+		fail("stat copy", err)
 		return
 	}
 

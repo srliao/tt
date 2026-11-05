@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	sqlcgen "github.com/srliao/tt/internal/db/sqlc"
+	"github.com/srliao/tt/internal/tag"
 )
 
 // Plan creates a set of tasks and adds or removes dependencies in one
@@ -128,7 +129,7 @@ func (s *Impl) ApplyPlan(ctx context.Context, p Plan) (PlanResult, error) {
 
 		for i, pt := range p.Tasks {
 			for _, name := range pt.Tags {
-				if _, ok := tagIDs[normalizeTagName(name)]; !ok {
+				if _, ok := tagIDs[tag.NormalizeName(name)]; !ok {
 					return &PlanError{
 						Msg: fmt.Sprintf("task %d (%q): unknown tag %q", i, pt.Ref, name),
 						Details: map[string]any{
@@ -140,7 +141,7 @@ func (s *Impl) ApplyPlan(ctx context.Context, p Plan) (PlanResult, error) {
 			}
 		}
 
-		now := s.stamp()
+		now := s.now.Stamp()
 		for _, pt := range p.Tasks {
 			params := sqlcgen.CreateTaskParams{
 				Title:     pt.Title,
@@ -161,7 +162,7 @@ func (s *Impl) ApplyPlan(ctx context.Context, p Plan) (PlanResult, error) {
 			}
 			ids[pt.Ref] = row.ID
 			for _, name := range pt.Tags {
-				if err := q.AddTaskTag(ctx, sqlcgen.AddTaskTagParams{TaskID: row.ID, TagID: tagIDs[normalizeTagName(name)]}); err != nil {
+				if err := q.AddTaskTag(ctx, sqlcgen.AddTaskTagParams{TaskID: row.ID, TagID: tagIDs[tag.NormalizeName(name)]}); err != nil {
 					return fmt.Errorf("task: plan tag %q: %w", pt.Ref, err)
 				}
 			}
@@ -302,9 +303,4 @@ func tagIDsByName(ctx context.Context, q *sqlcgen.Queries) (map[string]int64, er
 		out[r.Name] = r.ID
 	}
 	return out, nil
-}
-
-// normalizeTagName mirrors the tag package's canonical form.
-func normalizeTagName(name string) string {
-	return strings.ToLower(strings.TrimSpace(name))
 }

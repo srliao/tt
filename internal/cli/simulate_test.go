@@ -51,6 +51,27 @@ func (f *fixture) storedScript(sch script.Schedule, code, state string) script.S
 	return sc
 }
 
+// pastSpawn records an ok run of scriptID at at that spawned one task, which
+// is still open.
+func (f *fixture) pastSpawn(scriptID int64, at time.Time) {
+	f.t.Helper()
+	ctx := context.Background()
+	clock := func() time.Time { return at }
+	scripts := script.New(f.store, script.WithClock(clock))
+	run, err := scripts.StartRun(ctx, scriptID, script.TriggerScheduled)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	spawn, err := task.New(f.store, task.WithClock(clock)).Create(ctx,
+		task.CreateInput{Title: "Water plants", SpawnedByScriptID: &scriptID})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if err := scripts.FinishRun(ctx, run.ID, script.RunStatusOK, "", []int64{spawn.ID}); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
 func TestSimulate_WeeklyFiresOnEachMondayOfDefaultRange(t *testing.T) {
 	f := simFixture(t)
 	code := writeCode(t, `ctx.queueTask({title: "Take out bins"})`)
@@ -146,6 +167,35 @@ func TestSimulate_StoredDisabledScriptCarriesState(t *testing.T) {
 	}
 	if len(runs) != 0 {
 		t.Fatalf("server has %d runs", len(runs))
+	}
+}
+
+// With --id, spawns already open in the snapshot are completed too, so a
+// script waiting on its last spawn can fire again.
+func TestSimulate_CompleteAfterCoversSpawnsAlreadyOpen(t *testing.T) {
+	f := simFixture(t)
+	sc := f.storedScript(script.Schedule{Kind: script.KindDaily}, afterCompletedCode, "")
+	f.pastSpawn(sc.ID, time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC))
+
+	var got simOut
+	f.run("script", "simulate", "--id", id(sc.ID), "--from", "2026-11-05", "--to", "2026-11-08",
+		"--complete-after", "0d").ok(t, &got)
+
+	if want := []string{"2026-11-05", "2026-11-08"}; !slices.Equal(got.Summary.SpawnDates, want) {
+		t.Fatalf("spawn_dates = %v, want %v", got.Summary.SpawnDates, want)
+	}
+}
+
+func TestSimulate_FromAloneRunsThirtyFiveDays(t *testing.T) {
+	f := simFixture(t)
+	code := writeCode(t, `ctx.queueTask({title: "x"})`)
+
+	var got simOut
+	f.run("script", "simulate", "--code", code, "--schedule", "daily", "--from", "2027-01-01").ok(t, &got)
+
+	dates := got.Summary.SpawnDates
+	if len(dates) != 36 || dates[0] != "2027-01-01" || dates[35] != "2027-02-05" {
+		t.Fatalf("spawn_dates = %v, want 2027-01-01 through 2027-02-05", dates)
 	}
 }
 

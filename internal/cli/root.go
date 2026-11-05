@@ -7,6 +7,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"time"
 
@@ -63,7 +64,7 @@ func (s *session) api() (*ttclient.Client, error) {
 	}
 	if cfg.URL == "" {
 		return nil, &Error{
-			Code:    "config_missing",
+			Code:    CodeConfigMissing,
 			Message: "no server url configured: set url in the config file or TT_URL",
 			Details: map[string]any{"path": cfg.Path},
 			Exit:    ExitUsage,
@@ -75,6 +76,30 @@ func (s *session) api() (*ttclient.Client, error) {
 	}
 	s.client = c
 	return c, nil
+}
+
+// do sends one request to the server's /api/v1+path and decodes the JSON
+// response into out (skipped when out is nil).
+func (s *session) do(ctx context.Context, method, path string, query url.Values, body, out any) error {
+	c, err := s.api()
+	if err != nil {
+		return err
+	}
+	_, err = c.Do(ctx, method, path, query, body, out)
+	return err
+}
+
+// list sends one request whose response is a JSON array and returns it,
+// empty rather than nil so it always encodes as [].
+func list[T any](ctx context.Context, s *session, method, path string, query url.Values, body any) ([]T, error) {
+	var out []T
+	if err := s.do(ctx, method, path, query, body, &out); err != nil {
+		return nil, err
+	}
+	if out == nil {
+		out = []T{}
+	}
+	return out, nil
 }
 
 // out writes v as JSON to stdout.

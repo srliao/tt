@@ -67,12 +67,8 @@ func (s *session) requireTags(ctx context.Context, names []string) error {
 	if len(names) == 0 {
 		return nil
 	}
-	c, err := s.api()
-	if err != nil {
-		return err
-	}
 	var tags []tag.Tag
-	if _, err := c.Do(ctx, http.MethodGet, "/tags", nil, nil, &tags); err != nil {
+	if err := s.do(ctx, http.MethodGet, "/tags", nil, nil, &tags); err != nil {
 		return err
 	}
 	existing := make([]string, 0, len(tags))
@@ -81,7 +77,7 @@ func (s *session) requireTags(ctx context.Context, names []string) error {
 	}
 	var unknown []string
 	for _, n := range names {
-		if !slices.Contains(existing, strings.ToLower(strings.TrimSpace(n))) {
+		if !slices.Contains(existing, tag.NormalizeName(n)) {
 			unknown = append(unknown, n)
 		}
 	}

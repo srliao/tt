@@ -55,14 +55,19 @@ func newFixture(t *testing.T) *fixture {
 	tasks := task.New(store)
 	tags := tag.New(store)
 	scripts := script.New(store)
+	schema, err := db.SchemaVersion()
+	if err != nil {
+		t.Fatal(err)
+	}
 	srv := httpapi.New(
 		tasks, tags, scripts, drawing.New(store), noopEnqueuer{}, nil,
 		httpapi.Options{
-			Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-			Version:     "test-1.2.3",
-			Timezone:    "America/New_York",
-			Snapshotter: store,
-			SnapshotDir: t.TempDir(),
+			Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Version:       "test-1.2.3",
+			Timezone:      "America/New_York",
+			SchemaVersion: schema,
+			Snapshotter:   store,
+			SnapshotDir:   t.TempDir(),
 		},
 	)
 	f := &fixture{

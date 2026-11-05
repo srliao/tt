@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/srliao/tt/internal/db"
 	"github.com/srliao/tt/internal/ttclient"
 )
 
@@ -22,11 +23,20 @@ type doctorConfig struct {
 }
 
 type doctorServer struct {
-	Reachable bool   `json:"reachable"`
-	AuthOK    bool   `json:"auth_ok"`
-	Version   string `json:"version,omitempty"`
-	Timezone  string `json:"timezone,omitempty"`
-	Time      string `json:"time,omitempty"`
+	Reachable bool          `json:"reachable"`
+	AuthOK    bool          `json:"auth_ok"`
+	Version   string        `json:"version,omitempty"`
+	Timezone  string        `json:"timezone,omitempty"`
+	Time      string        `json:"time,omitempty"`
+	Schema    *doctorSchema `json:"schema,omitempty"`
+}
+
+// doctorSchema compares the server database's goose version with the one
+// this tt-cli embeds; snapshots only load when they match.
+type doctorSchema struct {
+	Server int64 `json:"server"`
+	CLI    int64 `json:"cli"`
+	Match  bool  `json:"match"`
 }
 
 type doctorReport struct {
@@ -42,11 +52,14 @@ func newDoctorCmd(s *session) *cobra.Command {
 		Short: "Check config, connectivity and auth",
 		Long: `Check where the config came from, that the server is reachable and the
 credentials are accepted, and report the server's version, time zone and
-clock. Run this first when any other command fails with exit code 4.
+clock, and whether its database schema matches this tt-cli. Snapshots (plan
+check, script simulate) only load when it does; a mismatch fails with
+version_mismatch (exit 4). Run this first when any other command fails with
+exit code 4.
 
 Output: {ok: true,
  config: {path, file_found, file_mode?, url, sources: {field: "env"|"file"}, cf_access: bool},
- server: {reachable, auth_ok, version, timezone, time},
+ server: {reachable, auth_ok, version, timezone, time, schema?: {server, cli, match}},
  warnings: [string]}
 On failure the same report is in the stderr error's details.`,
 		Example: `  tt-cli doctor`,
@@ -82,8 +95,9 @@ On failure the same report is in the stderr error's details.`,
 				return withReport(err, rep)
 			}
 			var v struct {
-				Version  string `json:"version"`
-				Timezone string `json:"timezone"`
+				Version       string `json:"version"`
+				Timezone      string `json:"timezone"`
+				SchemaVersion int64  `json:"schema_version"`
 			}
 			hdr, err := c.Do(cmd.Context(), http.MethodGet, "/version", nil, nil, &v)
 			if err != nil {
@@ -94,6 +108,18 @@ On failure the same report is in the stderr error's details.`,
 			rep.Server = doctorServer{Reachable: true, AuthOK: true, Version: v.Version, Timezone: v.Timezone}
 			if t, err := http.ParseTime(hdr.Get("Date")); err == nil {
 				rep.Server.Time = t.UTC().Format(time.RFC3339)
+			}
+			ours, err := db.SchemaVersion()
+			if err != nil {
+				return withReport(err, rep)
+			}
+			if v.SchemaVersion == 0 {
+				rep.Warnings = append(rep.Warnings, "server does not report its schema version; upgrade the tt server")
+			} else {
+				rep.Server.Schema = &doctorSchema{Server: v.SchemaVersion, CLI: ours, Match: v.SchemaVersion == ours}
+				if !rep.Server.Schema.Match {
+					return withReport(versionMismatchErr("server", v.SchemaVersion, ours, nil), rep)
+				}
 			}
 			rep.OK = true
 			return s.out(rep)

@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -85,6 +86,34 @@ func TestScriptUpdate_KeepsEnabledAndUnsetFields(t *testing.T) {
 
 	if !got.Enabled || got.Code != "2" || got.Name != "plants" || got.Schedule.Kind != script.KindDaily {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+// A UI toggle that lands between the CLI reading the script and saving it
+// survives, because update never sends enabled.
+func TestScriptUpdate_DoesNotUndoUIToggle(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	in := script.CreateInput{Name: "plants", Code: "1", Enabled: true, Schedule: script.Schedule{Kind: script.KindDaily}}
+	sc, err := f.scripts.Create(ctx, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.gate = func(_ http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPatch {
+			off := in
+			off.Enabled = false
+			if _, err := f.scripts.Update(ctx, sc.ID, off); err != nil {
+				t.Error(err)
+			}
+		}
+	}
+
+	var got scriptOut
+	f.runStdin("2", "script", "update", id(sc.ID), "--code", "-").ok(t, &got)
+
+	if got.Enabled || got.Code != "2" || got.NextStep != "enable in UI" {
+		t.Fatalf("got %+v, want the UI's disable kept", got)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/srliao/tt/internal/task"
+	"github.com/srliao/tt/internal/ttclient"
 )
 
 func newPlanCmd(s *session) *cobra.Command {
@@ -79,12 +80,8 @@ every task and edge is written or, on any error, nothing is.
 			if err != nil {
 				return err
 			}
-			c, err := s.api()
-			if err != nil {
-				return err
-			}
 			var out task.PlanResult
-			if _, err := c.Do(cmd.Context(), http.MethodPost, "/plans", nil, plan, &out); err != nil {
+			if err := s.do(cmd.Context(), http.MethodPost, "/plans", nil, plan, &out); err != nil {
 				return err
 			}
 			return s.out(out)
@@ -110,17 +107,17 @@ func serviceErr(err error) error {
 	if errors.As(err, &re) {
 		details := map[string]any{"rule": re.Rule}
 		maps.Copy(details, re.Details)
-		return &Error{Code: CodeConflict, Message: re.Error(), Details: details, Exit: ExitValidation}
+		return &Error{Code: ttclient.CodeConflict, Message: re.Error(), Details: details, Exit: ExitValidation}
 	}
 	var pe *task.PlanError
 	if errors.As(err, &pe) {
 		if errors.Is(pe, sql.ErrNoRows) {
-			return &Error{Code: CodeNotFound, Message: pe.Msg, Details: pe.Details, Exit: ExitNotFound}
+			return &Error{Code: ttclient.CodeNotFound, Message: pe.Msg, Details: pe.Details, Exit: ExitNotFound}
 		}
 		return validationErr(pe.Msg, pe.Details)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
-		return &Error{Code: CodeNotFound, Message: "not found", Exit: ExitNotFound}
+		return &Error{Code: ttclient.CodeNotFound, Message: "not found", Exit: ExitNotFound}
 	}
-	return &Error{Code: "internal", Message: err.Error(), Exit: ExitRemote}
+	return &Error{Code: ttclient.CodeInternal, Message: err.Error(), Exit: ExitRemote}
 }

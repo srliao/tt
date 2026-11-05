@@ -110,7 +110,7 @@ func (s *Impl) AddDep(ctx context.Context, taskID, dependsOnID int64) (Task, err
 		if err != nil {
 			return err
 		}
-		return addDep(ctx, q, g, Edge{TaskID: taskID, DependsOnID: dependsOnID}, s.stamp())
+		return addDep(ctx, q, g, Edge{TaskID: taskID, DependsOnID: dependsOnID}, s.now.Stamp())
 	})
 	if err != nil {
 		return Task{}, err
@@ -149,7 +149,7 @@ func (s *Impl) ApplyDeps(ctx context.Context, in DepBatch) ([]Task, error) {
 			}
 			g.remove(e)
 		}
-		now := s.stamp()
+		now := s.now.Stamp()
 		for i, e := range in.Add {
 			if err := addDep(ctx, q, g, e, now); err != nil {
 				var re *RuleError

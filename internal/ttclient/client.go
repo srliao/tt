@@ -16,6 +16,15 @@ import (
 	"strings"
 )
 
+// Error codes the server sends in its envelope (see httpapi/errors.go).
+const (
+	CodeValidation    = "validation_failed"
+	CodeNotFound      = "not_found"
+	CodeConflict      = "conflict"
+	CodeSchedulerBusy = "scheduler_busy"
+	CodeInternal      = "internal"
+)
+
 // Client-side error codes, used where the server never produced an envelope.
 const (
 	CodeAuth    = "auth_failed"

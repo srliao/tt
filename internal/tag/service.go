@@ -6,16 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/srliao/tt/internal/db"
 	sqlcgen "github.com/srliao/tt/internal/db/sqlc"
 )
-
-// sqliteTimeLayout matches the format SQLite's datetime('now') produces (UTC,
-// second precision). RFC3339 is tried as a fallback in case a caller persisted
-// a higher-precision timestamp.
-const sqliteTimeLayout = "2006-01-02 15:04:05"
 
 // Service is the tag-domain API. The interface enumerates every method
 // implemented by Impl so callers can mock the service in tests.
@@ -49,7 +43,7 @@ func New(store *db.Store) *Impl {
 // name and returns the existing tag if found instead of triggering a UNIQUE
 // constraint error.
 func (s *Impl) Create(ctx context.Context, name string) (Tag, error) {
-	normalized := normalize(name)
+	normalized := NormalizeName(name)
 	if err := validateName(normalized); err != nil {
 		return Tag{}, err
 	}
@@ -100,7 +94,7 @@ func (s *Impl) pickLeastUsedHue(ctx context.Context) (int64, error) {
 // Rename updates the name of tag id. The new name is normalized (trimmed +
 // lowercased) and rejected if empty.
 func (s *Impl) Rename(ctx context.Context, id int64, name string) (Tag, error) {
-	normalized := normalize(name)
+	normalized := NormalizeName(name)
 	if err := validateName(normalized); err != nil {
 		return Tag{}, err
 	}
@@ -150,7 +144,7 @@ func (s *Impl) ListWithCounts(ctx context.Context) ([]TagWithCount, error) {
 				ID:        r.ID,
 				Name:      r.Name,
 				ColorHue:  r.ColorHue,
-				CreatedAt: parseSqliteTime(r.CreatedAt),
+				CreatedAt: db.ParseTime(r.CreatedAt),
 			},
 			Count: r.Count,
 		})
@@ -162,7 +156,7 @@ func (s *Impl) ListWithCounts(ctx context.Context) ([]TagWithCount, error) {
 // the supplied name. Returns (nil, nil) when no row matches so callers can
 // distinguish "missing" from "lookup failed".
 func (s *Impl) GetByName(ctx context.Context, name string) (*Tag, error) {
-	normalized := normalize(name)
+	normalized := NormalizeName(name)
 	row, err := s.q.GetTagByName(ctx, normalized)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -183,7 +177,7 @@ func (s *Impl) Resolve(ctx context.Context, names []string, autoCreate bool) ([]
 	seen := make(map[string]struct{}, len(names))
 	unique := make([]string, 0, len(names))
 	for _, raw := range names {
-		n := normalize(raw)
+		n := NormalizeName(raw)
 		if n == "" {
 			continue
 		}
@@ -244,7 +238,7 @@ func (s *Impl) ResolveExisting(ctx context.Context, names []string) ([]int64, er
 	seen := make(map[string]struct{}, len(names))
 	unique := make([]string, 0, len(names))
 	for _, raw := range names {
-		n := normalize(raw)
+		n := NormalizeName(raw)
 		if n == "" {
 			continue
 		}
@@ -269,11 +263,11 @@ func (s *Impl) ResolveExisting(ctx context.Context, names []string) ([]int64, er
 	return ids, nil
 }
 
-// normalize is the single canonical form for tag names: trimmed whitespace
-// and lowercased. All entry points (Create, Rename, GetByName, Resolve) feed
-// names through this so storage and lookups stay case-insensitive regardless
-// of what the user typed.
-func normalize(name string) string {
+// NormalizeName is the single canonical form for tag names: trimmed
+// whitespace and lowercased. All entry points (Create, Rename, GetByName,
+// Resolve), and callers matching names outside this package, feed names
+// through this so storage and lookups stay case-insensitive.
+func NormalizeName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
@@ -298,23 +292,8 @@ func rowToTag(r sqlcgen.Tag) Tag {
 		ID:        r.ID,
 		Name:      r.Name,
 		ColorHue:  r.ColorHue,
-		CreatedAt: parseSqliteTime(r.CreatedAt),
+		CreatedAt: db.ParseTime(r.CreatedAt),
 	}
-}
-
-// parseSqliteTime accepts both SQLite's datetime('now') output and RFC3339
-// to be tolerant of timestamps produced by other code paths.
-func parseSqliteTime(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	if t, err := time.Parse(sqliteTimeLayout, s); err == nil {
-		return t.UTC()
-	}
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t.UTC()
-	}
-	return time.Time{}
 }
 
 // Compile-time assertion that Impl satisfies the Service interface.

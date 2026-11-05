@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+
+	"github.com/srliao/tt/internal/ttclient"
 )
 
 // skillMD only points back at the CLI: the help text is the manual, so the
@@ -50,7 +52,7 @@ With --print: the SKILL.md markdown itself (not JSON).`,
 			if !force {
 				if _, err := os.Stat(path); err == nil {
 					return &Error{
-						Code:    CodeConflict,
+						Code:    ttclient.CodeConflict,
 						Message: path + " already exists; pass --force to overwrite",
 						Details: map[string]any{"path": path},
 						Exit:    ExitValidation,
