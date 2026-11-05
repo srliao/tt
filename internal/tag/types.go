@@ -3,6 +3,8 @@
 // Tags are name-only labels associated with tasks. The service exposes CRUD
 // plus a Resolve helper that converts free-text tag names (with optional
 // auto-creation) into the ids used by the task service for attachment.
+//
+// The JSON shapes are hand-mirrored in `web/src/types/tag.ts`; update both together.
 package tag
 
 import "time"

@@ -2,6 +2,9 @@
 // schedule parsing/matching, run lifecycle (start/log/finish), user-state
 // read/write, FIFO retention pruning, and startup recovery of orphaned
 // "running" rows.
+//
+// The JSON shapes are hand-mirrored in `web/src/types/script.ts` and
+// `web/src/types/run.ts`; update both together.
 package script
 
 import (

@@ -76,6 +76,7 @@ function DrawingCanvas({
       // Excalidraw's menu toggle / Shift+Alt+D flips appState.theme; mirror it
       // so the choice sticks. Unchanged values are ignored.
       if (appState.theme === 'light' || appState.theme === 'dark') setCanvasTheme(appState.theme);
+      // 'local', not 'database': the latter drops embedded image files.
       notifyChange(() => serializeAsJSON(elements, appState, files, 'local'));
     },
     [notifyChange, setCanvasTheme],

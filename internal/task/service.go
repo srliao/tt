@@ -620,7 +620,8 @@ func (s *Impl) minStagedOrder(ctx context.Context) (float64, error) {
 }
 
 // minPriority reads the current MIN(priority); 1.0 when the table is empty,
-// so the first task lands on 0.0.
+// so the first task lands on 0.0. The list renders ascending, so new keys are
+// minted at MIN - 1 to land on top; keys drifting negative is fine.
 func (s *Impl) minPriority(ctx context.Context) (float64, error) {
 	v, err := s.q.MinPriority(ctx)
 	if err != nil {

@@ -19,6 +19,7 @@
  * <TagChip> rather than re-deriving hues locally.
  */
 
+// Mirrors `HuePalette` in `internal/tag/types.go`; change both together.
 const HUES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
 
 /**
