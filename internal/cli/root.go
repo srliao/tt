@@ -140,6 +140,7 @@ func newRootCmd(s *session) *cobra.Command {
 		newStageCmd(s),
 		newTagCmd(s),
 		newPlanCmd(s),
+		newScriptCmd(s),
 		newSnapshotCmd(s),
 		newDoctorCmd(s),
 	)
