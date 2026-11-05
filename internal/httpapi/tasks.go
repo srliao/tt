@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"maps"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -28,6 +29,9 @@ func (s *Server) mountTaskRoutes(r chi.Router) {
 		r.Post("/{id}/state", s.handleSetTaskState)
 		r.Post("/{id}/stage", s.handleStageTask)
 		r.Delete("/{id}/stage", s.handleUnstageTask)
+		r.Post("/{id}/deps", s.handleAddDep)
+		r.Delete("/{id}/deps/{dep_id}", s.handleRemoveDep)
+		r.Get("/{id}/graph", s.handleTaskGraph)
 	})
 }
 
@@ -175,6 +179,16 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		ascending = v
 	}
 
+	var blocked *bool
+	if raw := q.Get("blocked"); raw != "" {
+		v, err := strconv.ParseBool(raw)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, CodeValidation, "blocked must be true|false", map[string]any{"value": raw})
+			return
+		}
+		blocked = &v
+	}
+
 	limit, err := parseIntDefault(q.Get("limit"), 0)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, CodeValidation, "limit must be an integer", nil)
@@ -192,6 +206,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		TagExcludeIDs: tagExcludeIDs,
 		Due:           due,
 		Search:        q.Get("q"),
+		Blocked:       blocked,
 		Sort:          sortAxis,
 		Ascending:     ascending,
 		Limit:         limit,
@@ -497,7 +512,12 @@ func (s *Server) handleBulkTag(w http.ResponseWriter, r *http.Request) {
 // parsePathID extracts the {id} URL param and returns (id, true) on success.
 // On failure it has already written a 400 envelope and returns (0, false).
 func parsePathID(w http.ResponseWriter, r *http.Request) (int64, bool) {
-	raw := chi.URLParam(r, "id")
+	return parseIDParam(w, r, "id")
+}
+
+// parseIDParam is parsePathID for an arbitrary URL param name.
+func parseIDParam(w http.ResponseWriter, r *http.Request, name string) (int64, bool) {
+	raw := chi.URLParam(r, name)
 	id, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil || id <= 0 {
 		writeError(w, http.StatusBadRequest, CodeValidation, "invalid id", map[string]any{"value": raw})
@@ -525,6 +545,8 @@ func parseIntDefault(raw string, fallback int) (int, error) {
 // same shape of failure.
 //
 // Recognised mappings:
+//   - *task.RuleError: 409 conflict, rule name and ids in details. Checked
+//     first so no substring match below can claim it.
 //   - errors.Is(err, sql.ErrNoRows): 404 not_found.
 //   - SQLite UNIQUE constraint failures (modernc driver returns the message
 //     verbatim from sqlite): 409 conflict.
@@ -533,6 +555,13 @@ func parseIntDefault(raw string, fallback int) (int, error) {
 //   - Everything else: 500 internal.
 func writeServiceError(w http.ResponseWriter, err error) {
 	if err == nil {
+		return
+	}
+	var re *task.RuleError
+	if errors.As(err, &re) {
+		details := map[string]any{"rule": re.Rule}
+		maps.Copy(details, re.Details)
+		writeError(w, http.StatusConflict, CodeConflict, re.Error(), details)
 		return
 	}
 	// sql.ErrNoRows: the task/tag/script services wrap this in fmt.Errorf
