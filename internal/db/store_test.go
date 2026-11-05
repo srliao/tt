@@ -2,11 +2,15 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"sort"
 	"testing"
 
+	"github.com/pressly/goose/v3"
+
 	"github.com/srliao/tt/internal/db"
+	"github.com/srliao/tt/internal/db/migrations"
 )
 
 func TestOpenInMemoryAndMigrate(t *testing.T) {
@@ -37,7 +41,7 @@ func TestOpenInMemoryAndMigrate(t *testing.T) {
 		t.Fatalf("rows.Err: %v", err)
 	}
 
-	want := []string{"drawings", "script_logs", "script_runs", "scripts", "tags", "task_tags", "tasks"}
+	want := []string{"drawings", "script_logs", "script_runs", "scripts", "tags", "task_deps", "task_tags", "tasks"}
 	sort.Strings(got)
 
 	if len(got) != len(want) {
@@ -124,5 +128,44 @@ func TestOpenFile(t *testing.T) {
 
 	if err := store.Close(); err != nil {
 		t.Fatalf("store.Close: %v", err)
+	}
+}
+
+// TestTaskDepsMigrationUpgradeAndDown applies 0004 on top of a database that
+// already holds tasks, then rolls it back.
+func TestTaskDepsMigrationUpgradeAndDown(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "up.sqlite")+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	provider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, migrations.FS)
+	if err != nil {
+		t.Fatalf("goose.NewProvider: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, 3); err != nil {
+		t.Fatalf("up to 3: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `INSERT INTO tasks (title) VALUES ('a'), ('b')`); err != nil {
+		t.Fatalf("seed tasks: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, 4); err != nil {
+		t.Fatalf("up to 4: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `INSERT INTO task_deps (task_id, depends_on_id) VALUES (1, 2)`); err != nil {
+		t.Fatalf("insert edge: %v", err)
+	}
+	if _, err := provider.DownTo(ctx, 3); err != nil {
+		t.Fatalf("down to 3: %v", err)
+	}
+	var n int
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='task_deps'`).Scan(&n); err != nil {
+		t.Fatalf("query sqlite_master: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("task_deps still present after down")
 	}
 }

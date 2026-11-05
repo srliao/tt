@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	AddTaskDep(ctx context.Context, arg AddTaskDepParams) error
 	AddTaskTag(ctx context.Context, arg AddTaskTagParams) error
 	AppendScriptLog(ctx context.Context, arg AppendScriptLogParams) error
 	ClearFinishedFromStage(ctx context.Context) error
@@ -25,6 +26,7 @@ type Querier interface {
 	DeleteScript(ctx context.Context, id int64) error
 	DeleteTag(ctx context.Context, id int64) error
 	DeleteTask(ctx context.Context, id int64) error
+	DeleteTaskDep(ctx context.Context, arg DeleteTaskDepParams) error
 	DeleteTaskTagsForTask(ctx context.Context, arg DeleteTaskTagsForTaskParams) error
 	FinishScriptRun(ctx context.Context, arg FinishScriptRunParams) error
 	GetDrawing(ctx context.Context, id int64) (Drawing, error)
@@ -44,12 +46,18 @@ type Querier interface {
 	// spawning run inserts its batch in reverse so the tasks stack top-down in
 	// spawn order, which leaves rowids running opposite to logical batch order.
 	ListLatestSpawnedTasksByScript(ctx context.Context, scriptID int64) ([]Task, error)
+	ListOpenDependents(ctx context.Context, dependsOnID int64) ([]int64, error)
 	ListScriptLogsByRun(ctx context.Context, scriptRunID int64) ([]ScriptLog, error)
 	ListScriptRunsByScript(ctx context.Context, arg ListScriptRunsByScriptParams) ([]ScriptRun, error)
 	ListScripts(ctx context.Context) ([]Script, error)
 	ListTags(ctx context.Context) ([]Tag, error)
 	ListTagsWithCounts(ctx context.Context) ([]ListTagsWithCountsRow, error)
+	ListTaskDeps(ctx context.Context) ([]ListTaskDepsRow, error)
+	// Both slices carry the same task ids: every edge with either end in the set.
+	ListTaskDepsTouching(ctx context.Context, arg ListTaskDepsTouchingParams) ([]ListTaskDepsTouchingRow, error)
 	ListTasksByScript(ctx context.Context, spawnedByScriptID *int64) ([]Task, error)
+	// A cancelled blocker still blocks until the edge is removed.
+	ListUnfinishedBlockers(ctx context.Context, taskID int64) ([]int64, error)
 	MarkOrphanedRunsAsError(ctx context.Context) error
 	// New rows are minted at MIN(key) - 1 so they sort above everything already
 	// present on the ascending-key axis. The 1.0 fallback makes the first row in
@@ -63,6 +71,7 @@ type Querier interface {
 	SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams) (Task, error)
 	SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (Task, error)
 	SetTaskState(ctx context.Context, arg SetTaskStateParams) (Task, error)
+	TaskDepExists(ctx context.Context, arg TaskDepExistsParams) (bool, error)
 	// NULL leaves a column unchanged, so a PATCH of name and/or scene is one
 	// atomic statement.
 	UpdateDrawing(ctx context.Context, arg UpdateDrawingParams) (Drawing, error)
