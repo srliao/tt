@@ -140,7 +140,7 @@ func (s *Impl) ApplyPlan(ctx context.Context, p Plan) (PlanResult, error) {
 			}
 		}
 
-		now := s.stamp()
+		now := s.now.Stamp()
 		for _, pt := range p.Tasks {
 			params := sqlcgen.CreateTaskParams{
 				Title:     pt.Title,

@@ -6,16 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/srliao/tt/internal/db"
 	sqlcgen "github.com/srliao/tt/internal/db/sqlc"
 )
-
-// sqliteTimeLayout matches the format SQLite's datetime('now') produces (UTC,
-// second precision). RFC3339 is tried as a fallback in case a caller persisted
-// a higher-precision timestamp.
-const sqliteTimeLayout = "2006-01-02 15:04:05"
 
 // Service is the tag-domain API. The interface enumerates every method
 // implemented by Impl so callers can mock the service in tests.
@@ -150,7 +144,7 @@ func (s *Impl) ListWithCounts(ctx context.Context) ([]TagWithCount, error) {
 				ID:        r.ID,
 				Name:      r.Name,
 				ColorHue:  r.ColorHue,
-				CreatedAt: parseSqliteTime(r.CreatedAt),
+				CreatedAt: db.ParseTime(r.CreatedAt),
 			},
 			Count: r.Count,
 		})
@@ -298,23 +292,8 @@ func rowToTag(r sqlcgen.Tag) Tag {
 		ID:        r.ID,
 		Name:      r.Name,
 		ColorHue:  r.ColorHue,
-		CreatedAt: parseSqliteTime(r.CreatedAt),
+		CreatedAt: db.ParseTime(r.CreatedAt),
 	}
-}
-
-// parseSqliteTime accepts both SQLite's datetime('now') output and RFC3339
-// to be tolerant of timestamps produced by other code paths.
-func parseSqliteTime(s string) time.Time {
-	if s == "" {
-		return time.Time{}
-	}
-	if t, err := time.Parse(sqliteTimeLayout, s); err == nil {
-		return t.UTC()
-	}
-	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return t.UTC()
-	}
-	return time.Time{}
 }
 
 // Compile-time assertion that Impl satisfies the Service interface.
