@@ -81,7 +81,7 @@ func (s *session) requireTags(ctx context.Context, names []string) error {
 	}
 	var unknown []string
 	for _, n := range names {
-		if !slices.Contains(existing, strings.ToLower(strings.TrimSpace(n))) {
+		if !slices.Contains(existing, tag.NormalizeName(n)) {
 			unknown = append(unknown, n)
 		}
 	}
