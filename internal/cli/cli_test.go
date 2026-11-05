@@ -13,8 +13,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/srliao/tt/internal/cli"
+	"github.com/srliao/tt/internal/db"
 	"github.com/srliao/tt/internal/db/dbtest"
 	"github.com/srliao/tt/internal/drawing"
 	"github.com/srliao/tt/internal/httpapi"
@@ -28,12 +30,16 @@ type noopEnqueuer struct{}
 func (noopEnqueuer) EnqueueManual(int64, int64) error { return nil }
 
 type fixture struct {
-	t      *testing.T
-	server *httptest.Server
-	tasks  task.Service
-	tags   tag.Service
-	env    map[string]string
-	config string
+	t       *testing.T
+	server  *httptest.Server
+	store   *db.Store
+	tasks   task.Service
+	tags    tag.Service
+	scripts script.Service
+	env     map[string]string
+	config  string
+	// now, when set, is the CLI's clock.
+	now func() time.Time
 
 	mu      sync.Mutex
 	headers []http.Header // every request's headers, in order
@@ -48,19 +54,24 @@ func newFixture(t *testing.T) *fixture {
 	store := dbtest.New(t)
 	tasks := task.New(store)
 	tags := tag.New(store)
+	scripts := script.New(store)
 	srv := httpapi.New(
-		tasks, tags, script.New(store), drawing.New(store), noopEnqueuer{}, nil,
+		tasks, tags, scripts, drawing.New(store), noopEnqueuer{}, nil,
 		httpapi.Options{
-			Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-			Version:  "test-1.2.3",
-			Timezone: "America/New_York",
+			Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+			Version:     "test-1.2.3",
+			Timezone:    "America/New_York",
+			Snapshotter: store,
+			SnapshotDir: t.TempDir(),
 		},
 	)
 	f := &fixture{
-		t:      t,
-		tasks:  tasks,
-		tags:   tags,
-		config: filepath.Join(t.TempDir(), "config.toml"),
+		t:       t,
+		store:   store,
+		tasks:   tasks,
+		tags:    tags,
+		scripts: scripts,
+		config:  filepath.Join(t.TempDir(), "config.toml"),
 	}
 	routes := srv.Routes()
 	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -124,6 +135,7 @@ func (f *fixture) runStdin(stdin string, args ...string) result {
 		Stderr:     &errb,
 		Getenv:     func(k string) string { return f.env[k] },
 		ConfigPath: f.config,
+		Now:        f.now,
 	}
 	code := cli.Run(context.Background(), app, args)
 	return result{code: code, stdout: out.String(), stderr: errb.String()}
