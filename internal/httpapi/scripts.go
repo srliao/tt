@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/srliao/tt/internal/runtime"
 	"github.com/srliao/tt/internal/script"
 )
 
@@ -97,6 +98,23 @@ func (s *Server) handleListScripts(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// checkScriptCode compiles code without running it and writes a 400 with the
+// error position when it doesn't compile. Reports whether the code is valid.
+func checkScriptCode(w http.ResponseWriter, code string) bool {
+	err := runtime.Check(code)
+	if err == nil {
+		return true
+	}
+	details := map[string]any{"field": "code"}
+	var ce *runtime.CheckError
+	if errors.As(err, &ce) {
+		details["line"] = ce.Line
+		details["column"] = ce.Column
+	}
+	writeError(w, http.StatusBadRequest, CodeValidation, err.Error(), details)
+	return false
+}
+
 func (s *Server) handleCreateScript(w http.ResponseWriter, r *http.Request) {
 	var body scriptBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -110,6 +128,9 @@ func (s *Server) handleCreateScript(w http.ResponseWriter, r *http.Request) {
 	sch, err := parseSchedule(body.Schedule)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, CodeValidation, err.Error(), map[string]any{"field": "schedule"})
+		return
+	}
+	if !checkScriptCode(w, body.Code) {
 		return
 	}
 	created, err := s.scripts.Create(r.Context(), script.CreateInput{
@@ -155,6 +176,9 @@ func (s *Server) handleUpdateScript(w http.ResponseWriter, r *http.Request) {
 	sch, err := parseSchedule(body.Schedule)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, CodeValidation, err.Error(), map[string]any{"field": "schedule"})
+		return
+	}
+	if !checkScriptCode(w, body.Code) {
 		return
 	}
 	updated, err := s.scripts.Update(r.Context(), id, script.UpdateInput{

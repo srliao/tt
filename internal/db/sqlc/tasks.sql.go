@@ -25,28 +25,28 @@ func (q *Queries) AddTaskTag(ctx context.Context, arg AddTaskTagParams) error {
 }
 
 const clearFinishedFromStage = `-- name: ClearFinishedFromStage :exec
-UPDATE tasks SET staged_order = NULL, updated_at = datetime('now')
+UPDATE tasks SET staged_order = NULL, updated_at = ?
 WHERE staged_order IS NOT NULL AND state IN ('done','cancelled')
 `
 
-func (q *Queries) ClearFinishedFromStage(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, clearFinishedFromStage)
+func (q *Queries) ClearFinishedFromStage(ctx context.Context, updatedAt string) error {
+	_, err := q.db.ExecContext(ctx, clearFinishedFromStage, updatedAt)
 	return err
 }
 
 const clearStage = `-- name: ClearStage :exec
-UPDATE tasks SET staged_order = NULL, updated_at = datetime('now')
+UPDATE tasks SET staged_order = NULL, updated_at = ?
 WHERE staged_order IS NOT NULL
 `
 
-func (q *Queries) ClearStage(ctx context.Context) error {
-	_, err := q.db.ExecContext(ctx, clearStage)
+func (q *Queries) ClearStage(ctx context.Context, updatedAt string) error {
+	_, err := q.db.ExecContext(ctx, clearStage, updatedAt)
 	return err
 }
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO tasks (title, notes, due_date, priority, staged_order, spawned_by_script_id)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO tasks (title, notes, due_date, priority, staged_order, spawned_by_script_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
 `
 
@@ -57,6 +57,8 @@ type CreateTaskParams struct {
 	Priority          float64  `json:"priority"`
 	StagedOrder       *float64 `json:"staged_order"`
 	SpawnedByScriptID *int64   `json:"spawned_by_script_id"`
+	CreatedAt         string   `json:"created_at"`
+	UpdatedAt         string   `json:"updated_at"`
 }
 
 func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
@@ -67,6 +69,8 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.Priority,
 		arg.StagedOrder,
 		arg.SpawnedByScriptID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
 	)
 	var i Task
 	err := row.Scan(
@@ -370,17 +374,18 @@ func (q *Queries) ReplaceTaskTags(ctx context.Context, taskID int64) error {
 }
 
 const setTaskPriority = `-- name: SetTaskPriority :one
-UPDATE tasks SET priority = ?, updated_at = datetime('now')
+UPDATE tasks SET priority = ?, updated_at = ?
 WHERE id = ? RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
 `
 
 type SetTaskPriorityParams struct {
-	Priority float64 `json:"priority"`
-	ID       int64   `json:"id"`
+	Priority  float64 `json:"priority"`
+	UpdatedAt string  `json:"updated_at"`
+	ID        int64   `json:"id"`
 }
 
 func (q *Queries) SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams) (Task, error) {
-	row := q.db.QueryRowContext(ctx, setTaskPriority, arg.Priority, arg.ID)
+	row := q.db.QueryRowContext(ctx, setTaskPriority, arg.Priority, arg.UpdatedAt, arg.ID)
 	var i Task
 	err := row.Scan(
 		&i.ID,
@@ -400,17 +405,18 @@ func (q *Queries) SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams
 }
 
 const setTaskStaged = `-- name: SetTaskStaged :one
-UPDATE tasks SET staged_order = ?, updated_at = datetime('now')
+UPDATE tasks SET staged_order = ?, updated_at = ?
 WHERE id = ? RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
 `
 
 type SetTaskStagedParams struct {
 	StagedOrder *float64 `json:"staged_order"`
+	UpdatedAt   string   `json:"updated_at"`
 	ID          int64    `json:"id"`
 }
 
 func (q *Queries) SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (Task, error) {
-	row := q.db.QueryRowContext(ctx, setTaskStaged, arg.StagedOrder, arg.ID)
+	row := q.db.QueryRowContext(ctx, setTaskStaged, arg.StagedOrder, arg.UpdatedAt, arg.ID)
 	var i Task
 	err := row.Scan(
 		&i.ID,
@@ -431,7 +437,7 @@ func (q *Queries) SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (T
 
 const setTaskState = `-- name: SetTaskState :one
 UPDATE tasks
-SET state = ?, completed_at = ?, cancelled_at = ?, updated_at = datetime('now')
+SET state = ?, completed_at = ?, cancelled_at = ?, updated_at = ?
 WHERE id = ?
 RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
 `
@@ -440,6 +446,7 @@ type SetTaskStateParams struct {
 	State       string  `json:"state"`
 	CompletedAt *string `json:"completed_at"`
 	CancelledAt *string `json:"cancelled_at"`
+	UpdatedAt   string  `json:"updated_at"`
 	ID          int64   `json:"id"`
 }
 
@@ -448,6 +455,7 @@ func (q *Queries) SetTaskState(ctx context.Context, arg SetTaskStateParams) (Tas
 		arg.State,
 		arg.CompletedAt,
 		arg.CancelledAt,
+		arg.UpdatedAt,
 		arg.ID,
 	)
 	var i Task
@@ -470,16 +478,17 @@ func (q *Queries) SetTaskState(ctx context.Context, arg SetTaskStateParams) (Tas
 
 const updateTaskFields = `-- name: UpdateTaskFields :one
 UPDATE tasks
-SET title = ?, notes = ?, due_date = ?, updated_at = datetime('now')
+SET title = ?, notes = ?, due_date = ?, updated_at = ?
 WHERE id = ?
 RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
 `
 
 type UpdateTaskFieldsParams struct {
-	Title   string  `json:"title"`
-	Notes   string  `json:"notes"`
-	DueDate *string `json:"due_date"`
-	ID      int64   `json:"id"`
+	Title     string  `json:"title"`
+	Notes     string  `json:"notes"`
+	DueDate   *string `json:"due_date"`
+	UpdatedAt string  `json:"updated_at"`
+	ID        int64   `json:"id"`
 }
 
 func (q *Queries) UpdateTaskFields(ctx context.Context, arg UpdateTaskFieldsParams) (Task, error) {
@@ -487,6 +496,7 @@ func (q *Queries) UpdateTaskFields(ctx context.Context, arg UpdateTaskFieldsPara
 		arg.Title,
 		arg.Notes,
 		arg.DueDate,
+		arg.UpdatedAt,
 		arg.ID,
 	)
 	var i Task

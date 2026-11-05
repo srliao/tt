@@ -54,6 +54,8 @@ type Service interface {
 	ApplyDeps(ctx context.Context, in DepBatch) ([]Task, error)
 	Graph(ctx context.Context, id int64, dir Direction) (Graph, error)
 	ListDeps(ctx context.Context) ([]Edge, error)
+
+	ApplyPlan(ctx context.Context, p Plan) (PlanResult, error)
 }
 
 // Impl is the concrete Service backed by a *db.Store. It is safe for
@@ -61,11 +63,34 @@ type Service interface {
 type Impl struct {
 	store *db.Store
 	q     *sqlcgen.Queries
+	now   func() time.Time
+}
+
+// Option configures an Impl at construction time.
+type Option func(*Impl)
+
+// WithClock overrides the clock used for every persisted timestamp. Defaults
+// to time.Now; simulations pass a fake clock so the rows they write follow it.
+func WithClock(now func() time.Time) Option {
+	return func(s *Impl) {
+		if now != nil {
+			s.now = now
+		}
+	}
 }
 
 // New constructs a Service bound to the supplied store.
-func New(store *db.Store) *Impl {
-	return &Impl{store: store, q: store.Queries()}
+func New(store *db.Store, opts ...Option) *Impl {
+	s := &Impl{store: store, q: store.Queries(), now: time.Now}
+	for _, opt := range opts {
+		opt(s)
+	}
+	return s
+}
+
+// stamp is the current clock time in the layout every timestamp column uses.
+func (s *Impl) stamp() string {
+	return s.now().UTC().Format(sqliteTimeLayout)
 }
 
 // Create inserts a new task above every existing one. Lists render by
@@ -89,6 +114,7 @@ func (s *Impl) Create(ctx context.Context, in CreateInput) (Task, error) {
 	}
 	newPriority := minP - 1.0
 
+	now := s.stamp()
 	row, err := s.q.CreateTask(ctx, sqlcgen.CreateTaskParams{
 		Title:             title,
 		Notes:             in.Notes,
@@ -96,6 +122,8 @@ func (s *Impl) Create(ctx context.Context, in CreateInput) (Task, error) {
 		Priority:          newPriority,
 		StagedOrder:       nil,
 		SpawnedByScriptID: in.SpawnedByScriptID,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	})
 	if err != nil {
 		return Task{}, fmt.Errorf("task: create: %w", err)
@@ -114,7 +142,7 @@ func (s *Impl) SetState(ctx context.Context, id int64, st State) (Task, error) {
 		return Task{}, fmt.Errorf("task: invalid state %q", st)
 	}
 
-	now := time.Now().UTC().Format(sqliteTimeLayout)
+	now := s.stamp()
 	var completedAt, cancelledAt *string
 	switch st {
 	case StateDone:
@@ -141,6 +169,7 @@ func (s *Impl) SetState(ctx context.Context, id int64, st State) (Task, error) {
 			State:       string(st),
 			CompletedAt: completedAt,
 			CancelledAt: cancelledAt,
+			UpdatedAt:   now,
 			ID:          id,
 		})
 		if err != nil {
@@ -165,6 +194,7 @@ func (s *Impl) Stage(ctx context.Context, id int64) (Task, error) {
 	newStaged := minS - 1.0
 	row, err := s.q.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
 		StagedOrder: &newStaged,
+		UpdatedAt:   s.stamp(),
 		ID:          id,
 	})
 	if err != nil {
@@ -178,6 +208,7 @@ func (s *Impl) Stage(ctx context.Context, id int64) (Task, error) {
 func (s *Impl) Unstage(ctx context.Context, id int64) (Task, error) {
 	row, err := s.q.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
 		StagedOrder: nil,
+		UpdatedAt:   s.stamp(),
 		ID:          id,
 	})
 	if err != nil {
@@ -188,7 +219,7 @@ func (s *Impl) Unstage(ctx context.Context, id int64) (Task, error) {
 
 // ClearStage empties the focused batch, regardless of each task's state.
 func (s *Impl) ClearStage(ctx context.Context) error {
-	if err := s.q.ClearStage(ctx); err != nil {
+	if err := s.q.ClearStage(ctx, s.stamp()); err != nil {
 		return fmt.Errorf("task: clear stage: %w", err)
 	}
 	return nil
@@ -197,7 +228,7 @@ func (s *Impl) ClearStage(ctx context.Context) error {
 // ClearFinishedFromStage removes only the done / cancelled tasks from the
 // focused batch, leaving still-actionable rows in place.
 func (s *Impl) ClearFinishedFromStage(ctx context.Context) error {
-	if err := s.q.ClearFinishedFromStage(ctx); err != nil {
+	if err := s.q.ClearFinishedFromStage(ctx, s.stamp()); err != nil {
 		return fmt.Errorf("task: clear finished from stage: %w", err)
 	}
 	return nil
@@ -223,8 +254,9 @@ func (s *Impl) ReorderMain(ctx context.Context, id int64, beforeID, afterID *int
 	}
 	newKey := Midpoint(bp, ap)
 	row, err := s.q.SetTaskPriority(ctx, sqlcgen.SetTaskPriorityParams{
-		Priority: newKey,
-		ID:       id,
+		Priority:  newKey,
+		UpdatedAt: s.stamp(),
+		ID:        id,
 	})
 	if err != nil {
 		return Task{}, fmt.Errorf("task: reorder main: %w", err)
@@ -251,6 +283,7 @@ func (s *Impl) ReorderStage(ctx context.Context, id int64, beforeID, afterID *in
 	newKey := Midpoint(bp, ap)
 	row, err := s.q.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
 		StagedOrder: &newKey,
+		UpdatedAt:   s.stamp(),
 		ID:          id,
 	})
 	if err != nil {
@@ -501,10 +534,12 @@ func (s *Impl) RebalancePriority(ctx context.Context) error {
 	defer func() { _ = tx.Rollback() }()
 	qtx := s.q.WithTx(tx)
 
+	now := s.stamp()
 	for i, r := range rows {
 		if _, err := qtx.SetTaskPriority(ctx, sqlcgen.SetTaskPriorityParams{
-			Priority: float64(i),
-			ID:       r.ID,
+			Priority:  float64(i),
+			UpdatedAt: now,
+			ID:        r.ID,
 		}); err != nil {
 			return fmt.Errorf("task: rebalance set priority %d: %w", r.ID, err)
 		}
@@ -533,10 +568,12 @@ func (s *Impl) RebalanceStage(ctx context.Context) error {
 	defer func() { _ = tx.Rollback() }()
 	qtx := s.q.WithTx(tx)
 
+	now := s.stamp()
 	for i, r := range rows {
 		key := float64(i)
 		if _, err := qtx.SetTaskStaged(ctx, sqlcgen.SetTaskStagedParams{
 			StagedOrder: &key,
+			UpdatedAt:   now,
 			ID:          r.ID,
 		}); err != nil {
 			return fmt.Errorf("task: rebalance set staged %d: %w", r.ID, err)
@@ -562,10 +599,11 @@ func (s *Impl) Update(ctx context.Context, id int64, in UpdateInput) (Task, erro
 	}
 
 	row, err := s.q.UpdateTaskFields(ctx, sqlcgen.UpdateTaskFieldsParams{
-		Title:   title,
-		Notes:   in.Notes,
-		DueDate: due,
-		ID:      id,
+		Title:     title,
+		Notes:     in.Notes,
+		DueDate:   due,
+		UpdatedAt: s.stamp(),
+		ID:        id,
 	})
 	if err != nil {
 		return Task{}, fmt.Errorf("task: update: %w", err)
