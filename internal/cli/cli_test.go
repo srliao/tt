@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/srliao/tt/internal/cli"
@@ -32,6 +34,11 @@ type fixture struct {
 	tags   tag.Service
 	env    map[string]string
 	config string
+
+	mu      sync.Mutex
+	headers []http.Header // every request's headers, in order
+	// gate, when set, plays Cloudflare Access in front of the server.
+	gate http.HandlerFunc
 }
 
 // newFixture runs the real httpapi.Server on a temp DB and points the CLI
@@ -49,16 +56,53 @@ func newFixture(t *testing.T) *fixture {
 			Timezone: "America/New_York",
 		},
 	)
-	ts := httptest.NewServer(srv.Routes())
-	t.Cleanup(ts.Close)
-	return &fixture{
+	f := &fixture{
 		t:      t,
-		server: ts,
 		tasks:  tasks,
 		tags:   tags,
-		env:    map[string]string{"TT_URL": ts.URL},
 		config: filepath.Join(t.TempDir(), "config.toml"),
 	}
+	routes := srv.Routes()
+	f.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.headers = append(f.headers, r.Header.Clone())
+		gate := f.gate
+		f.mu.Unlock()
+		if gate != nil {
+			gate(w, r)
+			if w.Header().Get("X-Gated") != "" {
+				return
+			}
+		}
+		routes.ServeHTTP(w, r)
+	}))
+	t.Cleanup(f.server.Close)
+	f.env = map[string]string{"TT_URL": f.server.URL}
+	return f
+}
+
+// requireAccess makes the fixture behave like Cloudflare Access: requests
+// without the right service-token headers are redirected to a login page.
+func (f *fixture) requireAccess(id, secret string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.gate = func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("CF-Access-Client-Id") == id && r.Header.Get("CF-Access-Client-Secret") == secret {
+			return
+		}
+		w.Header().Set("X-Gated", "1")
+		http.Redirect(w, r, "https://tt.example.com/cdn-cgi/access/login", http.StatusFound)
+	}
+}
+
+// lastHeaders returns the headers of the most recent request.
+func (f *fixture) lastHeaders() http.Header {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.headers) == 0 {
+		f.t.Fatal("no request reached the server")
+	}
+	return f.headers[len(f.headers)-1]
 }
 
 type result struct {
