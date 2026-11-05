@@ -94,6 +94,9 @@ function fullTask(partial: Partial<Task> & { id: number }): Task {
     cancelled_at: null,
     updated_at: '2026-05-01T00:00:00Z',
     tags: partial.tags ?? [],
+    blocked_by: [],
+    blocks: [],
+    blocked: false,
     ...partial,
   };
 }

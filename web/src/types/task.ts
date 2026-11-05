@@ -32,6 +32,12 @@ export interface Task {
   /** RFC3339 timestamp. */
   updated_at: string;
   tags: string[];
+  /** Ids this task depends on, ascending. */
+  blocked_by: number[];
+  /** Ids that depend on this task, ascending. */
+  blocks: number[];
+  /** True while any blocker is not done (a cancelled blocker still blocks). */
+  blocked: boolean;
 }
 
 export interface TaskCreateInput {

@@ -34,6 +34,11 @@ type TaskService interface {
 	ByScript(ctx context.Context, scriptID int64, limit, offset int) ([]task.Task, error)
 	SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error
 	BulkTag(ctx context.Context, in task.BulkTagInput) ([]task.Task, error)
+	AddDep(ctx context.Context, taskID, dependsOnID int64) (task.Task, error)
+	RemoveDep(ctx context.Context, taskID, dependsOnID int64) (task.Task, error)
+	ApplyDeps(ctx context.Context, in task.DepBatch) ([]task.Task, error)
+	Graph(ctx context.Context, id int64, dir task.Direction) (task.Graph, error)
+	ListDeps(ctx context.Context) ([]task.Edge, error)
 }
 
 // TagService is the narrow consumer-side interface for tags. The HTTP layer
@@ -180,6 +185,7 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/health", s.handleHealth)
 		r.Get("/version", s.handleVersion)
 		s.mountTaskRoutes(r)
+		s.mountDepRoutes(r)
 		s.mountStageRoutes(r)
 		s.mountTagRoutes(r)
 		s.mountScriptRoutes(r)

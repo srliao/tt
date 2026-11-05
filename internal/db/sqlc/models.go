@@ -66,6 +66,12 @@ type Task struct {
 	UpdatedAt         string   `json:"updated_at"`
 }
 
+type TaskDep struct {
+	TaskID      int64  `json:"task_id"`
+	DependsOnID int64  `json:"depends_on_id"`
+	CreatedAt   string `json:"created_at"`
+}
+
 type TaskTag struct {
 	TaskID int64 `json:"task_id"`
 	TagID  int64 `json:"tag_id"`
