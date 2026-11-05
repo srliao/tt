@@ -50,6 +50,9 @@ function makeTask(id: number, overrides: Partial<Task> = {}): Task {
     cancelled_at: null,
     updated_at: '2026-01-01T00:00:00Z',
     tags: [],
+    blocked_by: [],
+    blocks: [],
+    blocked: false,
     ...overrides,
   };
 }

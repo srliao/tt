@@ -41,6 +41,9 @@ function makeTask(partial: Partial<Task> & { id: number; title: string }): Task 
     cancelled_at: null,
     updated_at: '2026-05-01T00:00:00Z',
     tags: [],
+    blocked_by: [],
+    blocks: [],
+    blocked: false,
     ...partial,
   };
 }
