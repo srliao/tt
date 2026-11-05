@@ -7,6 +7,8 @@ RUN npm install -g pnpm@9
 COPY web/package.json web/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY web/ ./
+# The scripts cheatsheet is imported from outside web/ (shared with tt-cli).
+COPY internal/runtime/docs/ctx-cheatsheet.md /app/internal/runtime/docs/ctx-cheatsheet.md
 RUN pnpm run build
 
 # ── backend: embed SPA and compile the static binary ─────────────
