@@ -64,6 +64,7 @@ type Task struct {
 	CompletedAt       *string  `json:"completed_at"`
 	CancelledAt       *string  `json:"cancelled_at"`
 	UpdatedAt         string   `json:"updated_at"`
+	Project           *string  `json:"project"`
 }
 
 type TaskDep struct {

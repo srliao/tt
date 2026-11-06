@@ -48,6 +48,7 @@ type Querier interface {
 	ListLatestSpawnedTasksByScript(ctx context.Context, scriptID int64) ([]Task, error)
 	ListNotDoneBlockers(ctx context.Context, taskID int64) ([]int64, error)
 	ListOpenDependents(ctx context.Context, dependsOnID int64) ([]int64, error)
+	ListProjects(ctx context.Context) ([]ListProjectsRow, error)
 	ListScriptLogsByRun(ctx context.Context, scriptRunID int64) ([]ScriptLog, error)
 	ListScriptRunsByScript(ctx context.Context, arg ListScriptRunsByScriptParams) ([]ScriptRun, error)
 	ListScripts(ctx context.Context) ([]Script, error)
@@ -62,11 +63,13 @@ type Querier interface {
 	// an empty list land on 0.0.
 	MinPriority(ctx context.Context) (interface{}, error)
 	MinStagedOrder(ctx context.Context) (interface{}, error)
+	RenameProject(ctx context.Context, arg RenameProjectParams) (int64, error)
 	RenameTag(ctx context.Context, arg RenameTagParams) (Tag, error)
 	ReplaceTaskTags(ctx context.Context, taskID int64) error
 	SetScriptLastRunAt(ctx context.Context, arg SetScriptLastRunAtParams) error
 	SetScriptUserState(ctx context.Context, arg SetScriptUserStateParams) error
 	SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams) (Task, error)
+	SetTaskProject(ctx context.Context, arg SetTaskProjectParams) (Task, error)
 	SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (Task, error)
 	SetTaskState(ctx context.Context, arg SetTaskStateParams) (Task, error)
 	TaskDepExists(ctx context.Context, arg TaskDepExistsParams) (bool, error)

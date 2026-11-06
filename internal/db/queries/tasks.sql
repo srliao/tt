@@ -1,6 +1,6 @@
 -- name: CreateTask :one
-INSERT INTO tasks (title, notes, due_date, priority, staged_order, spawned_by_script_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO tasks (title, notes, due_date, project, priority, staged_order, spawned_by_script_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetTask :one
@@ -14,7 +14,7 @@ ORDER BY t.name;
 
 -- name: UpdateTaskFields :one
 UPDATE tasks
-SET title = ?, notes = ?, due_date = ?, updated_at = ?
+SET title = ?, notes = ?, due_date = ?, project = ?, updated_at = ?
 WHERE id = ?
 RETURNING *;
 
@@ -84,3 +84,20 @@ DELETE FROM task_tags WHERE task_id = ?;
 
 -- name: DeleteTaskTagsForTask :exec
 DELETE FROM task_tags WHERE task_id = ? AND tag_id IN (sqlc.slice('tag_ids'));
+
+-- name: SetTaskProject :one
+UPDATE tasks SET project = ?, updated_at = ?
+WHERE id = ? RETURNING *;
+
+-- name: ListProjects :many
+SELECT CAST(project AS TEXT) AS name,
+       CAST(SUM(state = 'not_done') AS INTEGER) AS open_count,
+       COUNT(*) AS total_count
+FROM tasks
+WHERE project IS NOT NULL
+GROUP BY project
+ORDER BY project;
+
+-- name: RenameProject :execrows
+UPDATE tasks SET project = sqlc.arg('to'), updated_at = sqlc.arg('updated_at')
+WHERE project = sqlc.arg('from');

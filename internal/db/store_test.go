@@ -169,6 +169,39 @@ func TestTaskDepsMigrationUpgradeAndDown(t *testing.T) {
 	}
 }
 
+func TestTaskProjectMigrationUpgradeAndDown(t *testing.T) {
+	ctx := context.Background()
+	sqlDB, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "up.sqlite")+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	provider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, migrations.FS)
+	if err != nil {
+		t.Fatalf("goose.NewProvider: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, 4); err != nil {
+		t.Fatalf("up to 4: %v", err)
+	}
+	if _, err := sqlDB.ExecContext(ctx, `INSERT INTO tasks (title) VALUES ('a')`); err != nil {
+		t.Fatalf("seed tasks: %v", err)
+	}
+	if _, err := provider.UpTo(ctx, 5); err != nil {
+		t.Fatalf("up to 5: %v", err)
+	}
+	var project sql.NullString
+	if err := sqlDB.QueryRowContext(ctx, `SELECT project FROM tasks`).Scan(&project); err != nil {
+		t.Fatalf("select project: %v", err)
+	}
+	if project.Valid {
+		t.Fatalf("existing task project = %q, want NULL", project.String)
+	}
+	if _, err := provider.DownTo(ctx, 4); err != nil {
+		t.Fatalf("down to 4: %v", err)
+	}
+}
+
 // The server's database runs in WAL mode; its VACUUM INTO copy must still
 // load into memory, and writes there must not touch the file it came from.
 func TestOpenSnapshot_LoadsCopyOfWALDatabaseInMemory(t *testing.T) {
