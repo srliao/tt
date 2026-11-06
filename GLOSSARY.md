@@ -28,6 +28,10 @@ _Avoid_: Queue, today list, focus list
 A named label attached to tasks for filtering, with a fixed color.
 _Avoid_: Label, category
 
+**Project**:
+A free-text name saying which body of work a task belongs to. A task is in at most one project. A project exists only while some task names it.
+_Avoid_: Area, workstream, goal
+
 ## Dependencies
 
 **Dependency**:
@@ -51,8 +55,8 @@ An open task that is not blocked.
 _Avoid_: Actionable, available, next
 
 **Goal**:
-A task that other tasks block, used as the end point of a plan. Not a separate kind of task.
-_Avoid_: Epic, project, milestone
+A task that other tasks block, used as the end point of a plan. Not a separate kind of task, and not a project.
+_Avoid_: Epic, milestone
 
 ## Scripts
 
