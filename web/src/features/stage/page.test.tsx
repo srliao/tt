@@ -24,6 +24,7 @@ function task(partial: Partial<Task> & { id: number; title: string; staged_order
     notes: '',
     state: 'not_done',
     due_date: null,
+    project: null,
     priority: 0,
     spawned_by_script_id: null,
     created_at: '2026-05-01T00:00:00Z',

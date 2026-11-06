@@ -1,6 +1,6 @@
 /**
  * Edit-task dialog. Opened by clicking a task title on the /tasks or /stage
- * pages. Exposes the full editable surface — title, notes, due date, tags —
+ * pages. Exposes the full editable surface — title, notes, due date, project, tags —
  * and submits via `useUpdateTask()`. Also surfaces the two non-form actions
  * "Mark cancelled" and "Delete" (with a confirm prompt) since the row UI no
  * longer has a kebab menu.
@@ -50,6 +50,7 @@ const schema = z.object({
   notes: z.string().optional(),
   state: z.enum(['not_done', 'done', 'cancelled']),
   due_date: z.string().optional(),
+  project: z.string().optional(),
   tags: z.array(z.string()),
 });
 
@@ -68,12 +69,14 @@ export interface EditTaskModalProps {
 }
 
 function taskToFormValues(task: Task | null): FormValues {
-  if (!task) return { title: '', notes: '', state: 'not_done', due_date: '', tags: [] };
+  if (!task)
+    return { title: '', notes: '', state: 'not_done', due_date: '', project: '', tags: [] };
   return {
     title: task.title,
     notes: task.notes ?? '',
     state: task.state,
     due_date: task.due_date ?? '',
+    project: task.project ?? '',
     tags: task.tags ?? [],
   };
 }
@@ -99,7 +102,7 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
     if (open) {
       reset(taskToFormValues(task));
     } else {
-      reset({ title: '', notes: '', state: 'not_done', due_date: '', tags: [] });
+      reset(taskToFormValues(null));
       setConfirmDelete(false);
     }
   }, [open, task, reset]);
@@ -110,6 +113,7 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
       title: values.title.trim(),
       notes: values.notes?.trim() ?? '',
       due_date: values.due_date?.trim() || null,
+      project: values.project?.trim() || null,
       tags: values.tags,
     };
     await updateTask.mutateAsync({ id: task.id, input });
@@ -185,6 +189,10 @@ export function EditTaskModal({ task, onOpenChange }: EditTaskModalProps) {
               <Label htmlFor="edit-task-due">Due date</Label>
               <Input id="edit-task-due" type="date" {...register('due_date')} />
             </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="edit-task-project">Project</Label>
+            <Input id="edit-task-project" {...register('project')} />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="edit-task-tags">Tags</Label>

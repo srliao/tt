@@ -19,6 +19,8 @@ export interface Task {
   state: TaskState;
   /** ISO date (YYYY-MM-DD) or null. */
   due_date: string | null;
+  /** Lowercased project name, or null when the task is in no project. */
+  project: string | null;
   priority: number;
   /** Fractional position in the staged batch; null when not staged. */
   staged_order: number | null;
@@ -44,6 +46,7 @@ export interface TaskCreateInput {
   title: string;
   notes?: string;
   due_date?: string | null;
+  project?: string | null;
   tags?: string[];
   spawned_by_script_id?: number | null;
 }
@@ -52,5 +55,6 @@ export interface TaskUpdateInput {
   title: string;
   notes: string;
   due_date: string | null;
+  project: string | null;
   tags: string[];
 }

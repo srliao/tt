@@ -344,6 +344,7 @@ function mkTask(partial: Partial<Task> & { id: number }): Task {
     notes: '',
     state: 'not_done',
     due_date: null,
+    project: null,
     priority: 0,
     staged_order: null,
     spawned_by_script_id: null,
