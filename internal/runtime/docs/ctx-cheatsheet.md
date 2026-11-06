@@ -55,7 +55,7 @@ How this run was triggered: `"scheduled"` or `"manual"`.
 The previous run's start time as a `"YYYY-MM-DD HH:MM:SS"` string in the app time zone, or `null` if this is the first run. Not a `Date` — pass it to `ctx.parseDate` if you need one.
 
 ## ctx.lastSpawn
-The last `Task` queued by this script's most recent successful run, or `null`. Shape: `{ id, title, notes, state, due_date, created_at, completed_at, cancelled_at, tags: [...] }`. The three timestamps are `"YYYY-MM-DD HH:MM:SS"` strings in the app time zone, so `ctx.daysSince(prev.created_at)` lines up with `ctx.today()`.
+The last `Task` queued by this script's most recent successful run, or `null`. Shape: `{ id, title, notes, state, due_date, project, created_at, completed_at, cancelled_at, tags: [...] }`. The three timestamps are `"YYYY-MM-DD HH:MM:SS"` strings in the app time zone, so `ctx.daysSince(prev.created_at)` lines up with `ctx.today()`.
 
 ## ctx.state.get(key)
 Reads a persistent value from this script's state blob.
@@ -87,5 +87,5 @@ Writes an error-level log line.
 ## console.log / info / warn / error
 Aliases for the matching `ctx.log[level]` methods.
 
-## ctx.queueTask({ title, notes?, tags?, due_date? })
-Queues a task to be created. Validated immediately; persisted only if the run finishes successfully. Tag names that don't exist yet are auto-created. New tasks land at the top of the task list; a batch queued in one run stacks top-down in the order you queued it.
+## ctx.queueTask({ title, notes?, tags?, due_date?, project? })
+Queues a task to be created. Validated immediately; persisted only if the run finishes successfully. Tag names that don't exist yet are auto-created. `project` is trimmed and lowercased; blank means no project, and names starting with `@` or containing `,` are rejected. New tasks land at the top of the task list; a batch queued in one run stacks top-down in the order you queued it.

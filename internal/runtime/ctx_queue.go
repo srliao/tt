@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/dop251/goja"
+
+	"github.com/srliao/tt/internal/task"
 )
 
 // queuedTask captures the validated shape of a single ctx.queueTask call.
@@ -16,6 +18,7 @@ type queuedTask struct {
 	Notes   string
 	Tags    []string
 	DueDate *string // canonical "YYYY-MM-DD"; nil when caller omitted the field
+	Project *string // normalised; nil when omitted or blank
 }
 
 // taskQueue is the in-memory buffer behind ctx.queueTask. Each Enqueue
@@ -57,6 +60,19 @@ func (q *taskQueue) Enqueue(raw map[string]any) error {
 		}
 	}
 
+	var project *string
+	if v, ok := raw["project"]; ok && v != nil {
+		s, isStr := v.(string)
+		if !isStr {
+			return fmt.Errorf("runtime: queueTask: project must be a string")
+		}
+		p, err := task.NormalizeProject(&s)
+		if err != nil {
+			return fmt.Errorf("runtime: queueTask: %w", err)
+		}
+		project = p
+	}
+
 	tags, err := normalizeQueueTags(raw["tags"])
 	if err != nil {
 		return err
@@ -67,6 +83,7 @@ func (q *taskQueue) Enqueue(raw map[string]any) error {
 		Notes:   notes,
 		Tags:    tags,
 		DueDate: due,
+		Project: project,
 	})
 	return nil
 }

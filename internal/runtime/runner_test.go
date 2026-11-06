@@ -68,7 +68,7 @@ func (h *runnerHarness) startRun(scriptID int64, trigger script.Trigger) int64 {
 
 func TestRunner_HappyPath_CreatesTaskAndOK(t *testing.T) {
 	h := newHarness(t)
-	sid := h.createScript(`ctx.queueTask({title: "hi", tags: ["weekly"]});`)
+	sid := h.createScript(`ctx.queueTask({title: "hi", tags: ["weekly"], project: "Home"});`)
 	rid := h.startRun(sid, script.TriggerManual)
 
 	if err := h.runner.Run(context.Background(), sid, rid, script.TriggerManual); err != nil {
@@ -91,6 +91,9 @@ func TestRunner_HappyPath_CreatesTaskAndOK(t *testing.T) {
 	}
 	if got.Title != "hi" {
 		t.Fatalf("task title = %q, want hi", got.Title)
+	}
+	if got.Project == nil || *got.Project != "home" {
+		t.Fatalf("task project = %v, want home", got.Project)
 	}
 	wantTags := map[string]bool{"weekly": true}
 	for _, n := range got.Tags {
