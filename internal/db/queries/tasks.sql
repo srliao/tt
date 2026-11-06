@@ -101,3 +101,11 @@ ORDER BY project;
 -- name: RenameProject :execrows
 UPDATE tasks SET project = sqlc.arg('to'), updated_at = sqlc.arg('updated_at')
 WHERE project = sqlc.arg('from');
+
+-- name: GetProject :one
+SELECT CAST(project AS TEXT) AS name,
+       CAST(SUM(state = 'not_done') AS INTEGER) AS open_count,
+       COUNT(*) AS total_count
+FROM tasks
+WHERE project = ?
+GROUP BY project;

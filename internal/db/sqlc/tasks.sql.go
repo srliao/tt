@@ -127,6 +127,28 @@ func (q *Queries) DeleteTaskTagsForTask(ctx context.Context, arg DeleteTaskTagsF
 	return err
 }
 
+const getProject = `-- name: GetProject :one
+SELECT CAST(project AS TEXT) AS name,
+       CAST(SUM(state = 'not_done') AS INTEGER) AS open_count,
+       COUNT(*) AS total_count
+FROM tasks
+WHERE project = ?
+GROUP BY project
+`
+
+type GetProjectRow struct {
+	Name       string `json:"name"`
+	OpenCount  int64  `json:"open_count"`
+	TotalCount int64  `json:"total_count"`
+}
+
+func (q *Queries) GetProject(ctx context.Context, project *string) (GetProjectRow, error) {
+	row := q.db.QueryRowContext(ctx, getProject, project)
+	var i GetProjectRow
+	err := row.Scan(&i.Name, &i.OpenCount, &i.TotalCount)
+	return i, err
+}
+
 const getTask = `-- name: GetTask :one
 SELECT id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at, project FROM tasks WHERE id = ?
 `

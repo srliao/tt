@@ -211,4 +211,9 @@ func TestTasks_ListFilterByProject(t *testing.T) {
 	expect("project=home&tag_filter=any:urgent", tagged.ID)
 	expect("project=home&limit=1&offset=1", home.ID)
 	expect("project=nope")
+	expect("project=@NONE", none.ID)
+
+	bad := doJSON(t, http.MethodGet, fx.server.URL+"/api/v1/tasks?project=@nope", nil)
+	defer func() { _ = bad.Body.Close() }()
+	wantStatus(t, bad, http.StatusBadRequest)
 }

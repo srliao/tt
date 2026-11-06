@@ -30,6 +30,7 @@ type Querier interface {
 	DeleteTaskTagsForTask(ctx context.Context, arg DeleteTaskTagsForTaskParams) error
 	FinishScriptRun(ctx context.Context, arg FinishScriptRunParams) error
 	GetDrawing(ctx context.Context, id int64) (Drawing, error)
+	GetProject(ctx context.Context, project *string) (GetProjectRow, error)
 	GetScript(ctx context.Context, id int64) (Script, error)
 	GetScriptRun(ctx context.Context, id int64) (ScriptRun, error)
 	GetScriptUserState(ctx context.Context, id int64) (string, error)

@@ -36,7 +36,7 @@ type TaskService interface {
 	BulkTag(ctx context.Context, in task.BulkTagInput) ([]task.Task, error)
 	SetProject(ctx context.Context, ids []int64, project *string) ([]task.Task, error)
 	ListProjects(ctx context.Context) ([]task.Project, error)
-	RenameProject(ctx context.Context, from, to string) error
+	RenameProject(ctx context.Context, from, to string) (task.Project, error)
 	AddDep(ctx context.Context, taskID, dependsOnID int64) (task.Task, error)
 	RemoveDep(ctx context.Context, taskID, dependsOnID int64) (task.Task, error)
 	ApplyDeps(ctx context.Context, in task.DepBatch) ([]task.Task, error)

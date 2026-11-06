@@ -150,6 +150,12 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	projects, err := parseProjectFilter(q["project"])
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+
 	due := task.DueRange(q.Get("due"))
 	switch due {
 	case task.DueAny, task.DueOverdue, task.DueToday, task.DueThisWeek, task.DueNone:
@@ -206,7 +212,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	out, err := s.tasks.List(r.Context(), task.FilterSort{
 		States:        states,
 		Tags:          tagFilter,
-		Projects:      parseProjectFilter(q["project"]),
+		Projects:      projects,
 		TagExcludeIDs: tagExcludeIDs,
 		Due:           due,
 		Search:        q.Get("q"),

@@ -202,8 +202,9 @@ func (f TagFilter) IsZero() bool {
 // with no project.
 const NoProjectToken = "@none"
 
-// ProjectFilter keeps tasks whose project is any of Names, or that have no
-// project when IncludeNone is set. The zero value disables the filter.
+// ProjectFilter keeps tasks whose project is any of Names (already
+// normalized), or that have no project when IncludeNone is set. The zero
+// value disables the filter.
 type ProjectFilter struct {
 	Names       []string `json:"names"`
 	IncludeNone bool     `json:"include_none"`

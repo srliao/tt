@@ -71,28 +71,40 @@ func (s *Impl) ListProjects(ctx context.Context) ([]Project, error) {
 }
 
 // RenameProject moves every task in project from to project to, merging the
-// two when to is already in use. An unused from fails with sql.ErrNoRows.
-func (s *Impl) RenameProject(ctx context.Context, from, to string) error {
+// two when to is already in use, and returns to with its new counts. An
+// unused from fails with sql.ErrNoRows.
+func (s *Impl) RenameProject(ctx context.Context, from, to string) (Project, error) {
 	fromName, err := NormalizeProject(&from)
 	if err != nil {
-		return err
+		return Project{}, err
 	}
 	toName, err := NormalizeProject(&to)
 	if err != nil {
-		return err
+		return Project{}, err
 	}
 	if fromName == nil {
-		return errors.New("task: from is required")
+		return Project{}, errors.New("task: from is required")
 	}
 	if toName == nil {
-		return errors.New("task: to is required")
+		return Project{}, errors.New("task: to is required")
 	}
-	n, err := s.q.RenameProject(ctx, sqlcgen.RenameProjectParams{To: toName, UpdatedAt: s.now.Stamp(), From: fromName})
+	var row sqlcgen.GetProjectRow
+	err = s.inTx(ctx, "rename project", func(q *sqlcgen.Queries) error {
+		n, err := q.RenameProject(ctx, sqlcgen.RenameProjectParams{To: toName, UpdatedAt: s.now.Stamp(), From: fromName})
+		if err != nil {
+			return fmt.Errorf("task: rename project: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("task: rename project %q: %w", *fromName, sql.ErrNoRows)
+		}
+		row, err = q.GetProject(ctx, toName)
+		if err != nil {
+			return fmt.Errorf("task: rename project read %q: %w", *toName, err)
+		}
+		return nil
+	})
 	if err != nil {
-		return fmt.Errorf("task: rename project: %w", err)
+		return Project{}, err
 	}
-	if n == 0 {
-		return fmt.Errorf("task: rename project %q: %w", *fromName, sql.ErrNoRows)
-	}
-	return nil
+	return Project{Name: row.Name, OpenCount: row.OpenCount, TotalCount: row.TotalCount}, nil
 }

@@ -47,7 +47,7 @@ type Service interface {
 	// Projects
 	SetProject(ctx context.Context, ids []int64, project *string) ([]Task, error)
 	ListProjects(ctx context.Context) ([]Project, error)
-	RenameProject(ctx context.Context, from, to string) error
+	RenameProject(ctx context.Context, from, to string) (Project, error)
 
 	AddDep(ctx context.Context, taskID, dependsOnID int64) (Task, error)
 	RemoveDep(ctx context.Context, taskID, dependsOnID int64) (Task, error)
@@ -440,7 +440,7 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 					sb.WriteString(", ")
 				}
 				sb.WriteString("?")
-				args = append(args, strings.ToLower(strings.TrimSpace(n)))
+				args = append(args, n)
 			}
 			sb.WriteString(")")
 		}

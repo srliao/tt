@@ -166,8 +166,12 @@ func TestRenameProject_MovesAndMerges(t *testing.T) {
 	b, _ := svc.Create(ctx, task.CreateInput{Title: "b", Project: ptr("house")})
 	c, _ := svc.Create(ctx, task.CreateInput{Title: "c", Project: ptr("work")})
 
-	if err := svc.RenameProject(ctx, " HOUSE ", "Home"); err != nil {
+	merged, err := svc.RenameProject(ctx, " HOUSE ", "Home")
+	if err != nil {
 		t.Fatalf("RenameProject merge: %v", err)
+	}
+	if merged != (task.Project{Name: "home", OpenCount: 2, TotalCount: 2}) {
+		t.Fatalf("merged = %+v", merged)
 	}
 	for _, id := range []int64{a.ID, b.ID} {
 		got, _ := svc.Get(ctx, id)
@@ -179,7 +183,7 @@ func TestRenameProject_MovesAndMerges(t *testing.T) {
 		t.Fatalf("unrelated task moved to %s", projectOf(got))
 	}
 
-	if err := svc.RenameProject(ctx, "home", "chores"); err != nil {
+	if _, err := svc.RenameProject(ctx, "home", "chores"); err != nil {
 		t.Fatalf("RenameProject: %v", err)
 	}
 	projects, _ := svc.ListProjects(ctx)
@@ -193,11 +197,11 @@ func TestRenameProject_Errors(t *testing.T) {
 	if _, err := svc.Create(ctx, task.CreateInput{Title: "a", Project: ptr("home")}); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RenameProject(ctx, "nope", "x"); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := svc.RenameProject(ctx, "nope", "x"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("unused from: err = %v, want sql.ErrNoRows", err)
 	}
 	for _, to := range []string{"", "  ", "@x", "a,b"} {
-		if err := svc.RenameProject(ctx, "home", to); err == nil {
+		if _, err := svc.RenameProject(ctx, "home", to); err == nil {
 			t.Fatalf("rename to %q succeeded, want error", to)
 		}
 	}

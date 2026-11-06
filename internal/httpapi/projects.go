@@ -65,44 +65,33 @@ func (s *Server) handleRenameProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, CodeValidation, "invalid JSON body", nil)
 		return
 	}
-	if err := s.tasks.RenameProject(r.Context(), body.From, body.To); err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	to, err := task.NormalizeProject(&body.To)
+	out, err := s.tasks.RenameProject(r.Context(), body.From, body.To)
 	if err != nil {
 		writeServiceError(w, err)
 		return
 	}
-	projects, err := s.tasks.ListProjects(r.Context())
-	if err != nil {
-		writeServiceError(w, err)
-		return
-	}
-	for _, p := range projects {
-		if p.Name == *to {
-			writeJSON(w, http.StatusOK, p)
-			return
-		}
-	}
-	writeError(w, http.StatusInternalServerError, CodeInternal, "renamed project missing", nil)
+	writeJSON(w, http.StatusOK, out)
 }
 
 // parseProjectFilter reads ?project=a,b (repeatable). NoProjectToken selects
-// tasks with no project; names are normalised like stored projects.
-func parseProjectFilter(raw []string) task.ProjectFilter {
+// tasks with no project; other names are normalized like stored projects, so
+// any other @-name is an error.
+func parseProjectFilter(raw []string) (task.ProjectFilter, error) {
 	var f task.ProjectFilter
 	for _, v := range raw {
 		for n := range strings.SplitSeq(v, ",") {
-			n = strings.ToLower(strings.TrimSpace(n))
-			switch n {
-			case "":
-			case task.NoProjectToken:
+			if strings.EqualFold(strings.TrimSpace(n), task.NoProjectToken) {
 				f.IncludeNone = true
-			default:
-				f.Names = append(f.Names, n)
+				continue
+			}
+			name, err := task.NormalizeProject(&n)
+			if err != nil {
+				return task.ProjectFilter{}, err
+			}
+			if name != nil {
+				f.Names = append(f.Names, *name)
 			}
 		}
 	}
-	return f
+	return f, nil
 }
