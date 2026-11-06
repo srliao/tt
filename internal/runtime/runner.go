@@ -312,6 +312,7 @@ func (r *Runner) flushQueue(ctx context.Context, scriptID int64, q *taskQueue) [
 			Title:             it.Title,
 			Notes:             it.Notes,
 			DueDate:           it.DueDate,
+			Project:           it.Project,
 			SpawnedByScriptID: &sid,
 		})
 		if err != nil {

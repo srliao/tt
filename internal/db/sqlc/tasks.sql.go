@@ -45,15 +45,16 @@ func (q *Queries) ClearStage(ctx context.Context, updatedAt string) error {
 }
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO tasks (title, notes, due_date, priority, staged_order, spawned_by_script_id, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
+INSERT INTO tasks (title, notes, due_date, project, priority, staged_order, spawned_by_script_id, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at, project
 `
 
 type CreateTaskParams struct {
 	Title             string   `json:"title"`
 	Notes             string   `json:"notes"`
 	DueDate           *string  `json:"due_date"`
+	Project           *string  `json:"project"`
 	Priority          float64  `json:"priority"`
 	StagedOrder       *float64 `json:"staged_order"`
 	SpawnedByScriptID *int64   `json:"spawned_by_script_id"`
@@ -66,6 +67,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.Title,
 		arg.Notes,
 		arg.DueDate,
+		arg.Project,
 		arg.Priority,
 		arg.StagedOrder,
 		arg.SpawnedByScriptID,
@@ -86,6 +88,7 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.CompletedAt,
 		&i.CancelledAt,
 		&i.UpdatedAt,
+		&i.Project,
 	)
 	return i, err
 }
@@ -124,8 +127,30 @@ func (q *Queries) DeleteTaskTagsForTask(ctx context.Context, arg DeleteTaskTagsF
 	return err
 }
 
+const getProject = `-- name: GetProject :one
+SELECT CAST(project AS TEXT) AS name,
+       CAST(SUM(state = 'not_done') AS INTEGER) AS open_count,
+       COUNT(*) AS total_count
+FROM tasks
+WHERE project = ?
+GROUP BY project
+`
+
+type GetProjectRow struct {
+	Name       string `json:"name"`
+	OpenCount  int64  `json:"open_count"`
+	TotalCount int64  `json:"total_count"`
+}
+
+func (q *Queries) GetProject(ctx context.Context, project *string) (GetProjectRow, error) {
+	row := q.db.QueryRowContext(ctx, getProject, project)
+	var i GetProjectRow
+	err := row.Scan(&i.Name, &i.OpenCount, &i.TotalCount)
+	return i, err
+}
+
 const getTask = `-- name: GetTask :one
-SELECT id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at FROM tasks WHERE id = ?
+SELECT id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at, project FROM tasks WHERE id = ?
 `
 
 func (q *Queries) GetTask(ctx context.Context, id int64) (Task, error) {
@@ -144,6 +169,7 @@ func (q *Queries) GetTask(ctx context.Context, id int64) (Task, error) {
 		&i.CompletedAt,
 		&i.CancelledAt,
 		&i.UpdatedAt,
+		&i.Project,
 	)
 	return i, err
 }
@@ -249,7 +275,7 @@ func (q *Queries) ListAllStagedAsc(ctx context.Context) ([]ListAllStagedAscRow, 
 
 const listLatestSpawnedTasksByScript = `-- name: ListLatestSpawnedTasksByScript :many
 
-SELECT t.id, t.title, t.notes, t.state, t.due_date, t.priority, t.staged_order, t.spawned_by_script_id, t.created_at, t.completed_at, t.cancelled_at, t.updated_at FROM tasks t
+SELECT t.id, t.title, t.notes, t.state, t.due_date, t.priority, t.staged_order, t.spawned_by_script_id, t.created_at, t.completed_at, t.cancelled_at, t.updated_at, t.project FROM tasks t
 JOIN json_each((
     SELECT spawned_task_ids FROM script_runs
     WHERE script_id = ? AND status = 'ok' AND spawned_task_ids != '[]'
@@ -283,6 +309,7 @@ func (q *Queries) ListLatestSpawnedTasksByScript(ctx context.Context, scriptID i
 			&i.CompletedAt,
 			&i.CancelledAt,
 			&i.UpdatedAt,
+			&i.Project,
 		); err != nil {
 			return nil, err
 		}
@@ -297,8 +324,47 @@ func (q *Queries) ListLatestSpawnedTasksByScript(ctx context.Context, scriptID i
 	return items, nil
 }
 
+const listProjects = `-- name: ListProjects :many
+SELECT CAST(project AS TEXT) AS name,
+       CAST(SUM(state = 'not_done') AS INTEGER) AS open_count,
+       COUNT(*) AS total_count
+FROM tasks
+WHERE project IS NOT NULL
+GROUP BY project
+ORDER BY project
+`
+
+type ListProjectsRow struct {
+	Name       string `json:"name"`
+	OpenCount  int64  `json:"open_count"`
+	TotalCount int64  `json:"total_count"`
+}
+
+func (q *Queries) ListProjects(ctx context.Context) ([]ListProjectsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listProjects)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListProjectsRow
+	for rows.Next() {
+		var i ListProjectsRow
+		if err := rows.Scan(&i.Name, &i.OpenCount, &i.TotalCount); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTasksByScript = `-- name: ListTasksByScript :many
-SELECT id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at FROM tasks WHERE spawned_by_script_id = ?
+SELECT id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at, project FROM tasks WHERE spawned_by_script_id = ?
 ORDER BY created_at DESC, id DESC
 `
 
@@ -324,6 +390,7 @@ func (q *Queries) ListTasksByScript(ctx context.Context, spawnedByScriptID *int6
 			&i.CompletedAt,
 			&i.CancelledAt,
 			&i.UpdatedAt,
+			&i.Project,
 		); err != nil {
 			return nil, err
 		}
@@ -364,6 +431,25 @@ func (q *Queries) MinStagedOrder(ctx context.Context) (interface{}, error) {
 	return coalesce, err
 }
 
+const renameProject = `-- name: RenameProject :execrows
+UPDATE tasks SET project = ?1, updated_at = ?2
+WHERE project = ?3
+`
+
+type RenameProjectParams struct {
+	To        *string `json:"to"`
+	UpdatedAt string  `json:"updated_at"`
+	From      *string `json:"from"`
+}
+
+func (q *Queries) RenameProject(ctx context.Context, arg RenameProjectParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, renameProject, arg.To, arg.UpdatedAt, arg.From)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const replaceTaskTags = `-- name: ReplaceTaskTags :exec
 DELETE FROM task_tags WHERE task_id = ?
 `
@@ -375,7 +461,7 @@ func (q *Queries) ReplaceTaskTags(ctx context.Context, taskID int64) error {
 
 const setTaskPriority = `-- name: SetTaskPriority :one
 UPDATE tasks SET priority = ?, updated_at = ?
-WHERE id = ? RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
+WHERE id = ? RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at, project
 `
 
 type SetTaskPriorityParams struct {
@@ -400,13 +486,46 @@ func (q *Queries) SetTaskPriority(ctx context.Context, arg SetTaskPriorityParams
 		&i.CompletedAt,
 		&i.CancelledAt,
 		&i.UpdatedAt,
+		&i.Project,
+	)
+	return i, err
+}
+
+const setTaskProject = `-- name: SetTaskProject :one
+UPDATE tasks SET project = ?, updated_at = ?
+WHERE id = ? RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at, project
+`
+
+type SetTaskProjectParams struct {
+	Project   *string `json:"project"`
+	UpdatedAt string  `json:"updated_at"`
+	ID        int64   `json:"id"`
+}
+
+func (q *Queries) SetTaskProject(ctx context.Context, arg SetTaskProjectParams) (Task, error) {
+	row := q.db.QueryRowContext(ctx, setTaskProject, arg.Project, arg.UpdatedAt, arg.ID)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Notes,
+		&i.State,
+		&i.DueDate,
+		&i.Priority,
+		&i.StagedOrder,
+		&i.SpawnedByScriptID,
+		&i.CreatedAt,
+		&i.CompletedAt,
+		&i.CancelledAt,
+		&i.UpdatedAt,
+		&i.Project,
 	)
 	return i, err
 }
 
 const setTaskStaged = `-- name: SetTaskStaged :one
 UPDATE tasks SET staged_order = ?, updated_at = ?
-WHERE id = ? RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
+WHERE id = ? RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at, project
 `
 
 type SetTaskStagedParams struct {
@@ -431,6 +550,7 @@ func (q *Queries) SetTaskStaged(ctx context.Context, arg SetTaskStagedParams) (T
 		&i.CompletedAt,
 		&i.CancelledAt,
 		&i.UpdatedAt,
+		&i.Project,
 	)
 	return i, err
 }
@@ -439,7 +559,7 @@ const setTaskState = `-- name: SetTaskState :one
 UPDATE tasks
 SET state = ?, completed_at = ?, cancelled_at = ?, updated_at = ?
 WHERE id = ?
-RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
+RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at, project
 `
 
 type SetTaskStateParams struct {
@@ -472,21 +592,23 @@ func (q *Queries) SetTaskState(ctx context.Context, arg SetTaskStateParams) (Tas
 		&i.CompletedAt,
 		&i.CancelledAt,
 		&i.UpdatedAt,
+		&i.Project,
 	)
 	return i, err
 }
 
 const updateTaskFields = `-- name: UpdateTaskFields :one
 UPDATE tasks
-SET title = ?, notes = ?, due_date = ?, updated_at = ?
+SET title = ?, notes = ?, due_date = ?, project = ?, updated_at = ?
 WHERE id = ?
-RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at
+RETURNING id, title, notes, state, due_date, priority, staged_order, spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at, project
 `
 
 type UpdateTaskFieldsParams struct {
 	Title     string  `json:"title"`
 	Notes     string  `json:"notes"`
 	DueDate   *string `json:"due_date"`
+	Project   *string `json:"project"`
 	UpdatedAt string  `json:"updated_at"`
 	ID        int64   `json:"id"`
 }
@@ -496,6 +618,7 @@ func (q *Queries) UpdateTaskFields(ctx context.Context, arg UpdateTaskFieldsPara
 		arg.Title,
 		arg.Notes,
 		arg.DueDate,
+		arg.Project,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -513,6 +636,7 @@ func (q *Queries) UpdateTaskFields(ctx context.Context, arg UpdateTaskFieldsPara
 		&i.CompletedAt,
 		&i.CancelledAt,
 		&i.UpdatedAt,
+		&i.Project,
 	)
 	return i, err
 }

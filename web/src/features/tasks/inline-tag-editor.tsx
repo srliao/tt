@@ -72,6 +72,7 @@ export function InlineTagEditor({ task, onClose }: InlineTagEditorProps) {
           title: original.title,
           notes: original.notes ?? '',
           due_date: original.due_date,
+          project: original.project,
           tags: next,
         },
       });

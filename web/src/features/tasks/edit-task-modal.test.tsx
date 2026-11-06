@@ -33,6 +33,7 @@ function makeTask(partial: Partial<Task> & { id: number; title: string }): Task 
     notes: '',
     state: 'not_done',
     due_date: null,
+    project: null,
     priority: 0,
     staged_order: null,
     spawned_by_script_id: null,
@@ -76,6 +77,7 @@ describe('EditTaskModal', () => {
       title: 'Wash car',
       notes: 'soap',
       due_date: '2026-06-01',
+      project: 'chores',
       tags: ['home', 'errand'],
     });
 
@@ -91,6 +93,7 @@ describe('EditTaskModal', () => {
     );
     expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('soap');
     expect((screen.getByLabelText('Due date') as HTMLInputElement).value).toBe('2026-06-01');
+    expect((screen.getByLabelText('Project') as HTMLInputElement).value).toBe('chores');
     // Tag chips are rendered inside the combobox trigger.
     const trigger = document.querySelector(
       '[data-slot="tag-combobox-trigger"]',
@@ -162,6 +165,54 @@ describe('EditTaskModal', () => {
     ) as [string, RequestInit];
     const body = JSON.parse(patchCall[1].body as string);
     expect(body).toMatchObject({ title: 'Wash car', tags: ['home', 'errand'] });
+  });
+
+  async function savedBody(task: Task, edit: () => void): Promise<Record<string, unknown>> {
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (String(url).includes('/tags')) return Promise.resolve(jsonResponse([]));
+      if (init?.method === 'PATCH') return Promise.resolve(jsonResponse(task));
+      return Promise.resolve(jsonResponse({}));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <Wrapper>
+        <Harness task={task} />
+      </Wrapper>,
+    );
+    await screen.findByLabelText('Project');
+    await act(async () => edit());
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    });
+    let patch: [string, RequestInit] | undefined;
+    await waitFor(() => {
+      patch = fetchMock.mock.calls.find(
+        ([, init]) => (init as RequestInit | undefined)?.method === 'PATCH',
+      ) as [string, RequestInit] | undefined;
+      expect(patch).toBeDefined();
+    });
+    return JSON.parse((patch as [string, RequestInit])[1].body as string);
+  }
+
+  it('sends the edited project on save', async () => {
+    const body = await savedBody(makeTask({ id: 3, title: 'Wash car', project: 'home' }), () =>
+      fireEvent.change(screen.getByLabelText('Project'), { target: { value: ' Work ' } }),
+    );
+    expect(body.project).toBe('Work');
+  });
+
+  it('keeps the project when only another field changes', async () => {
+    const body = await savedBody(makeTask({ id: 3, title: 'Wash car', project: 'home' }), () =>
+      fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Wash bike' } }),
+    );
+    expect(body).toMatchObject({ title: 'Wash bike', project: 'home' });
+  });
+
+  it('clears the project when the input is emptied', async () => {
+    const body = await savedBody(makeTask({ id: 3, title: 'Wash car', project: 'home' }), () =>
+      fireEvent.change(screen.getByLabelText('Project'), { target: { value: '' } }),
+    );
+    expect(body.project).toBeNull();
   });
 
   it('shows a validation error when title is cleared', async () => {

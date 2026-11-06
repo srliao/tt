@@ -110,6 +110,23 @@ func sorted(ids []int64) []int64 {
 	return out
 }
 
+func TestApplyPlan_SetsNormalizedProject(t *testing.T) {
+	svc, ctx := newService(t)
+	res, err := svc.ApplyPlan(ctx, decodePlan(t, `{"tasks": [
+		{"ref": "a", "title": "A", "project": " Home "},
+		{"ref": "b", "title": "B"}
+	]}`))
+	if err != nil {
+		t.Fatalf("ApplyPlan: %v", err)
+	}
+	if got := projectOf(res.Tasks[0]); got != "home" {
+		t.Fatalf("a project = %s, want home", got)
+	}
+	if res.Tasks[1].Project != nil {
+		t.Fatalf("b project = %s, want nil", projectOf(res.Tasks[1]))
+	}
+}
+
 func TestApplyPlan_CycleAmongNewTasksRollsBack(t *testing.T) {
 	svc, ctx := newService(t)
 	plan := decodePlan(t, `{
@@ -217,6 +234,11 @@ func TestApplyPlan_RejectsInvalidDocs(t *testing.T) {
 			name: "bad due date",
 			doc:  `{"tasks": [{"ref": "a", "title": "A", "due_date": "tomorrow"}]}`,
 			want: map[string]any{"field": "due_date", "index": 0, "ref": "a"},
+		},
+		{
+			name: "reserved project",
+			doc:  `{"tasks": [{"ref": "a", "title": "A", "project": "@x"}]}`,
+			want: map[string]any{"field": "project", "index": 0, "ref": "a"},
 		},
 		{
 			name: "unknown ref in deps",

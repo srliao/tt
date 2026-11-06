@@ -20,7 +20,7 @@ func newPlanCmd(s *session) *cobra.Command {
 }
 
 const planIO = `Input (-f file, or stdin; see ` + "`tt-cli help plans`" + `):
-  {"tasks": [{ref, title, notes?, due_date?, tags?: [name], stage?: bool}],
+  {"tasks": [{ref, title, notes?, due_date?, project?, tags?: [name], stage?: bool}],
    "deps": [{task: ref|id, depends_on: ref|id}],
    "deps_remove": [{task: ref|id, depends_on: ref|id}]}
 Output: {ids: {ref: id}, tasks: [task]}

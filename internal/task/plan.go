@@ -30,6 +30,7 @@ type PlanTask struct {
 	Title   string   `json:"title"`
 	Notes   string   `json:"notes"`
 	DueDate *string  `json:"due_date"`
+	Project *string  `json:"project"`
 	Tags    []string `json:"tags"`
 	Stage   bool     `json:"stage"`
 }
@@ -147,6 +148,7 @@ func (s *Impl) ApplyPlan(ctx context.Context, p Plan) (PlanResult, error) {
 				Title:     pt.Title,
 				Notes:     pt.Notes,
 				DueDate:   pt.DueDate,
+				Project:   pt.Project,
 				Priority:  priority,
 				CreatedAt: now,
 				UpdatedAt: now,
@@ -213,9 +215,6 @@ func (s *Impl) ApplyPlan(ctx context.Context, p Plan) (PlanResult, error) {
 	return PlanResult{IDs: ids, Tasks: tasks}, nil
 }
 
-// validatePlan checks everything that needs no database: the op cap, refs,
-// titles, due dates and edge refs. It trims titles and normalizes due dates
-// in place.
 func validatePlan(p *Plan) error {
 	if n := len(p.Tasks) + len(p.Deps) + len(p.DepsRemove); n > MaxDepBatch {
 		return &PlanError{
@@ -248,6 +247,11 @@ func validatePlan(p *Plan) error {
 			return fail("due_date", "due_date must be YYYY-MM-DD")
 		}
 		pt.DueDate = due
+		project, err := NormalizeProject(pt.Project)
+		if err != nil {
+			return fail("project", "project must not start with @ or contain a comma")
+		}
+		pt.Project = project
 	}
 	for _, list := range []struct {
 		op    string

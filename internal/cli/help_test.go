@@ -39,8 +39,8 @@ func TestHelpTopics_EachPrints(t *testing.T) {
 	f := newFixture(t)
 	for topic, want := range map[string][]string{
 		"":         {"tt-cli help plans", "Ready", "plan check", "script simulate"},
-		"overview": {"tt-cli help plans", "Ready", "plan check", "script simulate"},
-		"plans":    {`"deps_remove"`, `"ref"`, `"ids"`},
+		"overview": {"tt-cli help plans", "Ready", "plan check", "script simulate", "Project", "tt-cli project set"},
+		"plans":    {`"deps_remove"`, `"ref"`, `"ids"`, `"project"`},
 		"scripts":  {"weekly:<weekday>", "monthly:<n|last>", "--complete-after", "disabled"},
 		"errors":   {"validation_failed", "not_found", "version_mismatch", "tt-cli doctor"},
 		"config":   {"~/.config/tt-cli/config.toml", "TT_CF_CLIENT_SECRET", "CF-Access-Client-Id", "https://tt.example.com"},

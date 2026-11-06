@@ -32,7 +32,7 @@ func TestInstallSkill_WritesSkillFile(t *testing.T) {
 	if !strings.HasPrefix(body, "---\nname: tt\ndescription: ") {
 		t.Errorf("missing frontmatter:\n%s", body)
 	}
-	for _, w := range []string{"tt-cli help", "--help", "tt-cli doctor", "enable", "UI"} {
+	for _, w := range []string{"tt-cli help", "--help", "tt-cli doctor", "enable", "UI", "projects"} {
 		if !strings.Contains(body, w) {
 			t.Errorf("skill body missing %q:\n%s", w, body)
 		}

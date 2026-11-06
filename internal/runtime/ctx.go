@@ -156,6 +156,7 @@ func taskToJSObject(t task.Task, loc *time.Location) map[string]any {
 		"notes":        t.Notes,
 		"state":        string(t.State),
 		"due_date":     nilString(t.DueDate),
+		"project":      nilString(t.Project),
 		"created_at":   t.CreatedAt.In(loc).Format(ts),
 		"completed_at": nilTime(t.CompletedAt, loc, ts),
 		"cancelled_at": nilTime(t.CancelledAt, loc, ts),

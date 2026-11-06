@@ -81,18 +81,22 @@ var helpOverview = `tt-cli: the command line for a tt task tracker instance
 
 tt is a single-user task tracker. Userscripts (small JavaScript programs)
 run on a schedule and create tasks, so recurring chores appear on their own.
-tt-cli reads and changes a tt instance: tasks, dependencies, the stage, tags
-and scripts. Every command prints JSON on stdout; errors are JSON on stderr
+tt-cli reads and changes a tt instance: tasks, dependencies, the stage, tags,
+projects and scripts. Every command prints JSON on stdout; errors are JSON on stderr
 (see ` + "`tt-cli help errors`" + `). Run ` + "`tt-cli <command> --help`" + ` before using a
 command; never guess flags.
 
 Definitions
-  Task        One unit of work: title, notes, optional due date, a state and tags.
+  Task        One unit of work: title, notes, optional due date and project, a
+              state and tags.
   State       not_done, done or cancelled. An open task is not_done.
   Stage       A hand-picked, separately ordered set of tasks being worked now.
               Finished tasks stay visible in it until clear-finished.
   Tag         A named label. Tags must exist before use (` + "`tt-cli tag create`" + `);
               an unknown tag name is an error that lists the existing tags.
+  Project     A free-text name for the body of work a task belongs to; at most
+              one per task. Unlike tags, projects need not exist before use: a
+              project exists while some task names it. Names are lowercased.
   Dependency  "Task A cannot be completed until task B is resolved." B is A's
               blocker; A is B's dependent.
   Blocker     The task a dependency waits on.
@@ -100,7 +104,7 @@ Definitions
               stored, always worked out from the blockers.
   Ready       An open task that is not blocked.
   Goal        A task other tasks block, used as the end point of a plan. Not a
-              separate kind of task.
+              separate kind of task, and not a project.
   Script      User JavaScript that runs on a schedule in a sandbox and can create
               tasks. Scripts saved by tt-cli are always disabled; the user
               enables them in the web UI.
@@ -112,6 +116,11 @@ Workflows
   Capture a task
     tt-cli tag list                      # pick existing tags
     tt-cli task create --title "Renew passport" --due 2026-12-01 --tag admin
+
+  Group tasks by project
+    tt-cli project list                  # existing projects with counts
+    tt-cli project set home 42 43        # put tasks in a project
+    tt-cli task list --project home      # open tasks in it
 
   Plan a goal (several tasks wired with dependencies, in one step)
     tt-cli plan check -f plan.json       # dry run against a fresh snapshot
@@ -145,7 +154,7 @@ A plan document is JSON, read from -f file.json or stdin (-f -):
   {
     "tasks": [
       {"ref": "design", "title": "Design schema", "notes": "", "due_date": "2026-11-20",
-       "tags": ["tt"], "stage": true},
+       "project": "tt", "tags": ["tt"], "stage": true},
       {"ref": "impl", "title": "Implement"}
     ],
     "deps": [
@@ -158,8 +167,8 @@ A plan document is JSON, read from -f file.json or stdin (-f -):
   }
 
 tasks        New tasks to create. "title" is required; "notes", "due_date"
-             (YYYY-MM-DD), "tags" (existing tag names) and "stage" (true puts
-             the task on the stage) are optional.
+             (YYYY-MM-DD), "project" (any name), "tags" (existing tag names)
+             and "stage" (true puts the task on the stage) are optional.
 deps         Dependencies to add: "task" cannot be completed until
              "depends_on" is resolved.
 deps_remove  Dependencies to remove. Removals run before additions.

@@ -87,6 +87,7 @@ type Task struct {
 	Notes             string     `json:"notes"`
 	State             State      `json:"state"`
 	DueDate           *string    `json:"due_date"`
+	Project           *string    `json:"project"`
 	Priority          float64    `json:"priority"`
 	StagedOrder       *float64   `json:"staged_order"`
 	SpawnedByScriptID *int64     `json:"spawned_by_script_id"`
@@ -107,17 +108,19 @@ type CreateInput struct {
 	Title             string   `json:"title"`
 	Notes             string   `json:"notes"`
 	DueDate           *string  `json:"due_date"`
+	Project           *string  `json:"project"`
 	Tags              []string `json:"tags"`
 	SpawnedByScriptID *int64   `json:"spawned_by_script_id"`
 }
 
 // UpdateInput carries the mutable user-facing fields of a task. Title, notes,
-// and due_date are replaced wholesale; tags is informational here and
+// due_date and project are replaced wholesale; tags is informational here and
 // attachment continues to flow through SetTagsByID.
 type UpdateInput struct {
 	Title   string   `json:"title"`
 	Notes   string   `json:"notes"`
 	DueDate *string  `json:"due_date"`
+	Project *string  `json:"project"`
 	Tags    []string `json:"tags"`
 }
 
@@ -195,16 +198,36 @@ func (f TagFilter) IsZero() bool {
 	return len(f.RealTagIDs) == 0 && !f.IncludeUntagged
 }
 
+// NoProjectToken is the sentinel name in a project filter that selects tasks
+// with no project.
+const NoProjectToken = "@none"
+
+// ProjectFilter keeps tasks whose project is any of Names (already
+// normalized), or that have no project when IncludeNone is set. The zero
+// value disables the filter.
+type ProjectFilter struct {
+	Names       []string `json:"names"`
+	IncludeNone bool     `json:"include_none"`
+}
+
+// Project is a project name with the number of open and all tasks in it.
+type Project struct {
+	Name       string `json:"name"`
+	OpenCount  int64  `json:"open_count"`
+	TotalCount int64  `json:"total_count"`
+}
+
 // FilterSort parameterises List. Zero values disable each filter.
 type FilterSort struct {
-	States        []State   `json:"states"`
-	Tags          TagFilter `json:"tags"`
-	TagExcludeIDs []int64   `json:"tag_exclude_ids"`
-	Due           DueRange  `json:"due"`
-	Search        string    `json:"search"`
-	Blocked       *bool     `json:"blocked"`
-	Sort          SortAxis  `json:"sort"`
-	Ascending     bool      `json:"ascending"`
-	Limit         int       `json:"limit"`
-	Offset        int       `json:"offset"`
+	States        []State       `json:"states"`
+	Tags          TagFilter     `json:"tags"`
+	Projects      ProjectFilter `json:"projects"`
+	TagExcludeIDs []int64       `json:"tag_exclude_ids"`
+	Due           DueRange      `json:"due"`
+	Search        string        `json:"search"`
+	Blocked       *bool         `json:"blocked"`
+	Sort          SortAxis      `json:"sort"`
+	Ascending     bool          `json:"ascending"`
+	Limit         int           `json:"limit"`
+	Offset        int           `json:"offset"`
 }

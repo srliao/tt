@@ -26,6 +26,7 @@ function task(partial: Partial<Task> & { id: number; title: string }): Task {
     notes: '',
     state: 'not_done',
     due_date: null,
+    project: null,
     priority: 0,
     staged_order: null,
     spawned_by_script_id: null,
@@ -89,7 +90,7 @@ describe('<InlineTagEditor>', () => {
     vi.stubGlobal('fetch', fetchMock);
 
     const onClose = vi.fn();
-    renderHarness(task({ id: 9, title: 'Tagged', tags: ['old'] }), onClose);
+    renderHarness(task({ id: 9, title: 'Tagged', tags: ['old'], project: 'home' }), onClose);
     const editor = await waitFor(() => {
       const el = document.querySelector('[data-slot="inline-tag-editor"]');
       if (!el) throw new Error('editor not mounted');
@@ -114,13 +115,13 @@ describe('<InlineTagEditor>', () => {
     await waitFor(() => {
       expect(onClose).toHaveBeenCalled();
     });
-    // And the PATCH went out with the cleared tag list.
     const patchCalls = fetchMock.mock.calls.filter(
       (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
     );
     expect(patchCalls.length).toBeGreaterThanOrEqual(1);
     const body = JSON.parse((patchCalls[0][1] as RequestInit).body as string);
     expect(body.tags).toEqual([]);
+    expect(body.project).toBe('home');
   });
 
   it('keeps the editor open and surfaces an inline error when PATCH fails', async () => {

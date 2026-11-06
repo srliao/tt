@@ -44,6 +44,10 @@ type Service interface {
 	SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error
 	BulkTag(ctx context.Context, in BulkTagInput) ([]Task, error)
 
+	SetProject(ctx context.Context, ids []int64, project *string) ([]Task, error)
+	ListProjects(ctx context.Context) ([]Project, error)
+	RenameProject(ctx context.Context, from, to string) (Project, error)
+
 	AddDep(ctx context.Context, taskID, dependsOnID int64) (Task, error)
 	RemoveDep(ctx context.Context, taskID, dependsOnID int64) (Task, error)
 	ApplyDeps(ctx context.Context, in DepBatch) ([]Task, error)
@@ -97,6 +101,10 @@ func (s *Impl) Create(ctx context.Context, in CreateInput) (Task, error) {
 	if err != nil {
 		return Task{}, err
 	}
+	project, err := NormalizeProject(in.Project)
+	if err != nil {
+		return Task{}, err
+	}
 
 	minP, err := s.minPriority(ctx)
 	if err != nil {
@@ -109,6 +117,7 @@ func (s *Impl) Create(ctx context.Context, in CreateInput) (Task, error) {
 		Title:             title,
 		Notes:             in.Notes,
 		DueDate:           due,
+		Project:           project,
 		Priority:          newPriority,
 		StagedOrder:       nil,
 		SpawnedByScriptID: in.SpawnedByScriptID,
@@ -340,6 +349,7 @@ func neighborKey(row sqlcgen.Task, useStage bool) (*float64, error) {
 //
 // Tag exclusion (TagExcludeIDs) drops any task that carries at least one
 // of the excluded tag ids and composes with the inclusion clause via AND.
+// f.Projects keeps tasks in any listed project, or with none if IncludeNone.
 // Sort defaults to priority ASC, id ASC (the main-list order); Ascending
 // flips non-priority axes only. Limit / Offset are applied verbatim when
 // set (Limit == 0 disables paging).
@@ -418,6 +428,28 @@ func (s *Impl) List(ctx context.Context, f FilterSort) ([]Task, error) {
 			args = append(args, id)
 		}
 		sb.WriteString("))")
+	}
+
+	if names, none := f.Projects.Names, f.Projects.IncludeNone; len(names) > 0 || none {
+		sb.WriteString(" AND (")
+		if len(names) > 0 {
+			sb.WriteString("project IN (")
+			for i, n := range names {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				sb.WriteString("?")
+				args = append(args, n)
+			}
+			sb.WriteString(")")
+		}
+		if none {
+			if len(names) > 0 {
+				sb.WriteString(" OR ")
+			}
+			sb.WriteString("project IS NULL")
+		}
+		sb.WriteString(")")
 	}
 
 	switch f.Due {
@@ -575,8 +607,8 @@ func (s *Impl) RebalanceStage(ctx context.Context) error {
 	return nil
 }
 
-// Update replaces the mutable user-facing fields (title, notes, due_date)
-// of a task. Title is required; due_date must be YYYY-MM-DD when present.
+// Update replaces the mutable user-facing fields (title, notes, due_date,
+// project) of a task. Title is required; due_date must be YYYY-MM-DD when present.
 // Tag attachment is handled separately via SetTagsByID.
 func (s *Impl) Update(ctx context.Context, id int64, in UpdateInput) (Task, error) {
 	title := strings.TrimSpace(in.Title)
@@ -587,11 +619,16 @@ func (s *Impl) Update(ctx context.Context, id int64, in UpdateInput) (Task, erro
 	if err != nil {
 		return Task{}, err
 	}
+	project, err := NormalizeProject(in.Project)
+	if err != nil {
+		return Task{}, err
+	}
 
 	row, err := s.q.UpdateTaskFields(ctx, sqlcgen.UpdateTaskFieldsParams{
 		Title:     title,
 		Notes:     in.Notes,
 		DueDate:   due,
+		Project:   project,
 		UpdatedAt: s.now.Stamp(),
 		ID:        id,
 	})
@@ -738,6 +775,7 @@ func rowToTask(r sqlcgen.Task, tags []string) Task {
 		Notes:             r.Notes,
 		State:             State(r.State),
 		DueDate:           r.DueDate,
+		Project:           r.Project,
 		Priority:          r.Priority,
 		StagedOrder:       r.StagedOrder,
 		SpawnedByScriptID: r.SpawnedByScriptID,
