@@ -16,7 +16,7 @@ import (
 // skill never goes stale when commands change.
 const skillMD = `---
 name: tt
-description: Track, add, plan or organize tasks, todos and recurring reminders in the user's tt task tracker. Use when the user asks to capture a task, plan a goal, check what to work on, or set up something that repeats.
+description: Track, add, plan or organize tasks, todos, projects and recurring reminders in the user's tt task tracker. Use when the user asks to capture a task, plan a goal, group tasks into a project, check what to work on, or set up something that repeats.
 ---
 
 Use ` + "`tt-cli`" + ` for everything in tt.

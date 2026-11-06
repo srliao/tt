@@ -33,14 +33,15 @@ type taskWrite struct {
 	Title   string   `json:"title"`
 	Notes   string   `json:"notes"`
 	DueDate *string  `json:"due_date"`
+	Project *string  `json:"project"`
 	Tags    []string `json:"tags"`
 }
 
-const fullTaskShape = `{id, title, notes, state, due_date, priority, staged_order,
+const fullTaskShape = `{id, title, notes, state, due_date, project, priority, staged_order,
  spawned_by_script_id, created_at, completed_at, cancelled_at, updated_at,
  tags: [string], blocked_by: [id], blocks: [id], blocked: bool}`
 
-const compactTaskShape = `{id, title, state, due_date, tags: [string], blocked: bool, staged: bool}`
+const compactTaskShape = `{id, title, state, due_date, project, tags: [string], blocked: bool, staged: bool}`
 
 // compactTask is the default list row.
 type compactTask struct {
@@ -48,6 +49,7 @@ type compactTask struct {
 	Title   string     `json:"title"`
 	State   task.State `json:"state"`
 	DueDate *string    `json:"due_date"`
+	Project *string    `json:"project"`
 	Tags    []string   `json:"tags"`
 	Blocked bool       `json:"blocked"`
 	Staged  bool       `json:"staged"`
@@ -59,7 +61,7 @@ func compact(t task.Task) compactTask {
 		tags = []string{}
 	}
 	return compactTask{
-		ID: t.ID, Title: t.Title, State: t.State, DueDate: t.DueDate,
+		ID: t.ID, Title: t.Title, State: t.State, DueDate: t.DueDate, Project: t.Project,
 		Tags: tags, Blocked: t.Blocked, Staged: t.StagedOrder != nil,
 	}
 }
@@ -86,15 +88,16 @@ const defaultListLimit = 50
 
 func newTaskListCmd(s *session) *cobra.Command {
 	var ready, blocked, full bool
-	var states, tags []string
+	var states, tags, projects []string
 	var search, cursor string
 	limit := defaultListLimit
 	cmd := &cobra.Command{
-		Use:   "list [--ready|--blocked] [--state <state>]... [--tag <name>]... [--search <text>] [--limit N] [--cursor C] [--full]",
+		Use:   "list [--ready|--blocked] [--state <state>]... [--tag <name>]... [--project <name>]... [--search <text>] [--limit N] [--cursor C] [--full]",
 		Short: "List tasks (open tasks, compact rows, by default)",
 		Long: `List tasks in priority order. Defaults to open (not_done) tasks, 50 per page.
 --ready keeps only unblocked tasks, --blocked only blocked ones. --tag
-filters to tasks carrying all given tags. When more rows remain,
+filters to tasks carrying all given tags. --project filters to tasks in
+any given project; @none matches tasks with no project. When more rows remain,
 next_cursor is set; pass it back with --cursor for the next page.
 
 Output: {tasks: [row], next_cursor?: string}
@@ -133,6 +136,9 @@ Output: {tasks: [row], next_cursor?: string}
 				}
 				q.Set("tag_filter", "all:"+strings.Join(tags, ","))
 			}
+			if len(projects) > 0 {
+				q.Set("project", strings.Join(projects, ","))
+			}
 			if search != "" {
 				q.Set("q", search)
 			}
@@ -158,6 +164,7 @@ Output: {tasks: [row], next_cursor?: string}
 	f.BoolVar(&blocked, "blocked", false, "only blocked tasks")
 	f.StringArrayVar(&states, "state", nil, "not_done|done|cancelled; repeatable (default not_done)")
 	f.StringArrayVar(&tags, "tag", nil, "existing tag name; repeatable, all must match")
+	f.StringArrayVar(&projects, "project", nil, "project name, or @none for no project; repeatable, any may match")
 	f.StringVar(&search, "search", "", "substring match on title and notes")
 	f.IntVar(&limit, "limit", defaultListLimit, "page size")
 	f.StringVar(&cursor, "cursor", "", "next_cursor from the previous page")
@@ -195,12 +202,13 @@ Output: ` + fullTaskShape,
 }
 
 func newTaskCreateCmd(s *session) *cobra.Command {
-	var title, notes, due string
+	var title, notes, due, project string
 	var tags []string
 	cmd := &cobra.Command{
-		Use:   "create --title <title> [--notes <text>] [--due YYYY-MM-DD] [--tag <name>]...",
+		Use:   "create --title <title> [--notes <text>] [--due YYYY-MM-DD] [--project <name>] [--tag <name>]...",
 		Short: "Create a task",
-		Long: `Create a task. Tags must already exist (see ` + "`tt-cli tag list`" + `).
+		Long: `Create a task. Tags must already exist (see ` + "`tt-cli tag list`" + `); a
+project need not.
 
 Output: ` + fullTaskShape,
 		Example: `  tt-cli task create --title "Renew passport" --due 2026-12-01 --tag errand`,
@@ -216,6 +224,9 @@ Output: ` + fullTaskShape,
 				}
 				body.DueDate = &due
 			}
+			if project != "" {
+				body.Project = &project
+			}
 			if err := s.requireTags(cmd.Context(), tags); err != nil {
 				return err
 			}
@@ -229,17 +240,18 @@ Output: ` + fullTaskShape,
 	cmd.Flags().StringVar(&title, "title", "", "task title (required)")
 	cmd.Flags().StringVar(&notes, "notes", "", "free-text notes")
 	cmd.Flags().StringVar(&due, "due", "", "due date, YYYY-MM-DD")
+	cmd.Flags().StringVar(&project, "project", "", "project name")
 	cmd.Flags().StringArrayVar(&tags, "tag", nil, "existing tag name; repeatable")
 	return cmd
 }
 
 func newTaskUpdateCmd(s *session) *cobra.Command {
-	var title, notes, due string
-	var clearDue bool
+	var title, notes, due, project string
+	var clearDue, clearProject bool
 	cmd := &cobra.Command{
-		Use:   "update <id> [--title <title>] [--notes <text>] [--due YYYY-MM-DD | --clear-due]",
-		Short: "Change a task's title, notes or due date",
-		Long: `Change a task's title, notes or due date. Fields you don't pass are kept.
+		Use:   "update <id> [--title <title>] [--notes <text>] [--due YYYY-MM-DD | --clear-due] [--project <name> | --clear-project]",
+		Short: "Change a task's title, notes, due date or project",
+		Long: `Change a task's title, notes, due date or project. Fields you don't pass are kept.
 Use task state / stage / tag for the rest.
 
 Output: ` + fullTaskShape,
@@ -251,11 +263,15 @@ Output: ` + fullTaskShape,
 				return err
 			}
 			fl := cmd.Flags()
-			if !fl.Changed("title") && !fl.Changed("notes") && !fl.Changed("due") && !clearDue {
-				return usageErr("nothing to update: pass --title, --notes, --due or --clear-due", nil)
+			if !fl.Changed("title") && !fl.Changed("notes") && !fl.Changed("due") && !clearDue &&
+				!fl.Changed("project") && !clearProject {
+				return usageErr("nothing to update: pass --title, --notes, --due, --clear-due, --project or --clear-project", nil)
 			}
 			if fl.Changed("due") && clearDue {
 				return usageErr("--due and --clear-due are mutually exclusive", nil)
+			}
+			if fl.Changed("project") && clearProject {
+				return usageErr("--project and --clear-project are mutually exclusive", nil)
 			}
 			if fl.Changed("due") {
 				if err := checkDate("due", due); err != nil {
@@ -268,7 +284,7 @@ Output: ` + fullTaskShape,
 			}
 			// PATCH replaces every field, tags included, so start from the
 			// current task.
-			body := taskWrite{Title: cur.Title, Notes: cur.Notes, DueDate: cur.DueDate, Tags: cur.Tags}
+			body := taskWrite{Title: cur.Title, Notes: cur.Notes, DueDate: cur.DueDate, Project: cur.Project, Tags: cur.Tags}
 			if body.Tags == nil {
 				body.Tags = []string{}
 			}
@@ -284,6 +300,12 @@ Output: ` + fullTaskShape,
 			if clearDue {
 				body.DueDate = nil
 			}
+			if fl.Changed("project") {
+				body.Project = &project
+			}
+			if clearProject {
+				body.Project = nil
+			}
 			var out task.Task
 			if err := s.do(cmd.Context(), http.MethodPatch, fmt.Sprintf("/tasks/%d", id), nil, body, &out); err != nil {
 				return err
@@ -295,6 +317,8 @@ Output: ` + fullTaskShape,
 	cmd.Flags().StringVar(&notes, "notes", "", "new notes (\"\" clears)")
 	cmd.Flags().StringVar(&due, "due", "", "new due date, YYYY-MM-DD")
 	cmd.Flags().BoolVar(&clearDue, "clear-due", false, "remove the due date")
+	cmd.Flags().StringVar(&project, "project", "", "new project name")
+	cmd.Flags().BoolVar(&clearProject, "clear-project", false, "remove the task from its project")
 	return cmd
 }
 

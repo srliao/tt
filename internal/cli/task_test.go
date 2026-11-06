@@ -58,6 +58,7 @@ type compactRow struct {
 	Title   string   `json:"title"`
 	State   string   `json:"state"`
 	DueDate *string  `json:"due_date"`
+	Project *string  `json:"project"`
 	Tags    []string `json:"tags"`
 	Blocked bool     `json:"blocked"`
 	Staged  bool     `json:"staged"`

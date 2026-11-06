@@ -165,6 +165,7 @@ func newRootCmd(s *session) *cobra.Command {
 		newDepsCmd(s),
 		newStageCmd(s),
 		newTagCmd(s),
+		newProjectCmd(s),
 		newPlanCmd(s),
 		newScriptCmd(s),
 		newSnapshotCmd(s),
