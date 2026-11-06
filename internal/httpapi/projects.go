@@ -10,8 +10,6 @@ import (
 	"github.com/srliao/tt/internal/task"
 )
 
-// mountProjectRoutes wires the /projects subtree. Setting a project on tasks
-// lives under /tasks/project.
 func (s *Server) mountProjectRoutes(r chi.Router) {
 	r.Route("/projects", func(r chi.Router) {
 		r.Get("/", s.handleListProjects)
@@ -19,21 +17,16 @@ func (s *Server) mountProjectRoutes(r chi.Router) {
 	})
 }
 
-// setProjectBody is the inbound JSON shape for POST /tasks/project. A null
-// or blank project clears it.
 type setProjectBody struct {
 	IDs     []int64 `json:"ids"`
 	Project *string `json:"project"`
 }
 
-// renameProjectBody is the inbound JSON shape for POST /projects/rename.
 type renameProjectBody struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
-// handleSetProject sets one project on many tasks atomically and returns the
-// updated tasks in request order. An unknown id is a 404 and writes nothing.
 func (s *Server) handleSetProject(w http.ResponseWriter, r *http.Request) {
 	var body setProjectBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -57,8 +50,6 @@ func (s *Server) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// handleRenameProject moves every task from one project to another, merging
-// into to when it already exists, and returns to with its new counts.
 func (s *Server) handleRenameProject(w http.ResponseWriter, r *http.Request) {
 	var body renameProjectBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -73,9 +64,6 @@ func (s *Server) handleRenameProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// parseProjectFilter reads ?project=a,b (repeatable). NoProjectToken selects
-// tasks with no project; other names are normalized like stored projects, so
-// any other @-name is an error.
 func parseProjectFilter(raw []string) (task.ProjectFilter, error) {
 	var f task.ProjectFilter
 	for _, v := range raw {

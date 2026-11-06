@@ -18,7 +18,7 @@ type queuedTask struct {
 	Notes   string
 	Tags    []string
 	DueDate *string // canonical "YYYY-MM-DD"; nil when caller omitted the field
-	Project *string // normalized; nil when omitted or blank
+	Project *string
 }
 
 // taskQueue is the in-memory buffer behind ctx.queueTask. Each Enqueue

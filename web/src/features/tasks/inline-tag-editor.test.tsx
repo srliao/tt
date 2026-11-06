@@ -115,7 +115,6 @@ describe('<InlineTagEditor>', () => {
     await waitFor(() => {
       expect(onClose).toHaveBeenCalled();
     });
-    // And the PATCH went out with the cleared tag list, keeping the project.
     const patchCalls = fetchMock.mock.calls.filter(
       (c) => (c[1] as RequestInit | undefined)?.method === 'PATCH',
     );

@@ -215,9 +215,6 @@ func (s *Impl) ApplyPlan(ctx context.Context, p Plan) (PlanResult, error) {
 	return PlanResult{IDs: ids, Tasks: tasks}, nil
 }
 
-// validatePlan checks everything that needs no database: the op cap, refs,
-// titles, due dates, projects and edge refs. It trims titles and normalizes
-// due dates and projects in place.
 func validatePlan(p *Plan) error {
 	if n := len(p.Tasks) + len(p.Deps) + len(p.DepsRemove); n > MaxDepBatch {
 		return &PlanError{

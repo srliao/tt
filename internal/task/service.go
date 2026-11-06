@@ -44,7 +44,6 @@ type Service interface {
 	SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error
 	BulkTag(ctx context.Context, in BulkTagInput) ([]Task, error)
 
-	// Projects
 	SetProject(ctx context.Context, ids []int64, project *string) ([]Task, error)
 	ListProjects(ctx context.Context) ([]Project, error)
 	RenameProject(ctx context.Context, from, to string) (Project, error)
