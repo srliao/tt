@@ -23,6 +23,7 @@ func (s *Server) mountTaskRoutes(r chi.Router) {
 		r.Post("/", s.handleCreateTask)
 		r.Post("/reorder", s.handleReorderMain)
 		r.Post("/bulk-tag", s.handleBulkTag)
+		r.Post("/project", s.handleSetProject)
 		r.Get("/{id}", s.handleGetTask)
 		r.Patch("/{id}", s.handleUpdateTask)
 		r.Delete("/{id}", s.handleDeleteTask)
@@ -45,6 +46,7 @@ type taskBody struct {
 	Title   string   `json:"title"`
 	Notes   string   `json:"notes"`
 	DueDate *string  `json:"due_date"`
+	Project *string  `json:"project"`
 	Tags    []string `json:"tags"`
 }
 
@@ -77,6 +79,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		Title:   body.Title,
 		Notes:   body.Notes,
 		DueDate: body.DueDate,
+		Project: body.Project,
 	})
 	if err != nil {
 		writeServiceError(w, err)
@@ -203,6 +206,7 @@ func (s *Server) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	out, err := s.tasks.List(r.Context(), task.FilterSort{
 		States:        states,
 		Tags:          tagFilter,
+		Projects:      parseProjectFilter(q["project"]),
 		TagExcludeIDs: tagExcludeIDs,
 		Due:           due,
 		Search:        q.Get("q"),
@@ -317,6 +321,7 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		Title:   body.Title,
 		Notes:   body.Notes,
 		DueDate: body.DueDate,
+		Project: body.Project,
 	}); err != nil {
 		writeServiceError(w, err)
 		return

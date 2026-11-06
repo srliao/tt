@@ -34,6 +34,9 @@ type TaskService interface {
 	ByScript(ctx context.Context, scriptID int64, limit, offset int) ([]task.Task, error)
 	SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error
 	BulkTag(ctx context.Context, in task.BulkTagInput) ([]task.Task, error)
+	SetProject(ctx context.Context, ids []int64, project *string) ([]task.Task, error)
+	ListProjects(ctx context.Context) ([]task.Project, error)
+	RenameProject(ctx context.Context, from, to string) error
 	AddDep(ctx context.Context, taskID, dependsOnID int64) (task.Task, error)
 	RemoveDep(ctx context.Context, taskID, dependsOnID int64) (task.Task, error)
 	ApplyDeps(ctx context.Context, in task.DepBatch) ([]task.Task, error)
@@ -212,6 +215,7 @@ func (s *Server) Routes() http.Handler {
 		s.mountPlanRoutes(r)
 		s.mountStageRoutes(r)
 		s.mountTagRoutes(r)
+		s.mountProjectRoutes(r)
 		s.mountScriptRoutes(r)
 		s.mountRunRoutes(r)
 		s.mountDrawingRoutes(r)
