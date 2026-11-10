@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -259,4 +260,37 @@ func TestTaskTagUntag(t *testing.T) {
 		t.Fatalf("details = %v", e.Details)
 	}
 	f.run("task", "tag", "999", "work").fails(t, 2, "not_found")
+}
+
+func TestOrder_TaskAndStage(t *testing.T) {
+	f := newFixture(t)
+	a, b, c := f.createTask("A"), f.createTask("B"), f.createTask("C")
+	for _, tk := range []task.Task{c, b, a} {
+		f.run("task", "stage", id(tk.ID)).ok(t, nil)
+	}
+	var out struct {
+		Tasks []task.Task `json:"tasks"`
+	}
+	doc := fmt.Sprintf(`{"ids": [%d, %d]}`, c.ID, a.ID)
+
+	f.runStdin(doc, "task", "order", "--bottom").ok(t, &out)
+	if len(out.Tasks) != 2 || out.Tasks[0].ID != c.ID || out.Tasks[1].ID != a.ID || !(out.Tasks[0].Priority < out.Tasks[1].Priority) {
+		t.Fatalf("task order = %+v", out.Tasks)
+	}
+	var gotB task.Task
+	f.run("task", "get", id(b.ID)).ok(t, &gotB)
+	if out.Tasks[0].Priority <= gotB.Priority {
+		t.Fatalf("block not below B")
+	}
+
+	f.runStdin(doc, "stage", "order", "--top").ok(t, &out)
+	if !(*out.Tasks[0].StagedOrder < *out.Tasks[1].StagedOrder) {
+		t.Fatalf("stage order = %+v", out.Tasks)
+	}
+
+	f.runStdin(`{"ids": [999]}`, "task", "order").fails(t, 2, "not_found")
+	f.runStdin(`{"ids": []}`, "task", "order").fails(t, 3, "validation_failed")
+	f.runStdin(doc, "task", "order", "--top", "--bottom").fails(t, 3, "validation_failed")
+	loose := f.createTask("loose")
+	f.runStdin(fmt.Sprintf(`{"ids": [%d]}`, loose.ID), "stage", "order").fails(t, 3, "validation_failed")
 }

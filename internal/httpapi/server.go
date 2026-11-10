@@ -31,6 +31,8 @@ type TaskService interface {
 	ClearFinishedFromStage(ctx context.Context) error
 	ReorderMain(ctx context.Context, id int64, beforeID, afterID *int64) (task.Task, error)
 	ReorderStage(ctx context.Context, id int64, beforeID, afterID *int64) (task.Task, error)
+	ReorderMainBatch(ctx context.Context, in task.OrderInput) ([]task.Task, error)
+	ReorderStageBatch(ctx context.Context, in task.OrderInput) ([]task.Task, error)
 	ByScript(ctx context.Context, scriptID int64, limit, offset int) ([]task.Task, error)
 	SetTagsByID(ctx context.Context, taskID int64, tagIDs []int64) error
 	BulkTag(ctx context.Context, in task.BulkTagInput) ([]task.Task, error)

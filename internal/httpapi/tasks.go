@@ -22,6 +22,7 @@ func (s *Server) mountTaskRoutes(r chi.Router) {
 		r.Get("/", s.handleListTasks)
 		r.Post("/", s.handleCreateTask)
 		r.Post("/reorder", s.handleReorderMain)
+		r.Post("/order", s.handleOrderMain)
 		r.Post("/bulk-tag", s.handleBulkTag)
 		r.Post("/project", s.handleSetProject)
 		r.Get("/{id}", s.handleGetTask)
@@ -447,6 +448,24 @@ func (s *Server) handleReorderMain(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
+}
+
+func (s *Server) handleOrderMain(w http.ResponseWriter, r *http.Request) {
+	s.handleOrder(w, r, s.tasks.ReorderMainBatch)
+}
+
+func (s *Server) handleOrder(w http.ResponseWriter, r *http.Request, order func(context.Context, task.OrderInput) ([]task.Task, error)) {
+	var body task.OrderInput
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, CodeValidation, "invalid JSON body: ids must be an array of task ids", nil)
+		return
+	}
+	out, err := order(r.Context(), body)
+	if err != nil {
+		writeServiceError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // bulkTagBody is the inbound JSON shape for POST /tasks/bulk-tag. Tag name

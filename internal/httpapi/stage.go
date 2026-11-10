@@ -13,6 +13,7 @@ import (
 func (s *Server) mountStageRoutes(r chi.Router) {
 	r.Route("/stage", func(r chi.Router) {
 		r.Post("/reorder", s.handleReorderStage)
+		r.Post("/order", s.handleOrderStage)
 		r.Delete("/", s.handleClearStage)
 		r.Delete("/finished", s.handleClearFinishedStage)
 	})
@@ -34,6 +35,10 @@ func (s *Server) handleReorderStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
+}
+
+func (s *Server) handleOrderStage(w http.ResponseWriter, r *http.Request) {
+	s.handleOrder(w, r, s.tasks.ReorderStageBatch)
 }
 
 func (s *Server) handleClearStage(w http.ResponseWriter, r *http.Request) {

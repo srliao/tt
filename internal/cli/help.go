@@ -140,6 +140,7 @@ Workflows
     tt-cli task stage 42                 # add a task to the stage
     tt-cli task state 42 done            # finish it
     tt-cli stage clear-finished          # drop finished tasks from the stage
+    echo '{"ids": [3, 1, 2]}' | tt-cli stage order   # reorder many at once (task order: main list)
 
   When something fails
     tt-cli doctor                        # config, auth, server version and time
