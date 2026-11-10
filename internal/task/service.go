@@ -32,6 +32,8 @@ type Service interface {
 	// Reorder / rebalance
 	ReorderMain(ctx context.Context, id int64, beforeID, afterID *int64) (Task, error)
 	ReorderStage(ctx context.Context, id int64, beforeID, afterID *int64) (Task, error)
+	ReorderMainBatch(ctx context.Context, in OrderInput) ([]Task, error)
+	ReorderStageBatch(ctx context.Context, in OrderInput) ([]Task, error)
 	RebalancePriority(ctx context.Context) error
 	RebalanceStage(ctx context.Context) error
 
