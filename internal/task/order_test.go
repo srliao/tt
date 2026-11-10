@@ -17,8 +17,6 @@ type orderAxisCase struct {
 
 var orderAxes = []orderAxisCase{{"main", false}, {"stage", true}}
 
-// seedOrder creates n tasks and returns their ids in axis order, top first.
-// Staged on the stage axis, so both axes start as ids[0..n-1].
 func seedOrder(t *testing.T, svc *task.Impl, ctx context.Context, stage bool, n int) []int64 {
 	t.Helper()
 	var created []int64
@@ -81,7 +79,7 @@ func TestOrderBatch(t *testing.T) {
 	}{
 		{"partial list lands where the first listed task sat",
 			func(i []int64) task.OrderInput { return task.OrderInput{IDs: []int64{i[3], i[1]}} },
-			func(i []int64) []int64 { return []int64{i[0], i[3], i[1], i[2], i[4]} }},
+			func(i []int64) []int64 { return []int64{i[0], i[2], i[3], i[1], i[4]} }},
 		{"full list",
 			func(i []int64) task.OrderInput { return task.OrderInput{IDs: []int64{i[4], i[3], i[2], i[1], i[0]}} },
 			func(i []int64) []int64 { return []int64{i[4], i[3], i[2], i[1], i[0]} }},
@@ -174,7 +172,6 @@ func TestOrderBatch_TightGapRebalances(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			// The block lands between ids[1] and ids[3], 1e-10 apart.
 			if _, err := runOrder(svc, ctx, ax.stage, task.OrderInput{IDs: []int64{ids[2], ids[4]}}); err != nil {
 				t.Fatal(err)
 			}

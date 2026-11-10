@@ -63,7 +63,9 @@ var stageAxis = orderAxis{
 }
 
 // ReorderMainBatch places the listed tasks as one contiguous block, in the
-// listed order, in the main list. See orderBatch for the placement rules.
+// listed order, in the main list. The call is atomic: a bad id changes nothing.
+// Unlisted tasks keep their relative order. Returns the listed tasks in the
+// requested order.
 func (s *Impl) ReorderMainBatch(ctx context.Context, in OrderInput) ([]Task, error) {
 	return s.orderBatch(ctx, mainAxis, in)
 }
@@ -73,11 +75,6 @@ func (s *Impl) ReorderStageBatch(ctx context.Context, in OrderInput) ([]Task, er
 	return s.orderBatch(ctx, stageAxis, in)
 }
 
-// orderBatch writes the block in one transaction, so a bad id changes
-// nothing. By default the block lands where the first listed task sits;
-// unlisted tasks keep their relative order. The block's keys are spread
-// evenly across the gap; a gap too tight for them rebalances the axis first.
-// Returns the listed tasks in the requested order.
 func (s *Impl) orderBatch(ctx context.Context, ax orderAxis, in OrderInput) ([]Task, error) {
 	if len(in.IDs) == 0 {
 		return nil, errors.New("task: ids must be non-empty")
@@ -110,10 +107,10 @@ func (s *Impl) orderBatch(ctx context.Context, ax orderAxis, in OrderInput) ([]T
 		var rest []orderRow
 		at := -1
 		for _, r := range all {
+			if r.id == in.IDs[0] {
+				at = len(rest)
+			}
 			if seen[r.id] {
-				if at < 0 {
-					at = len(rest)
-				}
 				continue
 			}
 			rest = append(rest, r)
@@ -150,8 +147,6 @@ func (s *Impl) orderBatch(ctx context.Context, ax orderAxis, in OrderInput) ([]T
 	return s.getMany(ctx, in.IDs)
 }
 
-// blockKeys returns n ascending keys that fit between rest[at-1] and rest[at]
-// (either may be absent), or nil when the gap is too tight to hold them.
 func blockKeys(rest []orderRow, at, n int) []float64 {
 	var before, after *float64
 	if at > 0 {
