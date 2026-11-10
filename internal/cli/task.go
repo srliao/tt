@@ -25,6 +25,7 @@ func newTaskCmd(s *session) *cobra.Command {
 		newTaskStageCmd(s, false),
 		newTaskTagCmd(s, task.BulkTagOpAdd),
 		newTaskTagCmd(s, task.BulkTagOpRemove),
+		newOrderCmd(s, "task", "/tasks/order", "the main list"),
 	)
 }
 

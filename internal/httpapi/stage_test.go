@@ -108,3 +108,47 @@ func TestStage_ClearFinished(t *testing.T) {
 		t.Fatalf("b (not done) should still be staged")
 	}
 }
+
+func TestOrder_Batch(t *testing.T) {
+	t.Parallel()
+
+	fx := newTestServer(t, nil)
+	ctx := context.Background()
+	a, _ := fx.tasks.Create(ctx, task.CreateInput{Title: "a"})
+	b, _ := fx.tasks.Create(ctx, task.CreateInput{Title: "b"})
+	for _, id := range []int64{a.ID, b.ID} {
+		if _, err := fx.tasks.Stage(ctx, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, path := range []string{"/tasks/order", "/stage/order"} {
+		resp := doJSON(t, http.MethodPost, fx.server.URL+"/api/v1"+path, map[string]any{"ids": []int64{a.ID, b.ID}})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s status = %d", path, resp.StatusCode)
+		}
+		got := decodeTasks(t, resp)
+		_ = resp.Body.Close()
+		if len(got) != 2 || got[0].ID != a.ID || got[1].ID != b.ID {
+			t.Fatalf("%s got %+v", path, got)
+		}
+		if !(got[0].Priority < got[1].Priority) {
+			t.Fatalf("%s priorities %v %v", path, got[0].Priority, got[1].Priority)
+		}
+	}
+
+	for _, c := range []struct {
+		body   any
+		status int
+	}{
+		{map[string]any{"ids": []int64{}}, http.StatusBadRequest},
+		{map[string]any{"ids": []int64{a.ID, 9999}}, http.StatusNotFound},
+		{map[string]any{"ids": "x"}, http.StatusBadRequest},
+	} {
+		resp := doJSON(t, http.MethodPost, fx.server.URL+"/api/v1/stage/order", c.body)
+		_ = resp.Body.Close()
+		if resp.StatusCode != c.status {
+			t.Fatalf("body %v: status = %d, want %d", c.body, resp.StatusCode, c.status)
+		}
+	}
+}
