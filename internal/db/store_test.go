@@ -246,3 +246,110 @@ func TestOpenSnapshot_LoadsCopyOfWALDatabaseInMemory(t *testing.T) {
 		t.Fatalf("source tags = %d, want 1", n)
 	}
 }
+
+func openMigrated(t *testing.T, upTo int64) (*sql.DB, *goose.Provider) {
+	t.Helper()
+	sqlDB, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "m.sqlite")+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	provider, err := goose.NewProvider(goose.DialectSQLite3, sqlDB, migrations.FS)
+	if err != nil {
+		t.Fatalf("goose.NewProvider: %v", err)
+	}
+	if _, err := provider.UpTo(context.Background(), upTo); err != nil {
+		t.Fatalf("up to %d: %v", upTo, err)
+	}
+	return sqlDB, provider
+}
+
+func mustExec(t *testing.T, d *sql.DB, q string) {
+	t.Helper()
+	if _, err := d.ExecContext(context.Background(), q); err != nil {
+		t.Fatalf("exec %q: %v", q, err)
+	}
+}
+
+func count(t *testing.T, d *sql.DB, q string) int {
+	t.Helper()
+	var n int
+	if err := d.QueryRowContext(context.Background(), q).Scan(&n); err != nil {
+		t.Fatalf("query %q: %v", q, err)
+	}
+	return n
+}
+
+func TestTaskAutoincrementMigrationPreservesData(t *testing.T) {
+	ctx := context.Background()
+	d, provider := openMigrated(t, 5)
+	mustExec(t, d, `INSERT INTO tasks (title, staged_order, project) VALUES ('a', 1.5, 'p'), ('b', NULL, NULL), ('c', 2.5, 'q')`)
+	mustExec(t, d, `INSERT INTO tags (name) VALUES ('t')`)
+	mustExec(t, d, `INSERT INTO task_tags (task_id, tag_id) VALUES (1, 1), (3, 1)`)
+	mustExec(t, d, `INSERT INTO task_deps (task_id, depends_on_id) VALUES (1, 2), (3, 1)`)
+
+	if _, err := provider.UpTo(ctx, 6); err != nil {
+		t.Fatalf("up to 6: %v", err)
+	}
+
+	if n := count(t, d, `SELECT COUNT(*) FROM tasks`); n != 3 {
+		t.Fatalf("tasks = %d, want 3", n)
+	}
+	if n := count(t, d, `SELECT COUNT(*) FROM task_tags`); n != 2 {
+		t.Fatalf("task_tags = %d, want 2", n)
+	}
+	if n := count(t, d, `SELECT COUNT(*) FROM task_deps`); n != 2 {
+		t.Fatalf("task_deps = %d, want 2", n)
+	}
+	var order float64
+	var project string
+	if err := d.QueryRowContext(ctx, `SELECT staged_order, project FROM tasks WHERE id = 3`).Scan(&order, &project); err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	if order != 2.5 || project != "q" {
+		t.Fatalf("task 3 = (%v, %q), want (2.5, q)", order, project)
+	}
+	if n := count(t, d, `SELECT COUNT(*) FROM pragma_foreign_key_check`); n != 0 {
+		t.Fatalf("foreign_key_check rows = %d, want 0", n)
+	}
+	if n := count(t, d, `PRAGMA foreign_keys`); n != 1 {
+		t.Fatalf("foreign_keys = %d, want 1", n)
+	}
+	if n := count(t, d, `SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name LIKE 'tasks_%_idx'`); n != 6 {
+		t.Fatalf("task indexes = %d, want 6", n)
+	}
+
+	mustExec(t, d, `DELETE FROM tasks WHERE id = 3`)
+	if n := count(t, d, `SELECT COUNT(*) FROM task_tags`); n != 1 {
+		t.Fatalf("task_tags after delete = %d, want 1", n)
+	}
+	if n := count(t, d, `SELECT COUNT(*) FROM task_deps`); n != 1 {
+		t.Fatalf("task_deps after delete = %d, want 1", n)
+	}
+}
+
+func TestTaskIDsNotReusedAfterMigration(t *testing.T) {
+	ctx := context.Background()
+	d, provider := openMigrated(t, 5)
+	mustExec(t, d, `INSERT INTO tasks (title) VALUES ('a'), ('b')`)
+	if _, err := provider.UpTo(ctx, 6); err != nil {
+		t.Fatalf("up to 6: %v", err)
+	}
+	mustExec(t, d, `DELETE FROM tasks WHERE id = 2`)
+	mustExec(t, d, `INSERT INTO tasks (title) VALUES ('c')`)
+	if n := count(t, d, `SELECT MAX(id) FROM tasks`); n != 3 {
+		t.Fatalf("new id = %d, want 3", n)
+	}
+}
+
+func TestTaskAutoincrementMigrationDown(t *testing.T) {
+	ctx := context.Background()
+	d, provider := openMigrated(t, 6)
+	mustExec(t, d, `INSERT INTO tasks (title, project) VALUES ('a', 'p')`)
+	if _, err := provider.DownTo(ctx, 5); err != nil {
+		t.Fatalf("down to 5: %v", err)
+	}
+	if n := count(t, d, `SELECT COUNT(*) FROM tasks WHERE project = 'p'`); n != 1 {
+		t.Fatalf("tasks after down = %d, want 1", n)
+	}
+}
