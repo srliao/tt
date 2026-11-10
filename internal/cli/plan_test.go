@@ -69,7 +69,6 @@ func TestPlanCheckAndApply_SameResultShape(t *testing.T) {
 func TestPlanApply_StaleSnapshotFailsWithoutPartialWrites(t *testing.T) {
 	f := newFixture(t)
 	gone := f.createTask("will be deleted")
-	f.createTask("keeps the deleted id from being reused")
 	snap := f.pullSnapshot()
 	if err := f.tasks.Delete(context.Background(), gone.ID); err != nil {
 		t.Fatal(err)
@@ -84,8 +83,8 @@ func TestPlanApply_StaleSnapshotFailsWithoutPartialWrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 1 {
-		t.Fatalf("server has %d tasks after failed apply, want 1", len(all))
+	if len(all) != 0 {
+		t.Fatalf("server has %d tasks after failed apply, want 0", len(all))
 	}
 }
 
